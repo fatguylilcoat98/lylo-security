@@ -3,7 +3,6 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { tavily } from '@tavily/core';
 import { loadStripe } from '@stripe/stripe-js';
 
-// INITIALIZE ENGINES - Added @ts-ignore to kill the Render build errors
 // @ts-ignore
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 // @ts-ignore
@@ -27,21 +26,18 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   
   try {
-    // 1. LIVE INTEL: Tavily search for real-time Sacramento data
     const search = await tvly.search(message, {
       searchDepth: "advanced",
       includeAnswer: true,
       maxResults: 3
     });
 
-    // 2. MEMORY CONTEXT: Based on your Sacramento location and tech interests
     const vaultContext = `
       User: Christopher Hughes (Sacramento area).
       Preferences: Zero-sugar drinks, No mustard/Add mayo on burgers.
       Interests: Xbox 360 SSD modding, Custom PC builds, Bitcoin via Cash App.
     `;
 
-    // 3. BRAIN: Gemini 1.5 Flash Reasoning
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
       generationConfig: { responseMimeType: "application/json" }
@@ -51,12 +47,7 @@ export async function sendChatMessage(
       You are LYLO, the Digital Bodyguard. 
       VAULT: ${vaultContext}
       LIVE INTEL: ${search.answer || "No live data found."}
-      
-      TRUTH PROTOCOL: Cross-reference user input with live intel. 
-      Identify scams and provide a confidence score.
-      
       USER MESSAGE: ${message}
-      
       RESPONSE FORMAT (JSON):
       {"answer": "string", "confidence_score": number, "scam_detected": boolean, "scam_indicators": [], "new_memories": []}
     `;
@@ -84,20 +75,16 @@ export async function sendChatMessage(
   }
 }
 
-// 4. STRIPE SUBSCRIPTION
 export async function startSubscription(priceId: string) {
   // @ts-ignore
   const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
   if (!stripe) throw new Error("Stripe failed to load.");
-
-  // Note: Since we are using Payment Links in Login.tsx, 
-  // this function below is just a backup.
+  
   const response = await fetch('/api/create-checkout-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ priceId }),
   });
-
   const session = await response.json();
   if (session.url) window.location.href = session.url;
 }
