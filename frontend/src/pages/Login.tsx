@@ -10,13 +10,9 @@ export default function Login() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() && code.trim()) {
-      // 1. FOREVER LOGIN: Stays active until Logout is clicked
       localStorage.setItem('lylo_session_active', 'true'); 
       localStorage.setItem('lylo_user_email', email.toLowerCase().trim());
-      
-      // 2. THE LOCK: Marries the email and code locally for privacy
       localStorage.setItem('lylo_vault_key', btoa(`${email.trim()}:${code.trim()}`)); 
-
       navigate('/assessment');
     }
   };
@@ -24,16 +20,13 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#02040a] text-white p-6 font-sans flex flex-col items-center justify-center">
       
-      {/* --- PRO SHIELD LOGO (REPLACED GENERIC ICON) --- */}
+      {/* --- UNIVERSAL LOGO --- */}
       <div className="mb-12 flex flex-col items-center gap-4 text-center">
         <div className="relative group">
-          {/* Subtle Outer Glow */}
           <div className="absolute inset-0 bg-blue-600/20 blur-2xl rounded-full group-hover:bg-blue-600/40 transition-all duration-700"></div>
-          
-          {/* PRO SHIELD IMAGE */}
           <img 
-            src="pro-sheild-final.png" 
-            alt="LYLO PRO" 
+            src="lylo-sheild.png" 
+            alt="LYLO" 
             className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-500 group-hover:scale-105"
           />
         </div>
@@ -51,7 +44,6 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4 relative z-10">
-          {/* EMAIL FIELD */}
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
             <input 
@@ -64,7 +56,6 @@ export default function Login() {
             />
           </div>
 
-          {/* ACCESS CODE FIELD */}
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
             <input 
@@ -85,7 +76,6 @@ export default function Login() {
           </button>
         </form>
         
-        {/* PRIVACY FOOTER */}
         <div className="mt-8 pt-8 border-t border-white/5 flex items-start gap-3 relative z-10">
            <EyeOff size={20} className="text-blue-500 mt-1 flex-shrink-0" />
            <p className="text-[9px] font-bold uppercase tracking-widest leading-relaxed text-slate-500">
