@@ -10,9 +10,13 @@ export default function Login() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() && code.trim()) {
+      // Session Persistence
       localStorage.setItem('lylo_session_active', 'true'); 
       localStorage.setItem('lylo_user_email', email.toLowerCase().trim());
+      
+      // Privacy Key
       localStorage.setItem('lylo_vault_key', btoa(`${email.trim()}:${code.trim()}`)); 
+
       navigate('/assessment');
     }
   };
@@ -20,12 +24,15 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#02040a] text-white p-6 font-sans flex flex-col items-center justify-center">
       
-      {/* --- UNIVERSAL LOGO --- */}
+      {/* --- UNIVERSAL SHIELD LOGO --- */}
       <div className="mb-12 flex flex-col items-center gap-4 text-center">
         <div className="relative group">
+          {/* Active Glow Effect */}
           <div className="absolute inset-0 bg-blue-600/20 blur-2xl rounded-full group-hover:bg-blue-600/40 transition-all duration-700"></div>
+          
+          {/* THE UNIVERSAL SHIELD */}
           <img 
-            src="lylo-sheild.png" 
+            src="/lylo-sheild.png" 
             alt="LYLO" 
             className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-500 group-hover:scale-105"
           />
@@ -36,7 +43,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* --- LOGIN CARD --- */}
+      {/* --- VAULT ACCESS CARD --- */}
       <div className="w-full max-w-md bg-[#0b101b] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
         <div className="text-center mb-8 relative z-10">
           <h3 className="text-2xl font-black uppercase tracking-tighter mb-2 italic text-white">Vault Access</h3>
@@ -76,6 +83,7 @@ export default function Login() {
           </button>
         </form>
         
+        {/* PRIVACY PROTOCOL */}
         <div className="mt-8 pt-8 border-t border-white/5 flex items-start gap-3 relative z-10">
            <EyeOff size={20} className="text-blue-500 mt-1 flex-shrink-0" />
            <p className="text-[9px] font-bold uppercase tracking-widest leading-relaxed text-slate-500">
