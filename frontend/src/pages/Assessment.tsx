@@ -6,11 +6,10 @@ export default function Assessment() {
   const [step, setStep] = useState(1);
   const navigate = useNavigate();
   
-  // State for Calibration
   const [hardware, setHardware] = useState('');
   const [finances, setFinances] = useState('');
-  const [techLevel, setTechLevel] = useState('average'); // 'low', 'average', 'high'
-  const [personality, setPersonality] = useState('protective'); // Default
+  const [techLevel, setTechLevel] = useState('average');
+  const [personality, setPersonality] = useState('protective');
 
   const handleComplete = () => {
     localStorage.setItem('lylo_calibration_hardware', hardware);
@@ -25,27 +24,35 @@ export default function Assessment() {
   return (
     <div className="min-h-screen bg-[#02040a] text-white p-6 flex flex-col items-center justify-center">
       
-      {/* HEADER */}
-      <div className="mb-8 flex flex-col items-center gap-4 text-center">
-        <div className="p-3 bg-blue-600/20 border border-blue-500/40 rounded-full">
-          <Shield className="w-8 h-8 text-blue-400" />
+      {/* --- UNIVERSAL LOGO --- */}
+      <div className="mb-12 flex flex-col items-center gap-4 text-center">
+        <div className="relative group">
+          <div className="absolute inset-0 bg-blue-600/20 blur-2xl rounded-full animate-pulse"></div>
+          <img 
+            src="lylo-sheild.png" 
+            alt="LYLO" 
+            className="w-20 h-20 object-contain relative z-10"
+          />
         </div>
-        <h1 className="text-2xl font-black uppercase tracking-tighter italic">Setting up your Shield</h1>
+        <div>
+          <h1 className="text-2xl font-black tracking-tighter italic uppercase">Syncing Your Bodyguard</h1>
+          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.3em]">Setting up your personal assistant & scan protection</p>
+        </div>
       </div>
 
-      <div className="w-full max-w-lg bg-[#0b101b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+      <div className="w-full max-w-lg bg-[#0b101b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
         
-        {/* STEP 1: TECH SAVVY CHECK */}
+        {/* STEP 1 */}
         {step === 1 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
-              <UserCheck className="text-blue-500" /> How comfortable are you with tech?
+              <UserCheck className="text-blue-500" /> How can LYLO best help you?
             </h2>
             <div className="grid grid-cols-1 gap-3">
               {[
-                { id: 'low', label: 'I struggle with tech', desc: 'LYLO will use simple words and slow down.' },
-                { id: 'average', label: 'I know my way around', desc: 'Standard protection and alerts.' },
-                { id: 'high', label: 'I am an expert', desc: 'Full technical breakdowns and data.' }
+                { id: 'low', label: 'I struggle with tech', desc: 'LYLO will use simple words and explain everything like family.' },
+                { id: 'average', label: 'I know my way around', desc: 'Standard protection with clear, helpful alerts.' },
+                { id: 'high', label: 'I am an expert', desc: 'Detailed technical breakdowns and advanced data.' }
               ].map((t) => (
                 <button 
                   key={t.id}
@@ -63,15 +70,15 @@ export default function Assessment() {
           </div>
         )}
 
-        {/* STEP 2: PERSONALITY SELECTION */}
+        {/* STEP 2 */}
         {step === 2 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
-              <Brain className="text-purple-500" /> Choose your Bodyguard
+              <Brain className="text-purple-500" /> Choose your Bodyguard's Style
             </h2>
             <div className="grid grid-cols-1 gap-3">
               {[
-                { id: 'gentle', icon: Heart, label: 'Gentle & Patient', color: 'text-pink-400' },
+                { id: 'gentle', icon: Heart, label: 'Gentle & Comforting', color: 'text-pink-400' },
                 { id: 'funny', icon: Laugh, label: 'Funny & Humorous', color: 'text-yellow-400' },
                 { id: 'smartass', icon: Zap, label: 'The Smartass', color: 'text-orange-400' },
                 { id: 'protective', icon: Shield, label: 'Elite & Professional', color: 'text-blue-400' }
@@ -93,26 +100,37 @@ export default function Assessment() {
           </div>
         )}
 
-        {/* STEP 3: FINAL TECH/FINANCE INFO */}
+        {/* STEP 3 */}
         {step === 3 && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
-              <Cpu className="text-blue-500" /> Security Briefing
-            </h2>
-            <textarea 
-              value={hardware}
-              onChange={(e) => setHardware(e.target.value)}
-              placeholder="List your Tech (e.g. Custom PC, iPhone...)"
-              className="w-full h-24 bg-[#02040a] border border-white/5 rounded-2xl p-5 text-white text-xs font-bold uppercase focus:border-blue-600 outline-none transition-all placeholder:text-slate-800"
-            />
-            <textarea 
-              value={finances}
-              onChange={(e) => setFinances(e.target.value)}
-              placeholder="List your Financial apps (e.g. Bitcoin, Chase...)"
-              className="w-full h-24 bg-[#02040a] border border-white/5 rounded-2xl p-5 text-white text-xs font-bold uppercase focus:border-blue-600 outline-none transition-all placeholder:text-slate-800"
-            />
+            <div className="space-y-2">
+              <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
+                <Cpu className="text-blue-500" /> 01. Your Devices
+              </h2>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">List your tech (Phones, Custom PCs, Xbox, etc.)</p>
+              <textarea 
+                value={hardware}
+                onChange={(e) => setHardware(e.target.value)}
+                placeholder="e.g. iPhone 15, Gaming PC (Z790), Modded Xbox 360..."
+                className="w-full h-24 bg-[#02040a] border border-white/5 rounded-2xl p-5 text-white text-xs font-bold uppercase focus:border-blue-600 outline-none transition-all placeholder:text-slate-800"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
+                <Wallet className="text-cyan-400" /> 02. Your Money & Apps
+              </h2>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Where do you bank or send money?</p>
+              <textarea 
+                value={finances}
+                onChange={(e) => setFinances(e.target.value)}
+                placeholder="e.g. Cash App (Bitcoin), PayPal, Chase Bank..."
+                className="w-full h-24 bg-[#02040a] border border-white/5 rounded-2xl p-5 text-white text-xs font-bold uppercase focus:border-blue-600 outline-none transition-all placeholder:text-slate-800"
+              />
+            </div>
+
             <button onClick={handleComplete} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-2 transition-all uppercase tracking-widest text-[10px]">
-              Activate Lylo <CheckCircle2 size={14} />
+              Activate My Assistant <CheckCircle2 size={14} />
             </button>
           </div>
         )}
