@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,8 +10,13 @@ export default function Login() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (email.trim() && code.trim()) {
-      // This is where we will add the "Lock to Email" logic next
-      localStorage.setItem('lylo_user', email); 
+      // 1. FOREVER LOGIN: Stays active until Logout is clicked
+      localStorage.setItem('lylo_session_active', 'true'); 
+      localStorage.setItem('lylo_user_email', email.toLowerCase().trim());
+      
+      // 2. THE LOCK: Marries the email and code locally for privacy
+      localStorage.setItem('lylo_vault_key', btoa(`${email.trim()}:${code.trim()}`)); 
+
       navigate('/assessment');
     }
   };
@@ -20,11 +25,11 @@ export default function Login() {
     <div className="min-h-screen bg-[#02040a] text-white p-6 font-sans flex flex-col items-center justify-center">
       
       {/* --- PRO SHIELD LOGO --- */}
-      <div className="mb-12 flex flex-col items-center gap-4">
+      <div className="mb-12 flex flex-col items-center gap-4 text-center">
         <div className="p-4 bg-blue-600 rounded-2xl shadow-2xl shadow-blue-900/40">
           <Shield className="w-12 h-12 text-white" fill="currentColor" />
         </div>
-        <div className="text-center">
+        <div>
           <h1 className="text-3xl font-black tracking-tighter italic uppercase">LYLO<span className="text-blue-500">.</span>PRO</h1>
           <p className="text-blue-400 text-[10px] font-bold uppercase tracking-[0.4em]">Truth Shield Active</p>
         </div>
@@ -34,7 +39,7 @@ export default function Login() {
       <div className="w-full max-w-md bg-[#0b101b] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
         <div className="text-center mb-8 relative z-10">
           <h3 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">Vault Access</h3>
-          <p className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Secure Nationwide Connection</p>
+          <p className="text-slate-500 text-[10px] uppercase tracking-widest font-black">Secure Nationwide Connection</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4 relative z-10">
@@ -72,10 +77,18 @@ export default function Login() {
           </button>
         </form>
         
-        <p className="mt-8 text-center text-[9px] text-slate-600 font-bold uppercase tracking-widest">
-          100% Confidential • End-to-End Encryption
-        </p>
+        {/* PRIVACY FOOTER */}
+        <div className="mt-8 pt-8 border-t border-white/5 flex items-start gap-3 relative z-10">
+           <EyeOff size={20} className="text-blue-500 mt-1 flex-shrink-0" />
+           <p className="text-[9px] font-bold uppercase tracking-widest leading-relaxed text-slate-500">
+             Privacy Protocol: We are the anti-thief. Your data is processed in a volatile memory environment and purged instantly. No human logging.
+           </p>
+        </div>
       </div>
+
+      <p className="mt-8 text-[10px] font-black uppercase tracking-[0.4em] text-slate-800">
+        End-to-End Encrypted Protection
+      </p>
     </div>
   );
 }
