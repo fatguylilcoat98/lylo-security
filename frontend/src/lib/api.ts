@@ -3,11 +3,10 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { tavily } from '@tavily/core';
 import { loadStripe } from '@stripe/stripe-js';
 
-// 1. INITIALIZE ENGINES (Pulling from Render Env)
-// Render variables MUST start with VITE_ to be visible in the frontend
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
-const pc = new Pinecone({ apiKey: import.meta.env.VITE_PINECONE_API_KEY || '' });
-const tvly = tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY || '' });
+// INITIALIZE ENGINES
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+const pc = new Pinecone({ apiKey: import.meta.env.VITE_PINECONE_API_KEY });
+const tvly = tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY });
 
 export interface ChatResponse {
   answer: string;
@@ -25,21 +24,21 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   
   try {
-    // A. TRUTH PROTOCOL: Live Tavily Search
+    // 1. LIVE INTEL: Tavily search for real-time Sacramento data
     const search = await tvly.search(message, {
       searchDepth: "advanced",
       includeAnswer: true,
-      maxResults: 5
+      maxResults: 3
     });
 
-    // B. VAULT CONTEXT (Your specific Sacramento/Tech details)
+    // 2. MEMORY CONTEXT: Your specific mods and life details
     const vaultContext = `
-      User: Christopher Hughes. Location: Sacramento/Roseville area.
-      Preferences: Zero-sugar drinks, no mustard/add mayo on burgers.
-      Tech: Xbox 360 SSD modding, Custom PC builds, Bitcoin via Cash App.
+      User: Christopher Hughes (Sacramento area).
+      Preferences: Zero-sugar drinks, No mustard/Add mayo on burgers.
+      Interests: Xbox 360 SSD modding, Custom PC builds, Bitcoin via Cash App.
     `;
 
-    // C. GEMINI 1.5 FLASH (Fastest Free Tier Model)
+    // 3. BRAIN: Gemini 1.5 Flash Reasoning
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
       generationConfig: { responseMimeType: "application/json" }
@@ -48,11 +47,14 @@ export async function sendChatMessage(
     const prompt = `
       You are LYLO, the Digital Bodyguard. 
       VAULT: ${vaultContext}
-      LIVE INTEL: ${search.answer || "No live data available."}
-      MESSAGE: ${message}
+      LIVE INTEL: ${search.answer || "No live data found."}
       
-      STRICT TRUTH PROTOCOL: Cross-reference and provide a confidence score.
-      RESPONSE FORMAT (JSON): 
+      TRUTH PROTOCOL: Cross-reference user input with live intel. 
+      Identify scams and provide a confidence score.
+      
+      USER MESSAGE: ${message}
+      
+      RESPONSE FORMAT (JSON):
       {"answer": "string", "confidence_score": number, "scam_detected": boolean, "scam_indicators": [], "new_memories": []}
     `;
 
@@ -61,7 +63,7 @@ export async function sendChatMessage(
 
     return {
       answer: data.answer,
-      confidence_score: data.confidence_score || 95,
+      confidence_score: data.confidence_score || 98,
       scam_detected: data.scam_detected || false,
       scam_indicators: data.scam_indicators || [],
       new_memories: data.new_memories || []
@@ -70,7 +72,7 @@ export async function sendChatMessage(
   } catch (error) {
     console.error("LYLO ENGINE ERROR:", error);
     return {
-      answer: "Neural Link interrupted. Check your Render VITE_ keys.",
+      answer: "Neural Link interrupted. Check Render VITE_ keys.",
       confidence_score: 0,
       scam_detected: false,
       scam_indicators: ["Connection Error"],
@@ -79,15 +81,12 @@ export async function sendChatMessage(
   }
 }
 
-/**
- * STRIPE SUBSCRIPTION:
- * Uses the Publishable Key (pk_...) to open the checkout window.
- */
+// 4. STRIPE SUBSCRIPTION
 export async function startSubscription(priceId: string) {
   const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-  if (!stripe) throw new Error("Stripe failed to load. Check VITE_STRIPE_PUBLISHABLE_KEY.");
+  if (!stripe) throw new Error("Stripe failed to load.");
 
-  // This redirects the user to your Stripe-hosted checkout page
+  // This redirects users to your secure Stripe checkout
   const response = await fetch('/api/create-checkout-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
