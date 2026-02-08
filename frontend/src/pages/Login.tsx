@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, Mail, ArrowRight, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -24,10 +24,18 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#02040a] text-white p-6 font-sans flex flex-col items-center justify-center">
       
-      {/* --- PRO SHIELD LOGO --- */}
+      {/* --- PRO SHIELD LOGO (REPLACED GENERIC ICON) --- */}
       <div className="mb-12 flex flex-col items-center gap-4 text-center">
-        <div className="p-4 bg-blue-600 rounded-2xl shadow-2xl shadow-blue-900/40">
-          <Shield className="w-12 h-12 text-white" fill="currentColor" />
+        <div className="relative group">
+          {/* Subtle Outer Glow */}
+          <div className="absolute inset-0 bg-blue-600/20 blur-2xl rounded-full group-hover:bg-blue-600/40 transition-all duration-700"></div>
+          
+          {/* PRO SHIELD IMAGE */}
+          <img 
+            src="pro-sheild-final.png" 
+            alt="LYLO PRO" 
+            className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-500 group-hover:scale-105"
+          />
         </div>
         <div>
           <h1 className="text-3xl font-black tracking-tighter italic uppercase">LYLO<span className="text-blue-500">.</span>PRO</h1>
@@ -38,7 +46,7 @@ export default function Login() {
       {/* --- LOGIN CARD --- */}
       <div className="w-full max-w-md bg-[#0b101b] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
         <div className="text-center mb-8 relative z-10">
-          <h3 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">Vault Access</h3>
+          <h3 className="text-2xl font-black uppercase tracking-tighter mb-2 italic text-white">Vault Access</h3>
           <p className="text-slate-500 text-[10px] uppercase tracking-widest font-black">Secure Nationwide Connection</p>
         </div>
 
