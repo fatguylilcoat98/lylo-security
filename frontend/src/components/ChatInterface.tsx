@@ -48,6 +48,8 @@ export default function ChatInterface({
   const [thinking, setThinking] = useState(false);
   const [icons, setIcons] = useState<any>(null);
   const [showLegalConnect, setShowLegalConnect] = useState(false);
+  const [autoTTS, setAutoTTS] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +71,72 @@ export default function ChatInterface({
       });
     }
   }, [messages, thinking]);
+
+  // Text-to-Speech function
+  const speakText = (text: string) => {
+    if (!autoTTS || !window.speechSynthesis || isSpeaking) return;
+    
+    // Clean the text for better speech
+    const cleanText = text
+      .replace(/[⚠️🛡️✅📷]/g, '') // Remove emojis
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
+      .replace(/\n+/g, '. ') // Replace newlines with periods
+      .trim();
+    
+    if (!cleanText) return;
+    
+    window.speechSynthesis.cancel(); // Stop any current speech
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Make it sound natural and human
+    utterance.rate = 0.85; // Slightly slower for clarity
+    utterance.pitch = 1.0; // Natural pitch
+    utterance.volume = 0.9; // Good volume
+    
+    // Use the most natural voice available
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoices = [
+      'Samantha', 'Karen', 'Daniel', 'Alex', 'Victoria', 'Thomas'
+    ];
+    
+    let selectedVoice = voices.find(voice => 
+      preferredVoices.some(preferred => voice.name.includes(preferred))
+    );
+    
+    // Fallback to any English voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find(voice => 
+        voice.lang.startsWith('en') && !voice.name.includes('Google')
+      );
+    }
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+    }
+    
+    setIsSpeaking(true);
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+    
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Auto-speak when new bot message arrives
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.sender === 'bot' && lastMessage.content && autoTTS) {
+      // Wait a moment for the message to render, then speak
+      setTimeout(() => {
+        speakText(lastMessage.content);
+      }, 800);
+    }
+  }, [messages, autoTTS]);
 
   // Speech recognition setup
   useEffect(() => {
@@ -93,6 +161,9 @@ export default function ChatInterface({
 
   const startListening = () => {
     if (recognitionRef.current && !isListening) {
+      // Stop any current speech before listening
+      window.speechSynthesis?.cancel();
+      setIsSpeaking(false);
       setIsListening(true);
       recognitionRef.current.start();
     }
@@ -103,6 +174,14 @@ export default function ChatInterface({
       recognitionRef.current.stop();
       setIsListening(false);
     }
+  };
+
+  const toggleTTS = () => {
+    if (autoTTS && isSpeaking) {
+      window.speechSynthesis?.cancel();
+      setIsSpeaking(false);
+    }
+    setAutoTTS(!autoTTS);
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,6 +233,12 @@ export default function ChatInterface({
   const handleSend = async (messageText?: string, imageData?: string) => {
     const textToSend = messageText || input;
     if (!textToSend.trim() || loading) return;
+    
+    // Stop any current speech when sending a message
+    if (isSpeaking) {
+      window.speechSynthesis?.cancel();
+      setIsSpeaking(false);
+    }
     
     if (!imageData) {
       const userMsg: Message = { 
@@ -259,8 +344,8 @@ export default function ChatInterface({
       <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900/5 to-black pointer-events-none" />
       <div className={`absolute inset-0 bg-gradient-to-t from-${currentPersona.color}-500/5 via-transparent to-transparent pointer-events-none`} />
 
-      {/* Chat Messages */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10">
+      {/* Chat Messages Area - Add padding bottom for fixed input */}
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 relative z-10 pb-32">
         {messages.length === 0 && !thinking && (
           <div className="flex flex-col items-center justify-center h-full opacity-30">
             <div className="relative mb-6">
@@ -277,6 +362,11 @@ export default function ChatInterface({
             <p className="text-gray-400 text-center max-w-md text-sm leading-relaxed">
               {currentPersona.description}. I learn from our conversations to help you better.
             </p>
+            {autoTTS && (
+              <p className="text-cyan-400 text-center text-xs mt-2">
+                🔊 Auto-speech is ON - I'll read my responses aloud
+              </p>
+            )}
           </div>
         )}
         
@@ -298,6 +388,22 @@ export default function ChatInterface({
                 <div className="text-sm leading-relaxed whitespace-pre-wrap">
                   {msg.content}
                 </div>
+                
+                {/* Speaking Indicator for Bot Messages */}
+                {msg.sender === 'bot' && isSpeaking && index === messages.length - 1 && (
+                  <div className="flex items-center gap-2 mt-2 text-cyan-400 text-xs">
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map(i => (
+                        <div
+                          key={i}
+                          className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce"
+                          style={{ animationDelay: `${i * 150}ms` }}
+                        />
+                      ))}
+                    </div>
+                    <span>Speaking...</span>
+                  </div>
+                )}
                 
                 {/* Timestamp */}
                 <div className={`text-xs mt-2 opacity-60 ${
@@ -426,13 +532,13 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* Input Area */}
-      <div className="p-6 bg-black/40 backdrop-blur-xl border-t border-white/10 relative z-10">
+      {/* Fixed Input Area */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-black/80 backdrop-blur-xl border-t border-white/10 z-50">
         <div className="max-w-4xl mx-auto">
           <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-white/20 shadow-2xl">
             <div className="flex items-end gap-3 p-4">
               
-              {/* Voice Button */}
+              {/* Voice Input Button */}
               <button
                 onClick={isListening ? stopListening : startListening}
                 disabled={loading}
@@ -447,6 +553,24 @@ export default function ChatInterface({
                 title={isListening ? "Stop listening" : "Voice input"}
               >
                 {icons?.Mic && <icons.Mic className="w-5 h-5" />}
+              </button>
+
+              {/* TTS Toggle Button */}
+              <button
+                onClick={toggleTTS}
+                className={`
+                  p-3 rounded-xl transition-all border shadow-lg relative
+                  ${autoTTS 
+                    ? 'bg-green-500 border-green-400 text-white shadow-green-500/30' 
+                    : 'bg-gray-700 border-gray-600 text-gray-300'
+                  }
+                `}
+                title={autoTTS ? "Turn off auto-speech" : "Turn on auto-speech"}
+              >
+                {autoTTS ? '🔊' : '🔇'}
+                {isSpeaking && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />
+                )}
               </button>
 
               {/* Image Upload */}
