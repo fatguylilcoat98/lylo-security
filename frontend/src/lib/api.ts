@@ -8,41 +8,70 @@ export interface ChatMessage {
 export interface ChatResponse {
   answer: string;
   confidence_score: number;
+  confidence_explanation?: string;
   scam_detected: boolean;
   scam_indicators: string[];
-  new_memories: string[];
+  detailed_analysis?: string;
   tier_info?: any;
+  usage_info?: {
+    can_send: boolean;
+    is_overage: boolean;
+    messages_today: number;
+    daily_limit: number;
+    remaining_today: number;
+    overage_cost?: number;
+  };
   legal_connect?: {
     available: boolean;
     message: string;
-    action: string;
+    confidence_in_legal_need?: number;
   };
   upgrade_needed?: boolean;
+  available_personas?: string[];
+  personalization_active?: boolean;
+  learned_preferences?: {
+    tech_level: string;
+    communication_style: string;
+    total_conversations: number;
+  };
+}
+
+export interface UserStats {
+  usage: {
+    messages_today: number;
+    messages_this_month: number;
+    overages_this_month: number;
+    total_cost_this_month: number;
+    tier: string;
+  };
+  learning_profile: {
+    tech_level: string;
+    communication_style: string;
+    interests: string[];
+    total_conversations: number;
+    confidence_preferences: string;
+  };
 }
 
 export async function sendChatMessage(
   message: string, 
   history: ChatMessage[] = [],
-  profile: any = {}, 
-  accessCode: string = "ELITE-2026",
-  image?: string | null
+  persona: string = "guardian",
+  userEmail: string = "",
+  sessionId: string = "demo"
 ): Promise<ChatResponse> {
   
   try {
-    // Check if we have a backend URL
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
-    
-    // Get user's tier and persona
     const tier = localStorage.getItem('lylo_user_tier') || 'free';
-    const persona = localStorage.getItem('lylo_selected_persona') || 'guardian';
     
-    // Prepare form data
     const formData = new FormData();
     formData.append('msg', message);
     formData.append('history', JSON.stringify(history));
     formData.append('persona', persona);
     formData.append('tier', tier);
-    formData.append('user_id', localStorage.getItem('lylo_user_id') || 'demo');
+    formData.append('user_email', userEmail);
+    formData.append('session_id', sessionId);
 
     const response = await fetch(`${backendUrl}/chat`, {
       method: 'POST',
@@ -54,40 +83,75 @@ export async function sendChatMessage(
     }
 
     const data = await response.json();
-    
-    return {
-      answer: data.answer,
-      confidence_score: data.confidence_score || 98,
-      scam_detected: data.scam_detected || false,
-      scam_indicators: data.scam_indicators || [],
-      new_memories: data.new_memories || [],
-      tier_info: data.tier_info,
-      legal_connect: data.legal_connect,
-      upgrade_needed: data.upgrade_needed
-    };
+    return data;
 
   } catch (error) {
     console.error("LYLO Backend Error:", error);
     return {
-      answer: "I'm having trouble connecting to my backend brain. Is the FastAPI server running on port 10000?",
+      answer: "I'm having trouble connecting to my backend. Is the server running?",
       confidence_score: 0,
       scam_detected: false,
       scam_indicators: ["Connection Error"],
-      new_memories: []
+      usage_info: {
+        can_send: true,
+        is_overage: false,
+        messages_today: 0,
+        daily_limit: 5,
+        remaining_today: 5
+      }
     };
   }
 }
 
-export async function connectLegal(caseType: string = "scam_recovery"): Promise<any> {
+export async function getUserStats(userEmail: string): Promise<UserStats | null> {
+  try {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    
+    const response = await fetch(`${backendUrl}/user-stats/${encodeURIComponent(userEmail)}`);
+    
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("Get Stats Error:", error);
+    return null;
+  }
+}
+
+export async function clearUserData(userEmail: string): Promise<boolean> {
+  try {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    
+    const formData = new FormData();
+    formData.append('user_email', userEmail);
+    
+    const response = await fetch(`${backendUrl}/clear-user-data`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    return response.ok;
+  } catch (error) {
+    console.error("Clear Data Error:", error);
+    return false;
+  }
+}
+
+export async function connectLegal(
+  userId: string,
+  caseType: string = "scam_recovery",
+  userEmail: string = "",
+  description: string = ""
+): Promise<any> {
   try {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
     const tier = localStorage.getItem('lylo_user_tier') || 'free';
-    const userId = localStorage.getItem('lylo_user_id') || 'demo';
     
     const formData = new FormData();
     formData.append('user_id', userId);
     formData.append('case_type', caseType);
     formData.append('tier', tier);
+    formData.append('user_email', userEmail);
+    formData.append('description', description);
 
     const response = await fetch(`${backendUrl}/legal-connect`, {
       method: 'POST',
@@ -119,36 +183,11 @@ export async function getTiers(): Promise<any> {
   } catch (error) {
     console.error("Get Tiers Error:", error);
     return {
-      free: { name: "Free Tier", max_messages_per_day: 10 },
-      pro: { name: "Pro Tier", max_messages_per_day: 100 },
-      elite: { name: "Elite Tier", max_messages_per_day: 1000 }
+      tiers: {
+        free: { name: "Free Tier", daily_limit: 5, price: 0 },
+        pro: { name: "Pro Tier", daily_limit: 50, price: 9.99 },
+        elite: { name: "Elite Tier", daily_limit: 99999, price: 29.99 }
+      }
     };
-  }
-}
-
-export async function startSubscription(priceId: string) {
-  try {
-    const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-    
-    if (!stripeKey) {
-      console.error("Stripe key not found");
-      return;
-    }
-
-    const { loadStripe } = await import('@stripe/stripe-js');
-    const stripe = await loadStripe(stripeKey);
-    
-    if (!stripe) throw new Error("Stripe failed to load.");
-    
-    const response = await fetch('/api/create-checkout-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priceId }),
-    });
-    
-    const session = await response.json();
-    if (session.url) window.location.href = session.url;
-  } catch (error) {
-    console.error("Stripe error:", error);
   }
 }
