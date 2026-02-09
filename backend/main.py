@@ -1,10 +1,13 @@
+## FILE: requirements.txt (complete copy-paste)
+
+```txt
 from fastapi import FastAPI, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import json
 import hashlib
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 import asyncio
 from dataclasses import dataclass, asdict
@@ -40,53 +43,61 @@ TIERS = {
         "name": "Free Tier",
         "price": 0,
         "daily_limit": 5,
-        "monthly_limit": 150,  # 5 * 30 days
+        "monthly_limit": 150,
         "features": ["basic_chat", "scam_detection"],
         "persona_limit": 2,
-        "overage_price": 0,  # No overages for free
+        "overage_price": 0,
         "description": "Essential protection with basic scam detection"
     },
     "pro": {
         "name": "Pro Tier", 
         "price": 9.99,
         "daily_limit": 50,
-        "monthly_limit": 1500,  # 50 * 30 days
+        "monthly_limit": 1500,
         "features": ["basic_chat", "scam_detection", "advanced_analysis", "voice_mode", "image_upload"],
         "persona_limit": 4,
-        "overage_price": 0.10,  # $0.10 per message over limit
+        "overage_price": 0.10,
         "description": "Advanced protection with voice, image analysis, and enhanced detection"
     },
     "elite": {
         "name": "Elite Tier",
         "price": 29.99,
-        "daily_limit": 99999,  # Basically unlimited
+        "daily_limit": 99999,
         "monthly_limit": 99999,
         "features": ["basic_chat", "scam_detection", "advanced_analysis", "voice_mode", "image_upload", 
                     "loss_recovery", "legal_connect", "priority_support", "custom_personas", "24_7_monitoring"],
         "persona_limit": 6,
         "lawyer_affiliate": True,
-        "overage_price": 0,  # No overages for elite
+        "overage_price": 0,
         "description": "Ultimate protection with legal recovery assistance and unlimited usage"
     }
 }
 
-# Gemini AI setup
+# Gemini AI setup - FIXED VERSION
 genai = None
-model = genai.GenerativeModel('gemini-pro')
+model = None
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
+
+print(f"🔑 API Key Check: {'Found' if api_key else 'Missing'}")
 
 if api_key:
     try:
         import google.generativeai as genai_lib
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
-        # --- FIXED LINE BELOW: Changed to 'gemini-pro' to fix 404 error ---
-        model = genai.GenerativeModel('gemini-pro') 
+        model = genai.GenerativeModel('gemini-pro')
         print("✅ LYLO Brain: Gemini neural networks ONLINE")
+    except ImportError as e:
+        print(f"⚠️ Import Error: {e} - Install google-generativeai")
+        genai = None
+        model = None
     except Exception as e:
         print(f"⚠️ Gemini Setup Error: {e}")
+        genai = None
+        model = None
 else:
     print("⚠️ DEMO MODE: No GEMINI_API_KEY found")
+    print("   Add GEMINI_API_KEY environment variable")
 
 def create_user_hash(email: str) -> str:
     """Create privacy-preserving user identifier from email"""
@@ -155,7 +166,7 @@ def get_user_learning_profile(user_hash: str) -> Dict[str, Any]:
             "conversation_patterns": [],
             "last_updated": datetime.now().isoformat(),
             "total_messages": 0,
-            "confidence_preferences": "medium"  # How much detail they want in explanations
+            "confidence_preferences": "medium"
         }
     return USER_LEARNING_CACHE[user_hash]
 
@@ -186,9 +197,9 @@ def update_user_learning(user_hash: str, message: str, tier: str) -> None:
     
     # Learn confidence preferences
     if any(phrase in message_lower for phrase in ["are you sure", "how certain", "confidence", "percentage"]):
-        profile["confidence_preferences"] = "high"  # They want detailed confidence info
+        profile["confidence_preferences"] = "high"
     elif any(phrase in message_lower for phrase in ["just tell me", "simple answer", "yes or no"]):
-        profile["confidence_preferences"] = "low"  # They want simple answers
+        profile["confidence_preferences"] = "low"
     
     # Learn interests
     interest_keywords = {
@@ -378,7 +389,8 @@ async def root():
         "version": "2.0.0",
         "features": ["Individual Learning", "Usage Tracking", "Confidence Scoring"],
         "active_users": len(USER_LEARNING_CACHE),
-        "gemini_status": "Connected" if model else "Demo Mode"
+        "gemini_status": "Connected" if model else "Demo Mode",
+        "api_key_status": "Found" if api_key else "Missing"
     }
 
 @app.post("/chat")
@@ -426,10 +438,11 @@ async def chat(
     
     if not model:
         return {
-            "answer": "Hey! I'm running in demo mode right now. Add your GEMINI_API_KEY to unlock my full potential! (This message didn't count against your limit.)",
+            "answer": "Hey! I'm running in demo mode right now. Add your GEMINI_API_KEY environment variable to unlock my full potential! (This message didn't count against your limit.)",
             "confidence_score": 100,
             "usage_info": usage_info,
-            "privacy_note": "Your conversations are private and temporary."
+            "privacy_note": "Your conversations are private and temporary.",
+            "debug_info": f"API Key: {'Found' if api_key else 'Missing'}, Model: {model}"
         }
     
     # Check tier permissions for personas
@@ -516,141 +529,4 @@ Respond naturally as a human friend. Include your confidence percentage prominen
         answer_text = response.text.strip()
         
         # Generate confidence explanation
-        confidence_explanation = get_confidence_explanation(confidence, user_profile)
-        
-        result = {
-            "answer": answer_text,
-            "confidence_score": confidence,
-            "confidence_explanation": confidence_explanation,
-            "scam_detected": scam_detected,
-            "scam_indicators": indicators,
-            "detailed_analysis": detailed_analysis,
-            "tier_info": TIERS[tier],
-            "usage_info": {
-                **usage_info,
-                "messages_today": usage.messages_today,
-                "is_overage": is_overage,
-                "overage_cost": TIERS[tier]["overage_price"] if is_overage else 0
-            },
-            "personalization_active": True,
-            "learned_preferences": {
-                "tech_level": user_profile["tech_level"],
-                "communication_style": user_profile["communication_style"],
-                "total_conversations": user_profile["total_messages"]
-            }
-        }
-        
-        # Add legal connect for elite users
-        if tier == "elite" and (scam_detected or any(word in msg.lower() for word in ["scammed", "fraud", "legal", "recover"])):
-            result["legal_connect"] = {
-                "available": True,
-                "message": "I can connect you with our legal partners for recovery assistance - included with Elite.",
-                "confidence_in_legal_need": confidence if scam_detected else 60
-            }
-        
-        return result
-        
-    except Exception as e:
-        print(f"🔥 Error: {str(e)}")
-        return {
-            "answer": f"My brain just glitched: {str(e)}. Try again in a moment?",
-            "confidence_score": 0,
-            "error": True,
-            "usage_info": usage_info
-        }
-
-@app.get("/user-stats/{user_email}")
-async def get_user_stats(user_email: str):
-    """Get user's usage statistics and learning profile"""
-    user_hash = create_user_hash(user_email)
-    usage = get_user_usage(user_hash)
-    profile = get_user_learning_profile(user_hash)
-    
-    return {
-        "usage": {
-            "messages_today": usage.messages_today,
-            "messages_this_month": usage.messages_this_month,
-            "overages_this_month": usage.overages_this_month,
-            "total_cost_this_month": usage.total_cost_this_month,
-            "tier": usage.tier
-        },
-        "learning_profile": {
-            "tech_level": profile["tech_level"],
-            "communication_style": profile["communication_style"],
-            "interests": profile["interests"],
-            "total_conversations": profile["total_messages"],
-            "confidence_preferences": profile["confidence_preferences"]
-        },
-        "privacy_note": "This data is temporary and never accessed by humans"
-    }
-
-@app.post("/clear-user-data")
-async def clear_user_data(user_email: str = Form(...)):
-    """Allow users to clear their learning data"""
-    user_hash = create_user_hash(user_email)
-    
-    cleared_items = []
-    if user_hash in USER_LEARNING_CACHE:
-        del USER_LEARNING_CACHE[user_hash]
-        cleared_items.append("learning_profile")
-    
-    if user_hash in USER_USAGE_TRACKING:
-        del USER_USAGE_TRACKING[user_hash]
-        cleared_items.append("usage_tracking")
-    
-    return {
-        "status": "success", 
-        "message": f"Cleared: {', '.join(cleared_items) if cleared_items else 'No data found'}",
-        "privacy_confirmed": True
-    }
-
-@app.get("/tiers")
-async def get_tiers():
-    """Get subscription tier information"""
-    return {
-        "tiers": TIERS,
-        "features": {
-            "free": "Basic scam detection with 5 daily messages",
-            "pro": "Advanced features with 50 daily messages + overage options", 
-            "elite": "Unlimited usage with legal recovery assistance"
-        }
-    }
-
-@app.post("/legal-connect")
-async def connect_legal(
-    user_id: str = Form(...),
-    case_type: str = Form("scam_recovery"),
-    tier: str = Form("free"),
-    user_email: str = Form(...),
-    description: str = Form("")
-):
-    """Elite tier: Connect users with legal partners"""
-    
-    if tier != "elite":
-        raise HTTPException(
-            status_code=403, 
-            detail="Legal connect requires Elite tier membership"
-        )
-    
-    case_id = f"LYLO_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    return {
-        "status": "success",
-        "message": "Legal consultation request submitted!",
-        "case_id": case_id,
-        "case_type": case_type,
-        "next_steps": [
-            "Our legal partner will contact you within 24 hours",
-            "Gather any documentation related to your case", 
-            "Initial consultation is free for Elite members"
-        ],
-        "estimated_response": "24 hours"
-    }
-
-if __name__ == "__main__":
-    print("🚀 LYLO Backend: Complete System Starting")
-    print("🔒 Privacy Features: Individual learning, usage tracking, confidence scoring")
-    print("💰 Monetization: Tiered pricing with overage handling")
-    print("🎯 Features: Personalized AI, scam detection, legal integration")
-    
-    uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
+        confidence_explanation = get_confidence_explanation(confidence,
