@@ -79,7 +79,7 @@ if api_key:
         import google.generativeai as genai_lib
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
-        model = genai.GenerativeModel('gemini-1.5-flash')  # FIXED: Changed from 'gemini-pro'
+        model = genai.GenerativeModel('gemini-1.5-pro')  # RIGHT  # FIXED: Changed from 'gemini-pro'
         print("✅ LYLO Brain: Gemini neural networks ONLINE")
     except ImportError as e:
         print(f"⚠️ Import Error: {e} - Install google-generativeai")
