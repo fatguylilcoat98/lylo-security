@@ -1,215 +1,379 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+// Dynamic import of Lucide icons
+const importIcons = async () => {
+  try {
+    const icons = await import('lucide-react');
+    return icons;
+  } catch {
+    return null;
+  }
+};
+
+const personas = [
+  {
+    id: 'guardian',
+    name: 'The Guardian',
+    icon: 'Shield',
+    color: 'cyan',
+    description: 'Protective and vigilant. Focuses on security threats and safety.',
+    traits: ['Security Expert', 'Threat Detection', 'Risk Assessment']
+  },
+  {
+    id: 'chef',
+    name: 'The Chef',
+    icon: 'ChefHat',
+    color: 'orange',
+    description: 'Warm and instructive. Specializes in culinary guidance.',
+    traits: ['Recipe Expert', 'Cooking Tips', 'Nutritional Advice']
+  },
+  {
+    id: 'techie',
+    name: 'The Techie',
+    icon: 'Cpu',
+    color: 'purple',
+    description: 'Technical and detailed. Deep dives into complex topics.',
+    traits: ['Technical Support', 'Detailed Analysis', 'Problem Solving']
+  },
+  {
+    id: 'lawyer',
+    name: 'The Lawyer',
+    icon: 'Scale',
+    color: 'yellow',
+    description: 'Formal and precise. Provides careful legal guidance.',
+    traits: ['Legal Analysis', 'Documentation', 'Risk Management']
+  },
+  {
+    id: 'roast',
+    name: 'The Roast Master',
+    icon: 'Flame',
+    color: 'red',
+    description: 'Witty and sarcastic. Delivers truth with humor.',
+    traits: ['Honest Feedback', 'Humor', 'Human-like Interaction']
+  },
+  {
+    id: 'friend',
+    name: 'The Best Friend',
+    icon: 'Heart',
+    color: 'green',
+    description: 'Empathetic and supportive. Your caring companion.',
+    traits: ['Emotional Support', 'Active Listening', 'Life Advice']
+  }
+];
 
 export default function Assessment() {
   const [step, setStep] = useState(1);
   const [techLevel, setTechLevel] = useState('');
-  const [personality, setPersonality] = useState('');
-  const [hardware, setHardware] = useState<string[]>([]);
-  const [finances, setFinances] = useState<string[]>([]);
+  const [selectedPersona, setSelectedPersona] = useState('');
+  const [vaultName, setVaultName] = useState('');
+  const [icons, setIcons] = useState<any>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
   const navigate = useNavigate();
 
-  const handleHardwareToggle = (item: string) => {
-    setHardware(prev => 
-      prev.includes(item) 
-        ? prev.filter(h => h !== item)
-        : [...prev, item]
-    );
-  };
+  // Load icons
+  useEffect(() => {
+    importIcons().then(setIcons);
+  }, []);
 
-  const handleFinancesToggle = (item: string) => {
-    setFinances(prev => 
-      prev.includes(item) 
-        ? prev.filter(f => f !== item)
-        : [...prev, item]
-    );
-  };
-
-  const completeAssessment = () => {
-    // Save all data to localStorage
+  const completeAssessment = async () => {
+    setIsCompleting(true);
+    
+    // Save data to localStorage
     localStorage.setItem('lylo_tech_level', techLevel);
-    localStorage.setItem('lylo_personality', personality);
-    localStorage.setItem('lylo_calibration_hardware', hardware.join(', '));
-    localStorage.setItem('lylo_calibration_finances', finances.join(', '));
+    localStorage.setItem('lylo_selected_persona', selectedPersona);
+    localStorage.setItem('lylo_vault_name', vaultName || 'My Vault');
     localStorage.setItem('lylo_assessment_complete', 'true');
+    
+    // Fade out animation
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Navigate to dashboard
     navigate('/dashboard');
   };
 
-  const forceStart = () => {
-    // Set defaults and skip assessment
-    localStorage.setItem('lylo_calibration_hardware', 'iPhone, PC');
-    localStorage.setItem('lylo_calibration_finances', 'PayPal, Bank');
-    localStorage.setItem('lylo_tech_level', 'average');
-    localStorage.setItem('lylo_personality', 'protective');
-    localStorage.setItem('lylo_assessment_complete', 'true');
-    navigate('/dashboard');
+  const canProceed = () => {
+    switch (step) {
+      case 1: return techLevel !== '';
+      case 2: return selectedPersona !== '';
+      case 3: return vaultName.trim() !== '';
+      default: return false;
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6 font-sans">
-      
-      {/* Header */}
-      <div className="mb-8 text-center animate-pulse">
-        <div className="text-6xl mb-4">🛡️</div>
-        <h1 className="text-3xl font-black italic uppercase tracking-tighter text-blue-500 mb-2">LYLO CALIBRATION</h1>
-        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Step {step} of 4</p>
-      </div>
+  const getPersonaIcon = (iconName: string) => {
+    if (!icons || !iconName) return null;
+    const Icon = icons[iconName];
+    return Icon ? <Icon className="w-8 h-8" /> : null;
+  };
 
-      {/* Progress Bar */}
-      <div className="w-full max-w-md mb-8">
-        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-blue-500 transition-all duration-500 ease-out"
-            style={{ width: `${(step / 4) * 100}%` }}
-          />
+  const getColorClasses = (color: string) => {
+    const colors = {
+      cyan: 'border-cyan-400 bg-cyan-500/10 text-cyan-400 shadow-cyan-500/20',
+      orange: 'border-orange-400 bg-orange-500/10 text-orange-400 shadow-orange-500/20',
+      purple: 'border-purple-400 bg-purple-500/10 text-purple-400 shadow-purple-500/20',
+      yellow: 'border-yellow-400 bg-yellow-500/10 text-yellow-400 shadow-yellow-500/20',
+      red: 'border-red-400 bg-red-500/10 text-red-400 shadow-red-500/20',
+      green: 'border-green-400 bg-green-500/10 text-green-400 shadow-green-500/20'
+    };
+    return colors[color as keyof typeof colors] || colors.cyan;
+  };
+
+  if (isCompleting) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <div className="text-center animate-out fade-out duration-1000">
+          <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-2xl">
+            {icons?.Shield && <icons.Shield className="w-12 h-12 text-white" />}
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Activating LYLO</h2>
+          <p className="text-gray-400">Initializing your personalized AI bodyguard...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* Step Content */}
-      <div className="w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-3xl p-8 mb-6">
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-sans">
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900/10 to-black" />
+      <div className="absolute inset-0 bg-gradient-to-t from-cyan-500/5 via-transparent to-transparent" />
+      
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
         
-        {step === 1 && (
-          <div className="text-center">
-            <div className="text-4xl mb-4">🧠</div>
-            <h2 className="text-xl font-bold mb-6">Tech Experience Level</h2>
-            <div className="space-y-3">
-              {[
-                { value: 'beginner', label: 'Beginner - I need simple explanations' },
-                { value: 'average', label: 'Average - I know the basics' },
-                { value: 'advanced', label: 'Advanced - I build my own PCs' }
-              ].map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => setTechLevel(option.value)}
-                  className={`w-full p-4 rounded-xl text-left transition-all ${
-                    techLevel === option.value 
-                      ? 'bg-blue-600 border-blue-400' 
-                      : 'bg-[#111] hover:bg-[#1a1a1a] border-white/10'
-                  } border`}
-                >
-                  {option.label}
-                </button>
-              ))}
+        {/* Header */}
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <img 
+              src="/logo.png" 
+              alt="LYLO" 
+              className="w-16 h-16 drop-shadow-[0_0_16px_rgba(6,182,212,0.6)]"
+            />
+            <div>
+              <h1 className="text-4xl font-black bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+                LYLO
+              </h1>
+              <p className="text-gray-400 text-sm uppercase tracking-widest">Elite AI Security</p>
             </div>
           </div>
-        )}
+          
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Initial Setup</h2>
+            <p className="text-gray-400">Step {step} of 3</p>
+          </div>
+        </div>
 
-        {step === 2 && (
-          <div className="text-center">
-            <div className="text-4xl mb-4">🎭</div>
-            <h2 className="text-xl font-bold mb-6">AI Personality</h2>
-            <div className="space-y-3">
-              {[
-                { value: 'protective', label: 'Protective - Warn me about everything' },
-                { value: 'balanced', label: 'Balanced - Alert but not paranoid' },
-                { value: 'relaxed', label: 'Relaxed - Only major threats' }
-              ].map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => setPersonality(option.value)}
-                  className={`w-full p-4 rounded-xl text-left transition-all ${
-                    personality === option.value 
-                      ? 'bg-blue-600 border-blue-400' 
-                      : 'bg-[#111] hover:bg-[#1a1a1a] border-white/10'
-                  } border`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+        {/* Progress Bar */}
+        <div className="w-full max-w-md mb-12">
+          <div className="h-2 bg-gray-800/50 backdrop-blur-xl rounded-full overflow-hidden border border-white/10">
+            <div 
+              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out shadow-lg shadow-cyan-500/30"
+              style={{ width: `${(step / 3) * 100}%` }}
+            />
           </div>
-        )}
+        </div>
 
-        {step === 3 && (
-          <div className="text-center">
-            <div className="text-4xl mb-4">📱</div>
-            <h2 className="text-xl font-bold mb-6">Your Devices</h2>
-            <p className="text-gray-400 text-sm mb-4">Select all that apply:</p>
-            <div className="grid grid-cols-2 gap-3">
-              {['iPhone', 'Android', 'PC', 'Mac', 'iPad', 'Chromebook'].map(device => (
-                <button
-                  key={device}
-                  onClick={() => handleHardwareToggle(device)}
-                  className={`p-3 rounded-xl text-sm transition-all ${
-                    hardware.includes(device) 
-                      ? 'bg-blue-600 border-blue-400' 
-                      : 'bg-[#111] hover:bg-[#1a1a1a] border-white/10'
-                  } border`}
-                >
-                  {device}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Step Content */}
+        <div className="w-full max-w-4xl">
+          
+          {/* Step 1: Tech Level */}
+          {step === 1 && (
+            <div className="text-center animate-in slide-in-from-right duration-500">
+              <div className="mb-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-2xl">
+                  {icons?.Settings && <icons.Settings className="w-10 h-10 text-white" />}
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-4">What's your tech experience?</h3>
+                <p className="text-gray-400 max-w-md mx-auto">
+                  This helps LYLO adjust its communication style and technical depth.
+                </p>
+              </div>
 
-        {step === 4 && (
-          <div className="text-center">
-            <div className="text-4xl mb-4">💳</div>
-            <h2 className="text-xl font-bold mb-6">Financial Accounts</h2>
-            <p className="text-gray-400 text-sm mb-4">What do you use? (For scam protection)</p>
-            <div className="grid grid-cols-2 gap-3">
-              {['PayPal', 'Venmo', 'Cash App', 'Bank Online', 'Credit Cards', 'Crypto'].map(account => (
-                <button
-                  key={account}
-                  onClick={() => handleFinancesToggle(account)}
-                  className={`p-3 rounded-xl text-sm transition-all ${
-                    finances.includes(account) 
-                      ? 'bg-blue-600 border-blue-400' 
-                      : 'bg-[#111] hover:bg-[#1a1a1a] border-white/10'
-                  } border`}
-                >
-                  {account}
-                </button>
-              ))}
+              <div className="grid gap-4 max-w-2xl mx-auto">
+                {[
+                  {
+                    value: 'beginner',
+                    title: 'Beginner',
+                    description: 'I prefer simple explanations and step-by-step guidance',
+                    icon: 'User'
+                  },
+                  {
+                    value: 'intermediate',
+                    title: 'Intermediate',
+                    description: 'I understand the basics and can follow technical discussions',
+                    icon: 'Users'
+                  },
+                  {
+                    value: 'advanced',
+                    title: 'Advanced',
+                    description: 'I build PCs, write code, and love technical details',
+                    icon: 'UserCheck'
+                  }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setTechLevel(option.value)}
+                    className={`
+                      w-full p-6 rounded-2xl border transition-all duration-200 text-left
+                      backdrop-blur-xl shadow-lg hover:shadow-xl
+                      ${techLevel === option.value
+                        ? 'bg-cyan-500/20 border-cyan-400 shadow-cyan-500/20'
+                        : 'bg-black/40 border-white/10 hover:bg-black/60 hover:border-white/20'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`
+                        p-3 rounded-xl border
+                        ${techLevel === option.value
+                          ? 'bg-cyan-500/20 border-cyan-400'
+                          : 'bg-white/5 border-white/20'
+                        }
+                      `}>
+                        {icons?.[option.icon] && React.createElement(icons[option.icon], { 
+                          className: "w-6 h-6" 
+                        })}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-lg font-semibold text-white mb-1">{option.title}</h4>
+                        <p className="text-sm text-gray-400">{option.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Step 2: Choose Persona */}
+          {step === 2 && (
+            <div className="text-center animate-in slide-in-from-right duration-500">
+              <div className="mb-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                  {icons?.Bot && <icons.Bot className="w-10 h-10 text-white" />}
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-4">Choose your AI bodyguard</h3>
+                <p className="text-gray-400 max-w-md mx-auto">
+                  Each personality has unique skills and communication styles.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
+                {personas.map((persona) => (
+                  <button
+                    key={persona.id}
+                    onClick={() => setSelectedPersona(persona.id)}
+                    className={`
+                      p-6 rounded-2xl border transition-all duration-200 text-left
+                      backdrop-blur-xl shadow-lg hover:shadow-xl group
+                      ${selectedPersona === persona.id
+                        ? `${getColorClasses(persona.color)} shadow-lg`
+                        : 'bg-black/40 border-white/10 hover:bg-black/60 hover:border-white/20'
+                      }
+                    `}
+                  >
+                    <div className="text-center">
+                      <div className={`
+                        w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center transition-all
+                        ${selectedPersona === persona.id
+                          ? `bg-${persona.color}-500/20 border-${persona.color}-400 border`
+                          : 'bg-white/5 border border-white/20 group-hover:bg-white/10'
+                        }
+                      `}>
+                        {getPersonaIcon(persona.icon)}
+                      </div>
+                      
+                      <h4 className="text-lg font-bold text-white mb-2">{persona.name}</h4>
+                      <p className="text-sm text-gray-400 mb-4">{persona.description}</p>
+                      
+                      <div className="space-y-1">
+                        {persona.traits.map((trait, index) => (
+                          <div 
+                            key={index}
+                            className="text-xs px-2 py-1 rounded-full bg-white/10 text-gray-300 inline-block mr-1"
+                          >
+                            {trait}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Vault Name */}
+          {step === 3 && (
+            <div className="text-center animate-in slide-in-from-right duration-500">
+              <div className="mb-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl">
+                  {icons?.Lock && <icons.Lock className="w-10 h-10 text-white" />}
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-4">Name your secure vault</h3>
+                <p className="text-gray-400 max-w-md mx-auto">
+                  Give your personal data vault a memorable name.
+                </p>
+              </div>
+
+              <div className="max-w-md mx-auto">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={vaultName}
+                    onChange={(e) => setVaultName(e.target.value)}
+                    placeholder="e.g., Fort Knox, The Bunker, My Sanctuary"
+                    className="w-full px-6 py-4 bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400 focus:bg-black/60 transition-all text-center text-lg"
+                    maxLength={30}
+                  />
+                  {vaultName && (
+                    <div className="absolute -right-3 -top-3 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                      {icons?.Check && <icons.Check className="w-5 h-5 text-white" />}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-4 text-xs text-gray-500">
+                  {vaultName.length}/30 characters
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Navigation */}
+        <div className="flex gap-4 mt-12 w-full max-w-md">
+          {step > 1 && (
+            <button
+              onClick={() => setStep(step - 1)}
+              className="flex-1 px-6 py-4 bg-gray-700/50 backdrop-blur-xl border border-gray-600 text-white font-semibold rounded-2xl hover:bg-gray-600/50 transition-all"
+            >
+              {icons?.ArrowLeft && <icons.ArrowLeft className="w-5 h-5 inline mr-2" />}
+              Back
+            </button>
+          )}
+          
+          {step < 3 ? (
+            <button
+              onClick={() => setStep(step + 1)}
+              disabled={!canProceed()}
+              className="flex-1 px-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-2xl shadow-lg shadow-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+            >
+              Continue
+              {icons?.ArrowRight && <icons.ArrowRight className="w-5 h-5 inline ml-2" />}
+            </button>
+          ) : (
+            <button
+              onClick={completeAssessment}
+              disabled={!canProceed()}
+              className="flex-1 px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-2xl shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all"
+            >
+              {icons?.Zap && <icons.Zap className="w-5 h-5 inline mr-2" />}
+              Activate LYLO
+            </button>
+          )}
+        </div>
       </div>
-
-      {/* Navigation Buttons */}
-      <div className="flex gap-4 w-full max-w-lg">
-        {step > 1 && (
-          <button
-            onClick={() => setStep(step - 1)}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 rounded-2xl transition-all"
-          >
-            BACK
-          </button>
-        )}
-        
-        {step < 4 ? (
-          <button
-            onClick={() => setStep(step + 1)}
-            disabled={
-              (step === 1 && !techLevel) || 
-              (step === 2 && !personality) ||
-              (step === 3 && hardware.length === 0)
-            }
-            className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all"
-          >
-            NEXT
-          </button>
-        ) : (
-          <button
-            onClick={completeAssessment}
-            disabled={finances.length === 0}
-            className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all"
-          >
-            ACTIVATE LYLO
-          </button>
-        )}
-      </div>
-
-      {/* Skip Button */}
-      <button
-        onClick={forceStart}
-        className="mt-6 text-gray-500 text-xs font-bold uppercase tracking-widest hover:text-white transition-colors"
-      >
-        Skip Setup (Demo Mode)
-      </button>
     </div>
   );
 }
