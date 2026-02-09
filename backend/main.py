@@ -606,6 +606,27 @@ async def connect_legal(
         ],
         "estimated_response": "24 hours"
     }
+@app.post("/set-elite-access")
+async def set_elite_access(
+    user_email: str = Form(...),
+    access_code: str = Form(...) 
+):
+    """Grant elite access to specific users"""
+    
+    # Your secret code for granting elite access
+    if access_code != "LYLO_BETA_2026":
+        raise HTTPException(status_code=403, detail="Invalid access code")
+    
+    user_hash = create_user_hash(user_email)
+    
+    # Set elite tier in localStorage equivalent
+    USER_USAGE_TRACKING[user_hash].tier = "elite"
+    
+    return {
+        "status": "success",
+        "message": f"Elite access granted to {user_email}",
+        "tier": "elite"
+    }
 
 if __name__ == "__main__":
     print("🚀 LYLO Backend: Complete System Starting")
