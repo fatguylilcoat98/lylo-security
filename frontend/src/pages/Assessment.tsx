@@ -8,24 +8,17 @@ export default function Assessment() {
   const navigate = useNavigate();
   
   // Calibration Data Points
-  const [hardware, setHardware] = useState('');
-  const [finances, setFinances] = useState('');
-  const [techLevel, setTechLevel] = useState('average');
-  const [personality, setPersonality] = useState('protective');
-
-  const handleComplete = () => {
+ const handleComplete = () => {
     setLoading(true);
 
-    // 1. Lock the data into the browser's hard memory
+    // Lock data into the browser
     localStorage.setItem('lylo_calibration_hardware', hardware);
     localStorage.setItem('lylo_calibration_finances', finances);
     localStorage.setItem('lylo_tech_level', techLevel);
     localStorage.setItem('lylo_personality', personality);
     localStorage.setItem('lylo_assessment_complete', 'true');
     
-    // 2. THE SLEDGEHAMMER FIX: 
-    // Instead of using 'navigate', we force the browser to reload the Dashboard.
-    // This clears any "hangups" and forces the new UI to appear.
+    // THE JUMP: Forces the page to the Dashboard instantly
     setTimeout(() => {
       window.location.href = '/dashboard'; 
     }, 1000);
