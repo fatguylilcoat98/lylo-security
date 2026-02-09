@@ -9,14 +9,16 @@ import Success from './pages/Success';
 export default function App() {
   
   useEffect(() => {
-    // Check if a session already exists in the browser
     const sessionActive = localStorage.getItem('lylo_session_active');
     const userEmail = localStorage.getItem('lylo_user_email');
+    const assessmentDone = localStorage.getItem('lylo_assessment_complete');
     
-    // If they have a key and are trying to look at the login page, 
-    // bypass it and send them straight into the Vault.
-    if (sessionActive === 'true' && userEmail && window.location.pathname === '/') {
-      window.location.href = '/assessment'; 
+    // SAFETY CHECK: If they are logged in and already finished the questions
+    if (sessionActive === 'true' && userEmail) {
+      if (window.location.pathname === '/') {
+        // If they already did the assessment, go to dashboard. If not, go to assessment.
+        window.location.href = assessmentDone === 'true' ? '/dashboard' : '/assessment';
+      }
     }
   }, []);
 
