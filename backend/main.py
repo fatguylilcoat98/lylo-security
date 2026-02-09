@@ -1,6 +1,3 @@
-## FILE: requirements.txt (complete copy-paste)
-
-```txt
 from fastapi import FastAPI, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
