@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ErrorBoundary } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Simple Error Boundary Component
 class DashboardErrorBoundary extends React.Component<
