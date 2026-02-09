@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendChatMessage, ChatMessage } from '../lib/api';
+import { sendChatMessage, ChatMessage, connectLegal } from '../lib/api';
 import { PersonaConfig } from './Layout';
+import ConfidenceDisplay from './ConfidenceDisplay';
 
-// Dynamic import of Lucide icons
+// Dynamic icon imports
 const importIcons = async () => {
   try {
     const icons = await import('lucide-react');
@@ -14,26 +15,39 @@ const importIcons = async () => {
 
 interface ChatInterfaceProps {
   currentPersona: PersonaConfig;
+  userEmail: string;
   zoomLevel?: number;
+  onUsageUpdate?: () => void;
 }
 
 interface Message {
   id: number;
   content: string;
   sender: 'user' | 'bot';
-  isScam?: boolean;
   confidence?: number;
+  confidence_explanation?: string;
+  scam_detected?: boolean;
+  scam_indicators?: string[];
+  detailed_analysis?: string;
   timestamp: number;
   isImage?: boolean;
+  legal_connect?: any;
+  usage_info?: any;
 }
 
-export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatInterfaceProps) {
+export default function ChatInterface({ 
+  currentPersona, 
+  userEmail,
+  zoomLevel = 100,
+  onUsageUpdate
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [icons, setIcons] = useState<any>(null);
+  const [showLegalConnect, setShowLegalConnect] = useState(false);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,7 +83,6 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
         const transcript = event.results[0][0].transcript;
         setInput(transcript);
         setIsListening(false);
-        // Auto-send after voice input
         setTimeout(() => handleSend(transcript), 100);
       };
 
@@ -77,13 +90,6 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
       recognitionRef.current.onend = () => setIsListening(false);
     }
   }, []);
-
-  // Focus input after voice or normal interaction
-  useEffect(() => {
-    if (!isListening && !loading && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isListening, loading]);
 
   const startListening = () => {
     if (recognitionRef.current && !isListening) {
@@ -103,7 +109,6 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Add image preview message
     const imageMsg: Message = {
       id: Date.now(),
       content: `📷 Uploaded: ${file.name}`,
@@ -120,15 +125,36 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
     };
     reader.readAsDataURL(file);
     
-    // Clear file input
     event.target.value = '';
+  };
+
+  const handleLegalConnect = async (caseType: string = "scam_recovery") => {
+    try {
+      const result = await connectLegal(
+        Date.now().toString(),
+        caseType,
+        userEmail,
+        "User requested legal assistance from chat"
+      );
+      
+      const legalMsg: Message = {
+        id: Date.now(),
+        content: `✅ ${result.message}\n\nCase ID: ${result.case_id}\n\nNext steps:\n${result.next_steps.map((step: string, i: number) => `${i + 1}. ${step}`).join('\n')}`,
+        sender: 'bot',
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, legalMsg]);
+      setShowLegalConnect(false);
+    } catch (error) {
+      console.error('Legal connect error:', error);
+    }
   };
 
   const handleSend = async (messageText?: string, imageData?: string) => {
     const textToSend = messageText || input;
     if (!textToSend.trim() || loading) return;
     
-    // Don't add user message if it's from image upload (already added)
     if (!imageData) {
       const userMsg: Message = { 
         id: Date.now(), 
@@ -144,46 +170,66 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
     setThinking(true);
 
     try {
-      // Build conversation history
       const history: ChatMessage[] = messages.slice(-10).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.content,
         timestamp: msg.timestamp
       }));
 
-      // Add current message
       history.push({
         role: 'user',
         content: textToSend,
         timestamp: Date.now()
       });
 
-      // Include persona instruction
       const response = await sendChatMessage(
-        `${currentPersona.systemInstruction}\n\nUser: ${textToSend}`, 
+        textToSend, 
         history, 
-        {}, 
-        "ELITE-2026", 
-        imageData
+        currentPersona.id,
+        userEmail,
+        Date.now().toString()
       );
       
       setThinking(false);
+
+      // Check for usage limit reached
+      if (response.upgrade_needed) {
+        const upgradeMsg: Message = {
+          id: Date.now() + 1,
+          content: response.answer,
+          sender: 'bot',
+          timestamp: Date.now(),
+          usage_info: response.usage_info
+        };
+        setMessages(prev => [...prev, upgradeMsg]);
+        if (onUsageUpdate) onUsageUpdate();
+        return;
+      }
       
       const botMsg: Message = { 
         id: Date.now() + 1, 
         content: response.answer, 
         sender: 'bot',
-        isScam: response.scam_detected,
-        confidence: response.confidence_score || 98,
-        timestamp: Date.now()
+        confidence: response.confidence_score,
+        confidence_explanation: response.confidence_explanation,
+        scam_detected: response.scam_detected,
+        scam_indicators: response.scam_indicators,
+        detailed_analysis: response.detailed_analysis,
+        timestamp: Date.now(),
+        legal_connect: response.legal_connect,
+        usage_info: response.usage_info
       };
       
       setMessages(prev => [...prev, botMsg]);
+      
+      // Update usage tracking
+      if (onUsageUpdate) onUsageUpdate();
+      
     } catch (error) {
       setThinking(false);
       setMessages(prev => [...prev, { 
         id: Date.now(), 
-        content: "Neural link interrupted. LYLO systems temporarily offline.", 
+        content: "I'm having connection trouble. Please try again.", 
         sender: 'bot',
         timestamp: Date.now()
       }]);
@@ -229,7 +275,7 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
             </div>
             <h3 className="text-xl font-bold text-white mb-2">{currentPersona.name}</h3>
             <p className="text-gray-400 text-center max-w-md text-sm leading-relaxed">
-              {currentPersona.description}. Ready to assist you with advanced AI capabilities.
+              {currentPersona.description}. I learn from our conversations to help you better.
             </p>
           </div>
         )}
@@ -237,30 +283,16 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
         {messages.map((msg, index) => (
           <div 
             key={msg.id} 
-            className="space-y-3 animate-in slide-in-from-bottom duration-300"
+            className="space-y-4 animate-in slide-in-from-bottom duration-300"
             style={{ animationDelay: `${index * 50}ms` }}
           >
-            {/* Scam Warning */}
-            {msg.isScam && (
-              <div className="mx-auto max-w-md">
-                <div className="bg-red-900/30 backdrop-blur-xl border border-red-500/50 rounded-2xl p-4 text-center shadow-lg shadow-red-500/10">
-                  <div className="flex items-center justify-center gap-2 text-red-400 font-bold text-sm mb-2">
-                    {icons?.AlertTriangle && <icons.AlertTriangle className="w-5 h-5 animate-pulse" />}
-                    THREAT DETECTED
-                  </div>
-                  <div className="text-red-300 text-xs">Confidence: {msg.confidence}%</div>
-                </div>
-              </div>
-            )}
-            
+            {/* Message Bubble */}
             <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`
                 max-w-[80%] md:max-w-[70%] p-4 rounded-2xl shadow-xl backdrop-blur-xl border transition-all
                 ${msg.sender === 'user' 
                   ? `bg-gradient-to-br ${getPersonaGradient()} border-white/20 text-white shadow-${currentPersona.color}-500/20`
-                  : msg.isScam 
-                    ? 'bg-red-900/20 border-red-500/30 text-red-100 shadow-red-500/10' 
-                    : 'bg-black/40 border-white/10 text-gray-100 shadow-black/50'
+                  : 'bg-black/40 border-white/10 text-gray-100 shadow-black/50'
                 }
               `}>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -278,6 +310,52 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
                 </div>
               </div>
             </div>
+
+            {/* Confidence Display for Bot Messages */}
+            {msg.sender === 'bot' && msg.confidence !== undefined && (
+              <div className="max-w-[80%] md:max-w-[70%]">
+                <ConfidenceDisplay
+                  confidence={msg.confidence}
+                  explanation={msg.confidence_explanation}
+                  scamDetected={msg.scam_detected || false}
+                  indicators={msg.scam_indicators}
+                  detailedAnalysis={msg.detailed_analysis}
+                />
+              </div>
+            )}
+
+            {/* Legal Connect Option */}
+            {msg.legal_connect?.available && !showLegalConnect && (
+              <div className="max-w-[80%] md:max-w-[70%]">
+                <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {icons?.Scale && <icons.Scale className="w-5 h-5 text-yellow-400" />}
+                    <span className="text-yellow-400 font-semibold">Legal Assistance Available</span>
+                  </div>
+                  <p className="text-gray-300 text-sm mb-3">{msg.legal_connect.message}</p>
+                  <button
+                    onClick={() => setShowLegalConnect(true)}
+                    className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Connect with Legal Partner
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Usage Warning */}
+            {msg.usage_info?.is_overage && (
+              <div className="max-w-[80%] md:max-w-[70%]">
+                <div className="bg-orange-500/20 border border-orange-400/30 rounded-2xl p-3">
+                  <div className="text-orange-400 text-sm font-medium mb-1">
+                    ⚠️ Over daily limit
+                  </div>
+                  <div className="text-orange-300 text-xs">
+                    This message cost ${msg.usage_info.overage_cost?.toFixed(2)} extra
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ))}
         
@@ -296,13 +374,57 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
                   ))}
                 </div>
                 <span className="text-sm text-gray-300">
-                  {currentPersona.name} is thinking...
+                  {currentPersona.name} is analyzing...
                 </span>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Legal Connect Modal */}
+      {showLegalConnect && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-black/90 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              {icons?.Scale && <icons.Scale className="w-6 h-6 text-yellow-400" />}
+              <h3 className="text-xl font-bold text-white">Legal Assistance</h3>
+            </div>
+            
+            <p className="text-gray-300 mb-6">
+              Connect with our legal partners for scam recovery assistance. This service is included with your Elite membership.
+            </p>
+            
+            <div className="space-y-3 mb-6">
+              <button
+                onClick={() => handleLegalConnect("scam_recovery")}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
+              >
+                Scam Recovery Case
+              </button>
+              <button
+                onClick={() => handleLegalConnect("fraud_investigation")}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
+              >
+                Fraud Investigation
+              </button>
+              <button
+                onClick={() => handleLegalConnect("identity_theft")}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
+              >
+                Identity Theft
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setShowLegalConnect(false)}
+              className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="p-6 bg-black/40 backdrop-blur-xl border-t border-white/10 relative z-10">
@@ -349,7 +471,7 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
               <div className="flex-1 relative">
                 <input 
                   ref={inputRef}
-                  className="w-full bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm py-3 px-4 pr-12"
+                  className="w-full bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm py-3 px-4"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -365,13 +487,6 @@ export default function ChatInterface({ currentPersona, zoomLevel = 100 }: ChatI
                   }
                   disabled={isListening || loading}
                 />
-                
-                {/* Character Count */}
-                {input.length > 100 && (
-                  <div className="absolute bottom-1 right-14 text-xs text-gray-500">
-                    {input.length}/1000
-                  </div>
-                )}
               </div>
               
               {/* Send Button */}
