@@ -1,39 +1,54 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
-import Layout, { personas, PersonaConfig } from '../components/Layout';
-
-// Lazy load ChatInterface to prevent blocking
-const ChatInterface = lazy(() => import('../components/ChatInterface'));
+import React, { useState, useEffect } from 'react';
+import Layout, { personas } from '../components/Layout';
+import ChatInterface from '../components/ChatInterface';
 
 export default function Dashboard() {
   const [currentPersona, setCurrentPersona] = useState('guardian');
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [userEmail, setUserEmail] = useState('');
+  const [usageUpdateTrigger, setUsageUpdateTrigger] = useState(0);
 
   // Get the persona config object
   const currentPersonaConfig = personas.find(p => p.id === currentPersona) || personas[0];
 
-  // Force scroll to top on load
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  // Load saved persona from localStorage
+  // Load user data
   useEffect(() => {
     const savedPersona = localStorage.getItem('lylo_selected_persona');
+    const savedEmail = localStorage.getItem('lylo_user_email') || '';
+    
     if (savedPersona && personas.find(p => p.id === savedPersona)) {
       setCurrentPersona(savedPersona);
     }
+    
+    setUserEmail(savedEmail);
+
+    // Redirect to assessment if no email
+    if (!savedEmail) {
+      window.location.href = '/assessment';
+    }
   }, []);
+
+  // Save persona changes
+  useEffect(() => {
+    localStorage.setItem('lylo_selected_persona', currentPersona);
+  }, [currentPersona]);
 
   const adjustZoom = (delta: number) => {
     setZoomLevel(prev => Math.max(50, Math.min(150, prev + delta)));
+  };
+
+  const handleUsageUpdate = () => {
+    setUsageUpdateTrigger(prev => prev + 1);
   };
 
   return (
     <Layout 
       currentPersona={currentPersona}
       onPersonaChange={setCurrentPersona}
+      userEmail={userEmail}
+      onUsageUpdate={handleUsageUpdate}
     >
-      {/* Header with Persona Info */}
+      {/* Header with Controls */}
       <div className="p-4 border-b border-white/10 bg-black/40 backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -71,21 +86,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Chat Area with Suspense */}
+      {/* Chat Area */}
       <div className="flex-1 relative" style={{ fontSize: `${zoomLevel}%` }}>
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 animate-pulse" />
-              <div className="text-cyan-400 text-sm animate-pulse">Initializing LYLO Systems...</div>
-            </div>
-          </div>
-        }>
-          <ChatInterface 
-            currentPersona={currentPersonaConfig} 
-            zoomLevel={zoomLevel} 
-          />
-        </Suspense>
+        <ChatInterface 
+          currentPersona={currentPersonaConfig} 
+          userEmail={userEmail}
+          zoomLevel={zoomLevel}
+          onUsageUpdate={handleUsageUpdate}
+        />
       </div>
     </Layout>
   );
