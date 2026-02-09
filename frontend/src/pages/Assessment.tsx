@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Zap, Cpu, Wallet, UserCheck, Heart, Laugh, Brain, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import * as Icons from 'lucide-react'; // This is the "Safety Version"
 
 export default function Assessment() {
   const [step, setStep] = useState(1);
