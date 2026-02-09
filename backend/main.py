@@ -80,7 +80,8 @@ if api_key:
         import google.generativeai as genai_lib
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # --- FIXED LINE BELOW: Changed to 'gemini-pro' to fix 404 error ---
+        model = genai.GenerativeModel('gemini-pro') 
         print("✅ LYLO Brain: Gemini neural networks ONLINE")
     except Exception as e:
         print(f"⚠️ Gemini Setup Error: {e}")
