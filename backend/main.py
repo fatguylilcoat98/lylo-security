@@ -67,6 +67,7 @@ TIERS = {
     }
 }
 
+# FIXED GEMINI SETUP - THIS IS THE IMPORTANT PART
 genai = None
 model = None
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
@@ -78,7 +79,7 @@ if api_key:
         import google.generativeai as genai_lib
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')  # FIXED: Changed from 'gemini-pro'
         print("✅ LYLO Brain: Gemini neural networks ONLINE")
     except ImportError as e:
         print(f"⚠️ Import Error: {e} - Install google-generativeai")
@@ -613,4 +614,3 @@ if __name__ == "__main__":
     print("🎯 Features: Personalized AI, scam detection, legal integration")
     
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
-
