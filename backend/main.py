@@ -98,7 +98,7 @@ if api_key:
         
         for model_name in models_to_try:
             try:
-                model = genai.GenerativeModel(model_name)
+                model = genai.GenerativeModel('gemini-1.5-pro')
                 print(f"✅ LYLO Brain: {model_name} ONLINE")
                 break
             except Exception as model_error:
