@@ -3,12 +3,18 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { tavily } from '@tavily/core';
 import { loadStripe } from '@stripe/stripe-js';
 
-// @ts-ignore
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-// @ts-ignore
-const pc = new Pinecone({ apiKey: import.meta.env.VITE_PINECONE_API_KEY });
-// @ts-ignore
-const tvly = tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY });
+// SAFE INITIALIZATION: This prevents the "Class extends value undefined" crash
+const genAI = import.meta.env.VITE_GEMINI_API_KEY 
+  ? new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
+  : null;
+
+const pc = import.meta.env.VITE_PINECONE_API_KEY 
+  ? new Pinecone({ apiKey: import.meta.env.VITE_PINECONE_API_KEY })
+  : null;
+
+const tvly = import.meta.env.VITE_TAVILY_API_KEY 
+  ? tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY })
+  : null;
 
 export interface ChatResponse {
   answer: string;
@@ -24,14 +30,26 @@ export async function sendChatMessage(
   accessCode: string, 
   image?: string | null
 ): Promise<ChatResponse> {
-  
-  try {
+    try {
+    // Check if APIs are available
+    if (!tvly || !genAI) {
+      console.warn("LYLO WARNING: API Keys missing. Running in SAFE MODE.");
+      return {
+        answer: "⚠️ LYLO SYSTEM: API Keys are missing in Render. I cannot search the web or think yet, but the app is online. Please add VITE_GEMINI_API_KEY and VITE_TAVILY_API_KEY to your Render Environment Variables.",
+        confidence_score: 0,
+        scam_detected: false,
+        scam_indicators: [],
+        new_memories: []
+      };
+    }
+
     const search = await tvly.search(message, {
       searchDepth: "advanced",
       includeAnswer: true,
       maxResults: 3
     });
 
+    // Christopher's Personal Vault Context
     const vaultContext = `
       User: Christopher Hughes (Sacramento area).
       Preferences: Zero-sugar drinks, No mustard/Add mayo on burgers.
@@ -53,7 +71,8 @@ export async function sendChatMessage(
     `;
 
     const result = await model.generateContent(prompt);
-    const data = JSON.parse(result.response.text());
+    const responseText = result.response.text();
+    const data = JSON.parse(responseText);
 
     return {
       answer: data.answer,
@@ -66,7 +85,7 @@ export async function sendChatMessage(
   } catch (error) {
     console.error("LYLO ENGINE ERROR:", error);
     return {
-      answer: "Neural Link interrupted. Check Render VITE_ keys.",
+      answer: "Neural Link interrupted. Please check the Render logs.",
       confidence_score: 0,
       scam_detected: false,
       scam_indicators: ["Connection Error"],
@@ -76,8 +95,13 @@ export async function sendChatMessage(
 }
 
 export async function startSubscription(priceId: string) {
-  // @ts-ignore
-  const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+  const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+  
+  if (!stripeKey) {
+    console.error("Stripe key not found");
+    return;
+  }
+  const stripe = await loadStripe(stripeKey);
   if (!stripe) throw new Error("Stripe failed to load.");
   
   const response = await fetch('/api/create-checkout-session', {
@@ -85,6 +109,7 @@ export async function startSubscription(priceId: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ priceId }),
   });
+  
   const session = await response.json();
   if (session.url) window.location.href = session.url;
 }
