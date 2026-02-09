@@ -3,14 +3,16 @@ import React from 'react';
 export default function Assessment() {
 
   const forceStart = () => {
-    // 1. Save Default Data
+    // 1. Set Default Data (so the AI knows who it's talking to)
     localStorage.setItem('lylo_calibration_hardware', 'iPhone, PC');
     localStorage.setItem('lylo_calibration_finances', 'PayPal, Bank');
     localStorage.setItem('lylo_tech_level', 'average');
     localStorage.setItem('lylo_personality', 'protective');
+    
+    // 2. Mark Assessment as Done
     localStorage.setItem('lylo_assessment_complete', 'true');
 
-    // 2. Hard Jump to Dashboard
+    // 3. HARD JUMP to the Dashboard (Bypasses any freezes)
     window.location.href = '/dashboard';
   };
 
@@ -20,6 +22,7 @@ export default function Assessment() {
       <div className="mb-8 animate-pulse">
         <div className="text-6xl mb-4">🛡️</div>
         <h1 className="text-3xl font-black italic uppercase tracking-tighter text-blue-500 mb-2">LYLO SYSTEM</h1>
+        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">System Online</p>
       </div>
 
       <button 
@@ -30,7 +33,7 @@ export default function Assessment() {
       </button>
 
       <p className="mt-8 text-gray-600 text-[10px] font-bold uppercase tracking-widest">
-        System Ready.
+        Click to enter the vault
       </p>
 
     </div>
