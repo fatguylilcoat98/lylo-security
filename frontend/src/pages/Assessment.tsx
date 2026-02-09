@@ -16,20 +16,19 @@ export default function Assessment() {
   const handleComplete = () => {
     setLoading(true);
 
-    // 1. Store the exact data for the AI to read later
+    // 1. Lock the data into the browser's hard memory
     localStorage.setItem('lylo_calibration_hardware', hardware);
     localStorage.setItem('lylo_calibration_finances', finances);
     localStorage.setItem('lylo_tech_level', techLevel);
     localStorage.setItem('lylo_personality', personality);
-    
-    // 2. Mark the assessment as finished to trigger the App.tsx redirect logic
     localStorage.setItem('lylo_assessment_complete', 'true');
     
-    // 3. Navigate to the Dashboard (The Vault)
-    // Small delay to let the user see the "Syncing" state
+    // 2. THE SLEDGEHAMMER FIX: 
+    // Instead of using 'navigate', we force the browser to reload the Dashboard.
+    // This clears any "hangups" and forces the new UI to appear.
     setTimeout(() => {
-      navigate('/dashboard');
-    }, 1500);
+      window.location.href = '/dashboard'; 
+    }, 1000);
   };
 
   return (
