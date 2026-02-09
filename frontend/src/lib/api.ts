@@ -1,21 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Pinecone } from '@pinecone-database/pinecone';
-import { tavily } from '@tavily/core';
-import { loadStripe } from '@stripe/stripe-js';
-
-// SAFE INITIALIZATION: This prevents the "Class extends value undefined" crash
-const genAI = import.meta.env.VITE_GEMINI_API_KEY 
-  ? new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
-  : null;
-
-const pc = import.meta.env.VITE_PINECONE_API_KEY 
-  ? new Pinecone({ apiKey: import.meta.env.VITE_PINECONE_API_KEY })
-  : null;
-
-const tvly = import.meta.env.VITE_TAVILY_API_KEY 
-  ? tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY })
-  : null;
-
 export interface ChatResponse {
   answer: string;
   confidence_score: number;
@@ -24,24 +6,35 @@ export interface ChatResponse {
   new_memories: string[];
 }
 
+// Lazy load APIs only when needed to prevent initialization crashes
 export async function sendChatMessage(
   message: string, 
   profile: any, 
   accessCode: string, 
   image?: string | null
 ): Promise<ChatResponse> {
-    try {
-    // Check if APIs are available
-    if (!tvly || !genAI) {
-      console.warn("LYLO WARNING: API Keys missing. Running in SAFE MODE.");
+  
+  try {
+    // Check if we have API keys before attempting to import/initialize
+    const hasGemini = import.meta.env.VITE_GEMINI_API_KEY;
+    const hasTavily = import.meta.env.VITE_TAVILY_API_KEY;
+    
+    if (!hasGemini || !hasTavily) {
       return {
-        answer: "⚠️ LYLO SYSTEM: API Keys are missing in Render. I cannot search the web or think yet, but the app is online. Please add VITE_GEMINI_API_KEY and VITE_TAVILY_API_KEY to your Render Environment Variables.",
-        confidence_score: 0,
+        answer: "LYLO System: Demo Mode Active. API keys not configured.",
+        confidence_score: 95,
         scam_detected: false,
         scam_indicators: [],
         new_memories: []
       };
     }
+
+    // Dynamic imports to prevent crashes
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const { tavily } = await import('@tavily/core');
+
+    const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+    const tvly = tavily({ apiKey: import.meta.env.VITE_TAVILY_API_KEY });
 
     const search = await tvly.search(message, {
       searchDepth: "advanced",
@@ -49,7 +42,6 @@ export async function sendChatMessage(
       maxResults: 3
     });
 
-    // Christopher's Personal Vault Context
     const vaultContext = `
       User: Christopher Hughes (Sacramento area).
       Preferences: Zero-sugar drinks, No mustard/Add mayo on burgers.
@@ -71,8 +63,7 @@ export async function sendChatMessage(
     `;
 
     const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    const data = JSON.parse(responseText);
+    const data = JSON.parse(result.response.text());
 
     return {
       answer: data.answer,
@@ -81,11 +72,10 @@ export async function sendChatMessage(
       scam_indicators: data.scam_indicators || [],
       new_memories: data.new_memories || []
     };
-
   } catch (error) {
     console.error("LYLO ENGINE ERROR:", error);
     return {
-      answer: "Neural Link interrupted. Please check the Render logs.",
+      answer: "Neural Link interrupted. System running in safe mode.",
       confidence_score: 0,
       scam_detected: false,
       scam_indicators: ["Connection Error"],
@@ -95,21 +85,28 @@ export async function sendChatMessage(
 }
 
 export async function startSubscription(priceId: string) {
-  const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-  
-  if (!stripeKey) {
-    console.error("Stripe key not found");
-    return;
+  try {
+    const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+    
+    if (!stripeKey) {
+      console.error("Stripe key not found");
+      return;
+    }
+
+    const { loadStripe } = await import('@stripe/stripe-js');
+    const stripe = await loadStripe(stripeKey);
+    
+    if (!stripe) throw new Error("Stripe failed to load.");
+    
+    const response = await fetch('/api/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId }),
+    });
+    
+    const session = await response.json();
+    if (session.url) window.location.href = session.url;
+  } catch (error) {
+    console.error("Stripe error:", error);
   }
-  const stripe = await loadStripe(stripeKey);
-  if (!stripe) throw new Error("Stripe failed to load.");
-  
-  const response = await fetch('/api/create-checkout-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ priceId }),
-  });
-  
-  const session = await response.json();
-  if (session.url) window.location.href = session.url;
 }
