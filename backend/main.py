@@ -72,7 +72,7 @@ TIERS = {
 
 # Gemini AI setup
 genai = None
-model = None
+model = genai.GenerativeModel('gemini-pro')
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
 
 if api_key:
