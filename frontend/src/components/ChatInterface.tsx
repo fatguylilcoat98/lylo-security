@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, ChatMessage } from '../lib/api';
 import { PersonaConfig } from './Layout';
@@ -26,8 +25,6 @@ export default function ChatInterface({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [autoTTS, setAutoTTS] = useState(false);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -39,7 +36,6 @@ export default function ChatInterface({
     }
   }, [messages]);
 
-  // Handle send message
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
@@ -85,7 +81,6 @@ export default function ChatInterface({
     }
   };
 
-  // Handle enter key
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -95,80 +90,78 @@ export default function ChatInterface({
 
   return (
     <div 
-      className="h-full flex flex-col bg-[#050505] relative"
+      className="h-screen flex flex-col bg-[#050505] relative overflow-hidden"
       style={{ fontSize: `${zoomLevel}%` }}
     >
       
-      {/* Clean Header - Like Your Website */}
-      <div className="bg-black border-b border-white/10 p-6">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-xl flex items-center justify-center">
-              <span className="text-white font-black text-lg">L</span>
+      {/* Header */}
+      <div className="bg-black border-b border-white/10 p-4 flex-shrink-0 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-lg flex items-center justify-center">
+              <span className="text-white font-black text-sm">L</span>
             </div>
             <div>
-              <h1 className="text-white font-black uppercase tracking-[0.3em] text-lg">
+              <h1 className="text-white font-black uppercase tracking-[0.2em] text-sm">
                 {currentPersona.name}
               </h1>
-              <p className="text-gray-500 text-xs uppercase tracking-[0.4em] font-bold">
-                Digital Bodyguard Active
+              <p className="text-gray-500 text-xs uppercase tracking-[0.3em] font-bold">
+                Active
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className="text-white font-black text-sm tracking-wider">
-                {zoomLevel}%
-              </div>
-              <div className="text-gray-500 text-xs uppercase tracking-widest font-bold">
-                Clarity
-              </div>
+              <div className="text-white font-black text-sm">{zoomLevel}%</div>
+              <div className="text-gray-500 text-xs uppercase font-bold">Signal</div>
             </div>
-            <div className="w-3 h-3 bg-[#3b82f6] rounded-full animate-pulse" />
+            <div className="w-2 h-2 bg-[#3b82f6] rounded-full animate-pulse" />
           </div>
         </div>
       </div>
 
-      {/* Messages Area - Clean & Spacious */}
+      {/* Messages Area - FIXED SCROLLING */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6"
-        style={{ paddingBottom: '140px' }}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+        style={{ 
+          paddingBottom: '200px', // Much more space for input area
+          minHeight: 0 // Critical for flex scrolling
+        }}
       >
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-32 h-32 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-3xl flex items-center justify-center mb-8 relative">
-              <span className="text-white font-black text-4xl">L</span>
-              <div className="absolute -inset-8 bg-[#3b82f6]/20 rounded-full blur-3xl" />
+          <div className="flex flex-col items-center justify-center h-full text-center py-20">
+            <div className="w-20 h-20 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-2xl flex items-center justify-center mb-6">
+              <span className="text-white font-black text-2xl">L</span>
             </div>
             
-            <h2 className="text-3xl font-black text-white uppercase tracking-[0.3em] mb-4">
+            <h2 className="text-xl font-black text-white uppercase tracking-[0.2em] mb-3">
               {currentPersona.name}
             </h2>
-            <p className="text-gray-400 text-lg max-w-md uppercase tracking-[0.2em] font-medium">
+            <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium">
               Your AI Security System is Online
             </p>
           </div>
         )}
         
         {messages.map((msg) => (
-          <div key={msg.id} className="space-y-4">
+          <div key={msg.id} className="space-y-3">
             
             {/* Message Bubble */}
             <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`
-                max-w-[75%] p-6 rounded-2xl backdrop-blur-xl border transition-all
+                max-w-[80%] p-4 rounded-xl backdrop-blur-xl border transition-all
                 ${msg.sender === 'user' 
                   ? 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] border-[#3b82f6]/30 text-white'
                   : 'bg-black/60 border-white/10 text-gray-100'
                 }
               `}>
-                <div className="text-base leading-relaxed font-medium">
+                <div className="text-sm leading-relaxed font-medium">
                   {msg.content}
                 </div>
                 
-                <div className={`text-xs mt-4 opacity-70 font-bold uppercase tracking-widest ${
+                <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wider ${
                   msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'
                 }`}>
                   {new Date(msg.timestamp).toLocaleTimeString([], { 
@@ -179,22 +172,22 @@ export default function ChatInterface({
               </div>
             </div>
 
-            {/* Confidence Display - Only for Bot Messages */}
+            {/* Confidence Display */}
             {msg.sender === 'bot' && msg.confidence && (
-              <div className="max-w-[75%]">
-                <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-white font-black uppercase text-sm tracking-[0.3em]">
+              <div className="max-w-[80%]">
+                <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-white font-black uppercase text-xs tracking-[0.2em]">
                       Analysis Complete
                     </span>
-                    <span className="text-[#3b82f6] font-black text-lg">
+                    <span className="text-[#3b82f6] font-black text-base">
                       {msg.confidence}%
                     </span>
                   </div>
                   
-                  <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
+                  <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
                     <div 
-                      className="h-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all duration-1000 ease-out"
+                      className="h-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all duration-1000"
                       style={{ width: `${msg.confidence}%` }}
                     />
                   </div>
@@ -204,22 +197,22 @@ export default function ChatInterface({
           </div>
         ))}
         
-        {/* Loading State */}
+        {/* Loading */}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-6 rounded-2xl">
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
+            <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-4 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1">
                   {[0, 1, 2].map(i => (
                     <div
                       key={i}
-                      className="w-2 h-2 bg-[#3b82f6] rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce"
                       style={{ animationDelay: `${i * 150}ms` }}
                     />
                   ))}
                 </div>
-                <span className="text-gray-300 font-medium uppercase tracking-wider text-sm">
-                  {currentPersona.name} Analyzing...
+                <span className="text-gray-300 font-medium text-sm">
+                  {currentPersona.name} analyzing...
                 </span>
               </div>
             </div>
@@ -227,72 +220,36 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* Input Area - Clean & Simple */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-black/70 backdrop-blur-xl rounded-2xl border border-white/20">
-            
-            {/* Controls */}
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <button
-                onClick={() => setIsListening(!isListening)}
+      {/* Input Area - FIXED POSITIONING */}
+      <div className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-4">
+        <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/20 p-4">
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <textarea 
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder={`Message ${currentPersona.name}...`}
                 disabled={loading}
-                className={`
-                  px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-[0.3em] transition-all
-                  ${isListening 
-                    ? 'bg-red-600 text-white' 
-                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }
-                `}
-              >
-                Mic {isListening ? 'ON' : 'OFF'}
-              </button>
-
-              <button
-                onClick={() => setAutoTTS(!autoTTS)}
-                className={`
-                  px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-[0.3em] transition-all
-                  ${autoTTS 
-                    ? 'bg-[#3b82f6] text-white' 
-                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  }
-                `}
-              >
-                Speech {autoTTS ? 'ON' : 'OFF'}
-              </button>
+                className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none text-base py-2 resize-none min-h-[40px] max-h-[100px] font-medium"
+                rows={1}
+              />
             </div>
             
-            {/* Input */}
-            <div className="p-4">
-              <div className="flex items-end gap-4">
-                <div className="flex-1">
-                  <textarea 
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    placeholder={`Message ${currentPersona.name}...`}
-                    disabled={loading}
-                    className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none text-lg py-4 resize-none min-h-[60px] max-h-[120px] font-medium"
-                    rows={2}
-                  />
-                </div>
-                
-                <button 
-                  onClick={handleSend}
-                  disabled={loading || !input.trim()}
-                  className={`
-                    px-8 py-4 rounded-xl font-bold text-sm uppercase tracking-[0.3em] transition-all min-w-[100px]
-                    ${input.trim() && !loading
-                      ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-[#3b82f6]/25'
-                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  {loading ? 'Sending' : 'Send'}
-                </button>
-              </div>
-            </div>
+            <button 
+              onClick={handleSend}
+              disabled={loading || !input.trim()}
+              className={`
+                px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-[0.2em] transition-all
+                ${input.trim() && !loading
+                  ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                }
+              `}
+            >
+              {loading ? 'Sending' : 'Send'}
+            </button>
           </div>
         </div>
       </div>
