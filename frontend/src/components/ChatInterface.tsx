@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage } from '../lib/api';
 
-// This version matches Claude's Dashboard props perfectly
 export default function ChatInterface({ currentMission, zoomLevel }: any) {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to keep newest messages visible for testers
+  // Auto-scroll
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -24,7 +23,7 @@ export default function ChatInterface({ currentMission, zoomLevel }: any) {
     setLoading(true);
 
     try {
-      // Calls your existing Tavily/Pinecone logic in api.ts
+      // Calls the new SAFE API you just fixed
       const response = await sendChatMessage(input, {}, "BETA-2026");
       
       const botMsg = { 
@@ -32,12 +31,12 @@ export default function ChatInterface({ currentMission, zoomLevel }: any) {
         content: response.answer, 
         sender: 'bot',
         isScam: response.scam_detected,
-        confidence: response.confidence_score || 98
+        confidence: response.confidence_score
       };
       
       setMessages(prev => [...prev, botMsg]);
     } catch (error) {
-      setMessages(prev => [...prev, { id: Date.now(), content: "Neural Link Error. Check API Keys.", sender: 'bot' }]);
+      setMessages(prev => [...prev, { id: Date.now(), content: "Neural Link Error. System Offline.", sender: 'bot' }]);
     } finally {
       setLoading(false);
     }
@@ -60,9 +59,14 @@ export default function ChatInterface({ currentMission, zoomLevel }: any) {
             }`}>
               {msg.content}
             </div>
+            {msg.sender === 'bot' && (
+              <div className="mt-2 ml-2 text-[8px] font-bold text-blue-500 uppercase tracking-widest">
+                {msg.confidence > 0 ? `${msg.confidence}% VERIFIED` : 'SYSTEM ALERT'}
+              </div>
+            )}
           </div>
         ))}
-        {loading && <div className="text-blue-500 text-[10px] animate-pulse">SYNCING VAULT...</div>}
+        {loading && <div className="text-blue-500 text-[10px] animate-pulse p-4">CONNECTING TO VAULT...</div>}
       </div>
 
       <div className="p-4 bg-black border-t border-white/5">
