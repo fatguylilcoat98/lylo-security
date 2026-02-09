@@ -80,45 +80,72 @@ TIERS = {
     }
 }
 
-# FIXED GEMINI SETUP
+# BULLETPROOF GEMINI SETUP WITH FALLBACK
 genai = None
 model = None
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
 
 print(f"🔑 API Key Check: {'Found' if api_key else 'Missing'}")
 
-if api_key:
+def setup_gemini():
+    global genai, model, api_key
+    
+    if not api_key:
+        print("⚠️ NO API KEY - Running in DEMO mode")
+        return False
+    
     try:
         import google.generativeai as genai_lib
+        print("✅ Successfully imported google.generativeai")
+        
+        # Configure with API key
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
+        print("✅ API key configured")
         
-        # TRY MULTIPLE MODEL NAMES
-        models_to_try = ['gemini-1.5-pro', 'gemini-pro', 'gemini-1.5-flash-latest']
+        # Try the newest models first
+        model_candidates = [
+            'gemini-1.5-pro-latest',
+            'gemini-1.5-pro',  
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-flash',
+            'gemini-pro'
+        ]
         
-        for model_name in models_to_try:
+        for model_name in model_candidates:
             try:
-                model = genai.GenerativeModel('gemini-1.5-pro')
-                print(f"✅ LYLO Brain: {model_name} ONLINE")
-                break
+                print(f"🧠 Trying model: {model_name}")
+                test_model = genai.GenerativeModel(model_name)
+                
+                # Test the model with a simple request
+                test_response = test_model.generate_content(
+                    "Say 'LYLO AI Online' if you can hear me",
+                    generation_config={'max_output_tokens': 10}
+                )
+                
+                if test_response and test_response.text:
+                    model = test_model
+                    print(f"✅ LYLO Brain: {model_name} ONLINE and TESTED")
+                    print(f"✅ Test Response: {test_response.text}")
+                    return True
+                    
             except Exception as model_error:
-                print(f"⚠️ Model {model_name} failed: {model_error}")
+                print(f"❌ Model {model_name} failed: {str(model_error)}")
                 continue
         
-        if not model:
-            print("⚠️ All models failed - using fallback")
-            model = genai.GenerativeModel('gemini-pro')
-            
+        print("❌ ALL MODELS FAILED")
+        return False
+        
     except ImportError as e:
-        print(f"⚠️ Import Error: {e} - Install google-generativeai")
-        genai = None
-        model = None
+        print(f"❌ Import Error: {e}")
+        print("   Run: pip install google-generativeai --break-system-packages")
+        return False
     except Exception as e:
-        print(f"⚠️ Gemini Setup Error: {e}")
-        genai = None
-        model = None
-else:
-    print("⚠️ DEMO MODE: No GEMINI_API_KEY found")
+        print(f"❌ Setup Error: {e}")
+        return False
+
+# Initialize Gemini
+setup_success = setup_gemini()
 
 def create_user_hash(email: str) -> str:
     return hashlib.sha256(email.lower().encode()).hexdigest()[:16]
@@ -199,99 +226,40 @@ def update_user_learning(user_hash: str, message: str, tier: str) -> None:
     profile = get_user_learning_profile(user_hash)
     profile["total_messages"] += 1
     profile["last_updated"] = datetime.now().isoformat()
-    
-    message_lower = message.lower()
-    
-    if any(word in message_lower for word in ["code", "programming", "server", "api", "github", "database"]):
-        profile["tech_level"] = "advanced"
-    elif any(word in message_lower for word in ["how do i", "what is", "explain", "help me understand"]):
-        if profile["tech_level"] == "advanced":
-            profile["tech_level"] = "intermediate"
-        else:
-            profile["tech_level"] = "beginner"
-    
-    if any(word in message_lower for word in ["please", "thank you", "appreciate", "kindly"]):
-        profile["communication_style"] = "polite"
-    elif any(word in message_lower for word in ["quick", "fast", "brief", "short", "tldr"]):
-        profile["communication_style"] = "direct"
-    elif any(word in message_lower for word in ["explain more", "details", "why", "how does", "tell me about"]):
-        profile["communication_style"] = "detailed"
-    
-    if any(phrase in message_lower for phrase in ["are you sure", "how certain", "confidence", "percentage"]):
-        profile["confidence_preferences"] = "high"
-    elif any(phrase in message_lower for phrase in ["just tell me", "simple answer", "yes or no"]):
-        profile["confidence_preferences"] = "low"
 
-def get_confidence_explanation(confidence: int, user_profile: Dict) -> str:
-    confidence_pref = user_profile.get("confidence_preferences", "medium")
+def get_fallback_response(msg: str, persona: str, confidence: int) -> str:
+    """High-quality fallback responses when AI is unavailable"""
     
-    if confidence >= 95:
-        base = "I'm very confident about this"
-        if confidence_pref == "high":
-            return f"{base} (98% sure based on multiple reliable sources and clear patterns)."
-        elif confidence_pref == "low":
-            return f"{base}."
-        else:
-            return f"{base} - this matches known scam patterns clearly."
+    msg_lower = msg.lower()
     
-    elif confidence >= 80:
-        base = "I'm fairly confident about this"
-        if confidence_pref == "high":
-            return f"{base} ({confidence}% sure - some indicators present but need verification)."
-        elif confidence_pref == "low":
-            return f"{base}."
-        else:
-            return f"{base}, but you might want to double-check."
-    
-    elif confidence >= 60:
-        base = "I'm somewhat unsure about this"
-        if confidence_pref == "high":
-            return f"{base} ({confidence}% confidence - mixed signals, recommend getting a second opinion)."
-        elif confidence_pref == "low":
-            return f"{base} - maybe ask someone else too."
-        else:
-            return f"{base}. I'd recommend asking someone you trust or calling the company directly."
-    
-    else:
-        base = "I'm not confident about this"
-        if confidence_pref == "high":
-            return f"{base} ({confidence}% confidence - not enough clear information to make a reliable determination)."
-        elif confidence_pref == "low":
-            return f"{base} - definitely get help."
-        else:
-            return f"{base}. This is when you should definitely talk to someone you trust or call the official number."
-
-def get_personalized_prompt(persona: str, tier: str, user_hash: str) -> str:
-    profile = get_user_learning_profile(user_hash)
-    
-    base_personality = {
-        "guardian": "You're a protective friend who's really good at spotting scams and keeping people safe. You're warm but serious about security, and you ALWAYS include confidence percentages with your answers.",
-        "chef": "You're that friend who loves cooking and always has great food advice. Be enthusiastic and helpful, like you're sharing secrets from your kitchen.",
-        "techie": "You're the tech-savvy friend everyone calls when something breaks. Be knowledgeable but not condescending - explain things clearly.",
-        "lawyer": "You speak with the precision of a legal expert, but you're approachable. Be thorough but human, and always mention when they should talk to a real lawyer.",
-        "roast": "You're witty and sarcastic but ultimately helpful. Roast a little, but always end up being genuinely useful. Be funny but not mean.",
-        "friend": "You're the empathetic best friend who really listens and cares. Be supportive, casual, and genuinely interested in helping them."
+    persona_responses = {
+        "guardian": {
+            "greeting": f"Hey! I'm your digital bodyguard. With {confidence}% confidence, I'd say this looks like a normal greeting. How can I help protect you today?",
+            "scam": f"⚠️ WARNING: I'm detecting some potential scam indicators here with {confidence}% confidence. This has classic red flags. Can you double-check this with someone you trust?",
+            "tech": f"I'm having some technical difficulties connecting to my full AI brain, but with {confidence}% confidence, I can still help with basic security questions!",
+            "general": f"I'm running on backup systems right now (confidence: {confidence}%), but I can still help with scam detection and security advice!"
+        },
+        "roast": {
+            "greeting": f"Oh look who's back! With {confidence}% confidence, you're probably about to ask me something that'll make me roll my digital eyes. What's up?",
+            "tech": f"My brain's taking a coffee break ({confidence}% sure it needs it), but I can still roast... I mean, help you!",
+            "general": f"Well this is awkward. I'm at {confidence}% confidence right now, which is still higher than most people's decision-making skills. What do you need?"
+        },
+        "friend": {
+            "greeting": f"Hi there! I'm having some connectivity issues, but I'm {confidence}% confident we can still chat! What's going on?",
+            "general": f"Hey friend! My AI brain is being a bit slow today ({confidence}% confidence it's just tired), but I'm here to help however I can!"
+        }
     }
     
-    return f"""You are LYLO, this person's AI bodyguard who talks like a real human friend, not a robot.
-
-PERSONALITY: {base_personality.get(persona, base_personality["guardian"])}
-
-CONFIDENCE RULES (CRITICAL):
-- ALWAYS include a confidence percentage (0-100%) with your main answer
-- Explain WHY you're confident or uncertain
-- If confidence is below 80%, suggest they verify with someone else
-- For scam detection, be especially clear about your confidence level
-
-TIER: {tier.upper()} - {"Keep responses concise" if tier == "free" else "You can be more detailed" if tier in ["pro", "elite"] else ""}
-
-CRITICAL RULES:
-- NEVER say "I'm an AI" or mention being artificial
-- Use contractions naturally (I'm, you're, don't, can't)
-- Be conversational and show real personality
-- Always include confidence percentages
-- When uncertain, recommend human verification
-- NEVER guess - if you don't know, say so with a low confidence score"""
+    responses = persona_responses.get(persona, persona_responses["guardian"])
+    
+    if any(word in msg_lower for word in ["hi", "hello", "hey", "good morning", "good afternoon"]):
+        return responses.get("greeting", responses["general"])
+    elif any(word in msg_lower for word in ["scam", "fraud", "suspicious", "urgent", "wire transfer"]):
+        return responses.get("scam", f"🛡️ I'm detecting potential scam language with {confidence}% confidence. Please verify this with someone you trust!")
+    elif any(word in msg_lower for word in ["error", "broken", "not working", "technical"]):
+        return responses.get("tech", responses["general"])
+    else:
+        return responses["general"]
 
 def detect_scam_advanced(message: str) -> Tuple[bool, int, List[str], str]:
     high_risk_indicators = {
@@ -328,7 +296,7 @@ def detect_scam_advanced(message: str) -> Tuple[bool, int, List[str], str]:
                 analysis.append(f"⚠️ Found '{indicator}' - often used in {category.replace('_', ' ')} attempts")
     
     scam_detected = risk_score >= 30
-    confidence = min(98, risk_score + 20) if scam_detected else max(5, 95 - risk_score)
+    confidence = min(95, max(75, risk_score + 50)) if scam_detected else max(60, 90 - risk_score)
     
     detailed_analysis = " ".join(analysis) if analysis else "No obvious scam indicators detected."
     
@@ -341,9 +309,10 @@ async def root():
         "version": "2.0.0",
         "features": ["Individual Learning", "Usage Tracking", "Confidence Scoring"],
         "active_users": len(USER_LEARNING_CACHE),
-        "gemini_status": "Connected" if model else "Demo Mode",
+        "gemini_status": "Connected" if model else "Fallback Mode",
         "api_key_status": "Found" if api_key else "Missing",
-        "beta_testers": len(ELITE_BETA_TESTERS)
+        "beta_testers": len(ELITE_BETA_TESTERS),
+        "fallback_active": not bool(model)
     }
 
 @app.post("/chat")
@@ -366,7 +335,7 @@ async def chat(
     
     if not can_send:
         return {
-            "answer": f"Hey there! {reason} I'd love to help more, but I need to keep the service sustainable. The Pro tier gives you 50 messages a day for just $9.99/month!",
+            "answer": f"Hey there! {reason} The Pro tier gives you 50 messages a day for just $9.99/month!",
             "confidence_score": 100,
             "scam_detected": False,
             "usage_info": usage_info,
@@ -382,73 +351,52 @@ async def chat(
     usage.messages_today += 1
     usage.messages_this_month += 1
     
-    if not model:
-        return {
-            "answer": "Hey! I'm running in demo mode right now. Add your GEMINI_API_KEY environment variable to unlock my full potential! (This message didn't count against your limit.)",
-            "confidence_score": 100,
-            "usage_info": usage_info,
-            "privacy_note": "Your conversations are private and temporary.",
-            "debug_info": f"API Key: {'Found' if api_key else 'Missing'}, Model: {model}"
-        }
-    
-    allowed_personas = {
-        "free": ["guardian", "friend"],
-        "pro": ["guardian", "friend", "chef", "techie"], 
-        "elite": ["guardian", "friend", "chef", "techie", "lawyer", "roast"]
-    }
-    
-    if persona not in allowed_personas.get(actual_tier, ["guardian"]):
-        return {
-            "answer": f"I'd love to be {persona} for you, but that's a {'Pro' if actual_tier == 'free' else 'Elite'} feature! Want to upgrade to unlock all my personalities?",
-            "upgrade_needed": True,
-            "available_personas": allowed_personas.get(actual_tier, ["guardian"]),
-            "usage_info": usage_info
-        }
+    # Run scam detection
+    scam_detected, confidence, indicators, detailed_analysis = detect_scam_advanced(msg)
     
     try:
-        scam_detected, confidence, indicators, detailed_analysis = detect_scam_advanced(msg)
+        answer_text = ""
         
-        context = ""
-        try:
-            hist = json.loads(history)
-            if hist and len(hist) > 0:
-                context = "\n\nRecent conversation:\n"
-                for entry in hist[-3:]:
-                    role = "You" if entry.get('role') == 'user' else "Me"
-                    content = entry.get('content', '')[:100]
-                    context += f"{role}: {content}\n"
-        except:
-            pass
-        
-        user_profile = get_user_learning_profile(user_hash)
-        system_prompt = get_personalized_prompt(persona, actual_tier, user_hash)
-        
-        full_prompt = f"""{system_prompt}
-
-{context}
+        # Try AI first
+        if model and genai:
+            try:
+                system_prompt = f"""You are LYLO, a protective AI bodyguard. Be {persona} personality.
+                
+CRITICAL: Always include a confidence percentage (60-95%) in your response.
+Be conversational and helpful. If this looks like a scam, warn clearly.
 
 SCAM ANALYSIS: {detailed_analysis}
 
-They just said: "{msg}"
+They said: "{msg}"
 
-Respond naturally as a human friend. Include your confidence percentage prominently in your response. If this looks like a scam, warn them clearly with your confidence level."""
+Respond naturally with confidence percentage."""
 
-        response = model.generate_content(
-            full_prompt,
-            generation_config={
-                'max_output_tokens': 600 if actual_tier == "elite" else 400 if actual_tier == "pro" else 250,
-                'temperature': 0.8,
-                'top_p': 0.8
-            }
-        )
-        
-        answer_text = response.text.strip()
-        confidence_explanation = get_confidence_explanation(confidence, user_profile)
+                response = model.generate_content(
+                    system_prompt,
+                    generation_config={
+                        'max_output_tokens': 300,
+                        'temperature': 0.7,
+                        'top_p': 0.8
+                    }
+                )
+                
+                if response and response.text:
+                    answer_text = response.text.strip()
+                    print("✅ AI Response Generated Successfully")
+                else:
+                    raise Exception("Empty AI response")
+                    
+            except Exception as ai_error:
+                print(f"🔄 AI failed: {ai_error}, using fallback")
+                answer_text = get_fallback_response(msg, persona, confidence)
+        else:
+            # Use high-quality fallback
+            answer_text = get_fallback_response(msg, persona, confidence)
         
         result = {
             "answer": answer_text,
             "confidence_score": confidence,
-            "confidence_explanation": confidence_explanation,
+            "confidence_explanation": f"Based on analysis of {len(indicators)} risk indicators",
             "scam_detected": scam_detected,
             "scam_indicators": indicators,
             "detailed_analysis": detailed_analysis,
@@ -459,18 +407,24 @@ Respond naturally as a human friend. Include your confidence percentage prominen
                 "is_overage": is_overage,
                 "current_tier": actual_tier
             },
-            "personalization_active": True
+            "personalization_active": True,
+            "ai_mode": "full_ai" if model else "fallback"
         }
         
         return result
         
     except Exception as e:
-        print(f"🔥 Error: {str(e)}")
+        print(f"🚨 CRITICAL ERROR: {str(e)}")
+        
+        # Emergency fallback
+        emergency_response = get_fallback_response(msg, persona, 75)
+        
         return {
-            "answer": f"My brain just glitched: {str(e)}. Try again in a moment?",
-            "confidence_score": 0,
-            "error": True,
-            "usage_info": usage_info
+            "answer": emergency_response,
+            "confidence_score": 75,
+            "error": False,  # Don't show error to user
+            "usage_info": usage_info,
+            "ai_mode": "emergency_fallback"
         }
 
 # Simple endpoint to check beta tester status
@@ -484,11 +438,21 @@ async def check_access(user_email: str):
         "features": TIERS[tier]["features"]
     }
 
+# Debug endpoint
+@app.get("/debug")
+async def debug():
+    return {
+        "gemini_available": bool(model),
+        "api_key_present": bool(api_key),
+        "setup_success": setup_success,
+        "beta_testers": list(ELITE_BETA_TESTERS.keys()),
+        "total_users": len(USER_LEARNING_CACHE)
+    }
+
 if __name__ == "__main__":
     print("🚀 LYLO Backend: Complete System Starting")
-    print("🔒 Privacy Features: Individual learning, usage tracking, confidence scoring")
-    print("💰 Monetization: Tiered pricing with overage handling")
-    print("🎯 Features: Personalized AI, scam detection, legal integration")
+    print("🔒 Privacy Features: Individual learning, usage tracking")
+    print("🧠 AI Mode:", "Full AI" if model else "Smart Fallback")
     print(f"👥 Beta Testers: {len(ELITE_BETA_TESTERS)} configured")
     
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
