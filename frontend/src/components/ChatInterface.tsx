@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendChatMessage, ChatMessage, connectLegal } from '../lib/api';
+import { sendChatMessage, ChatMessage } from '../lib/api';
 import { PersonaConfig } from './Layout';
-import ConfidenceDisplay from './ConfidenceDisplay';
 
 interface ChatInterfaceProps {
   currentPersona: PersonaConfig;
@@ -17,12 +16,7 @@ interface Message {
   confidence?: number;
   confidence_explanation?: string;
   scam_detected?: boolean;
-  scam_indicators?: string[];
-  detailed_analysis?: string;
   timestamp: number;
-  isImage?: boolean;
-  legal_connect?: any;
-  usage_info?: any;
 }
 
 export default function ChatInterface({ 
@@ -35,100 +29,74 @@ export default function ChatInterface({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [thinking, setThinking] = useState(false);
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Auto-scroll
   useEffect(() => {
     if (chatContainerRef.current) {
-      const container = chatContainerRef.current;
-      container.scrollTo({
-        top: container.scrollHeight,
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
         behavior: 'smooth'
       });
     }
-  }, [messages, thinking]);
+  }, [messages]);
 
-  // Text-to-Speech function
+  // TTS Setup
   const speakText = (text: string) => {
-    if (!autoTTS || !window.speechSynthesis || isSpeaking) return;
+    if (!autoTTS || !text) return;
     
-    const cleanText = text
-      .replace(/[⚠️🛡️✅📷]/g, '')
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/\n+/g, '. ')
-      .trim();
+    const cleanText = text.replace(/\([^)]*\)/g, '').trim();
     
-    if (!cleanText) return;
-    
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    utterance.rate = 0.85;
-    utterance.pitch = 1.0;
-    utterance.volume = 0.9;
-    
-    setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    window.speechSynthesis.speak(utterance);
+    if (window.speechSynthesis && cleanText) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      
+      setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
-  // Auto-speak when new bot message arrives
+  // Auto-speak bot messages
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.sender === 'bot' && lastMessage.content && autoTTS) {
-      setTimeout(() => speakText(lastMessage.content), 800);
+    if (lastMessage?.sender === 'bot' && autoTTS) {
+      setTimeout(() => speakText(lastMessage.content), 500);
     }
   }, [messages, autoTTS]);
 
-  // Speech recognition setup
+  // Voice Recognition
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
+    if ('webkitSpeechRecognition' in window) {
+      const recognition = new (window as any).webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
 
-      recognitionRef.current.onresult = (event: any) => {
+      recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setInput(transcript);
         setIsListening(false);
-        
-        // Auto-send after voice input
-        setTimeout(() => {
-          if (transcript.trim()) {
-            handleSend(transcript);
-          }
-        }, 100);
+        setTimeout(() => handleSend(transcript), 100);
       };
 
-      recognitionRef.current.onerror = () => setIsListening(false);
-      recognitionRef.current.onend = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
+      recognitionRef.current = recognition;
     }
   }, []);
 
   const startListening = () => {
-    if (recognitionRef.current && !isListening && !loading) {
-      window.speechSynthesis?.cancel();
-      setIsSpeaking(false);
+    if (recognitionRef.current && !loading) {
       setIsListening(true);
       recognitionRef.current.start();
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
     }
   };
 
@@ -140,90 +108,33 @@ export default function ChatInterface({
     setAutoTTS(!autoTTS);
   };
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const imageMsg: Message = {
-      id: Date.now(),
-      content: `📷 Uploaded: ${file.name}`,
-      sender: 'user',
-      timestamp: Date.now(),
-      isImage: true
-    };
-    setMessages(prev => [...prev, imageMsg]);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target?.result as string;
-      await handleSend(`Analyze this image: ${file.name}`, base64);
-    };
-    reader.readAsDataURL(file);
-    
-    event.target.value = '';
-  };
-
-  const handleSend = async (messageText?: string, imageData?: string) => {
+  const handleSend = async (messageText?: string) => {
     const textToSend = messageText || input.trim();
     if (!textToSend || loading) return;
-    
-    // Stop any current speech
-    if (isSpeaking) {
-      window.speechSynthesis?.cancel();
-      setIsSpeaking(false);
-    }
-    
-    // Add user message
-    if (!imageData) {
-      const userMsg: Message = { 
-        id: Date.now(), 
-        content: textToSend, 
-        sender: 'user', 
-        timestamp: Date.now() 
-      };
-      setMessages(prev => [...prev, userMsg]);
-    }
-    
-    // Clear input and set loading
+
+    const userMsg: Message = { 
+      id: Date.now(), 
+      content: textToSend, 
+      sender: 'user', 
+      timestamp: Date.now() 
+    };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
-    setThinking(true);
 
     try {
-      const history: ChatMessage[] = messages.slice(-10).map(msg => ({
+      const history: ChatMessage[] = messages.slice(-5).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.content,
         timestamp: msg.timestamp
       }));
 
-      history.push({
-        role: 'user',
-        content: textToSend,
-        timestamp: Date.now()
-      });
-
       const response = await sendChatMessage(
         textToSend, 
         history, 
         currentPersona.id,
-        userEmail,
-        Date.now().toString()
+        userEmail
       );
-      
-      setThinking(false);
-
-      if (response.upgrade_needed) {
-        const upgradeMsg: Message = {
-          id: Date.now() + 1,
-          content: response.answer,
-          sender: 'bot',
-          timestamp: Date.now(),
-          usage_info: response.usage_info
-        };
-        setMessages(prev => [...prev, upgradeMsg]);
-        if (onUsageUpdate) onUsageUpdate();
-        return;
-      }
       
       const botMsg: Message = { 
         id: Date.now() + 1, 
@@ -232,22 +143,15 @@ export default function ChatInterface({
         confidence: response.confidence_score,
         confidence_explanation: response.confidence_explanation,
         scam_detected: response.scam_detected,
-        scam_indicators: response.scam_indicators,
-        detailed_analysis: response.detailed_analysis,
-        timestamp: Date.now(),
-        legal_connect: response.legal_connect,
-        usage_info: response.usage_info
+        timestamp: Date.now()
       };
       
       setMessages(prev => [...prev, botMsg]);
       
-      if (onUsageUpdate) onUsageUpdate();
-      
     } catch (error) {
-      setThinking(false);
       setMessages(prev => [...prev, { 
         id: Date.now(), 
-        content: "I'm having connection trouble. Please try again.", 
+        content: "Connection error. Please try again.", 
         sender: 'bot',
         timestamp: Date.now()
       }]);
@@ -256,107 +160,79 @@ export default function ChatInterface({
     }
   };
 
-  const getPersonaGradient = () => {
-    const gradients = {
-      cyan: 'from-cyan-500 to-blue-500',
-      orange: 'from-orange-500 to-red-500',
-      purple: 'from-purple-500 to-indigo-500',
-      yellow: 'from-yellow-500 to-orange-500',
-      red: 'from-red-500 to-pink-500',
-      green: 'from-green-500 to-emerald-500'
-    };
-    return gradients[currentPersona.color as keyof typeof gradients] || gradients.cyan;
-  };
-
-  // Handle input change - FIXED VERSION
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setInput(newValue);
-  };
-
-  // Handle key press - FIXED VERSION  
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter') {
-      if (e.shiftKey) {
-        // Allow shift+enter for new line
-        return;
-      } else {
-        // Send message on enter
-        e.preventDefault();
-        if (input.trim() && !loading) {
-          handleSend();
-        }
-      }
-    }
-  };
-
   return (
-    <div 
-      className="flex flex-col h-full bg-[#050505] relative"
-      style={{ fontSize: `${zoomLevel}%` }}
-    >
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900/5 to-black pointer-events-none" />
-      <div className={`absolute inset-0 bg-gradient-to-t from-${currentPersona.color}-500/5 via-transparent to-transparent pointer-events-none`} />
-
-      {/* Chat Messages Area */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 relative z-10 pb-40">
-        {messages.length === 0 && !thinking && (
-          <div className="flex flex-col items-center justify-center h-full opacity-30 px-4">
-            <div className="relative mb-6">
-              <div className={`w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br ${getPersonaGradient()} p-4 md:p-6 shadow-2xl`}>
-                <div className="w-full h-full bg-white rounded" />
-              </div>
-              <div className="absolute -inset-2 bg-gradient-to-br from-white/20 to-transparent rounded-full blur-xl" />
+    <div className="flex flex-col h-full bg-[#050505] relative overflow-hidden">
+      
+      {/* Background Pattern - Like Website */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.1),transparent_50%)]" />
+      
+      {/* Chat Header - Clean Like Website */}
+      <div className="border-b border-white/5 bg-black/90 backdrop-blur-xl p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-black text-sm">L</span>
             </div>
-            <h3 className="text-lg md:text-xl font-bold text-white mb-2 text-center">{currentPersona.name}</h3>
-            <p className="text-gray-400 text-center max-w-md text-sm leading-relaxed">
-              {currentPersona.description}. I learn from our conversations to help you better.
-            </p>
-            {autoTTS && (
-              <p className="text-cyan-400 text-center text-xs mt-2">
-                🔊 Auto-speech is ON - I'll read my responses aloud
+            <div>
+              <h3 className="text-white font-black uppercase tracking-widest text-sm">
+                Active: <span className="text-blue-500">{currentPersona.name}</span>
+              </h3>
+              <p className="text-gray-500 text-xs uppercase tracking-wider font-bold">
+                Neural Link Active
               </p>
-            )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-white text-sm font-bold tracking-wider uppercase">100%</div>
+              <div className="text-gray-500 text-xs font-bold uppercase tracking-widest">Signal</div>
+            </div>
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          </div>
+        </div>
+      </div>
+
+      {/* Messages Area - Clean Typography */}
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-6 space-y-6"
+        style={{ paddingBottom: '180px' }}
+      >
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="mb-8 relative">
+              <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center">
+                <span className="text-white font-black text-2xl">L</span>
+              </div>
+              <div className="absolute -inset-4 bg-gradient-to-br from-blue-500/20 to-transparent rounded-3xl blur-xl" />
+            </div>
+            
+            <h2 className="text-2xl font-black text-white uppercase tracking-widest mb-3">
+              {currentPersona.name}
+            </h2>
+            <p className="text-gray-400 max-w-md text-sm leading-relaxed uppercase tracking-wider font-medium">
+              Your personal AI security advisor is online and ready to protect your digital life.
+            </p>
           </div>
         )}
         
-        {messages.map((msg, index) => (
-          <div 
-            key={msg.id} 
-            className="space-y-3 animate-in slide-in-from-bottom duration-300"
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            {/* Message Bubble */}
+        {messages.map((msg) => (
+          <div key={msg.id} className="space-y-4">
             <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`
-                max-w-[85%] p-3 md:p-4 rounded-2xl shadow-xl backdrop-blur-xl border transition-all
+                max-w-[80%] rounded-2xl p-6 backdrop-blur-xl border transition-all
                 ${msg.sender === 'user' 
-                  ? `bg-gradient-to-br ${getPersonaGradient()} border-white/20 text-white shadow-${currentPersona.color}-500/20`
-                  : 'bg-black/40 border-white/10 text-gray-100 shadow-black/50'
+                  ? 'bg-gradient-to-br from-blue-600 to-blue-700 border-blue-400/20 text-white'
+                  : 'bg-black/60 border-white/10 text-gray-100'
                 }
               `}>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                <div className="text-sm leading-relaxed font-medium">
                   {msg.content}
                 </div>
                 
-                {/* Speaking Indicator */}
-                {msg.sender === 'bot' && isSpeaking && index === messages.length - 1 && (
-                  <div className="flex items-center gap-2 mt-2 text-cyan-400 text-xs">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map(i => (
-                        <div
-                          key={i}
-                          className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce"
-                          style={{ animationDelay: `${i * 150}ms` }}
-                        />
-                      ))}
-                    </div>
-                    <span>Speaking...</span>
-                  </div>
-                )}
-                
-                <div className={`text-xs mt-2 opacity-60 ${
+                <div className={`text-xs mt-3 opacity-60 font-bold uppercase tracking-widest ${
                   msg.sender === 'user' ? 'text-right' : 'text-left'
                 }`}>
                   {new Date(msg.timestamp).toLocaleTimeString([], { 
@@ -367,36 +243,51 @@ export default function ChatInterface({
               </div>
             </div>
 
-            {/* Confidence Display */}
-            {msg.sender === 'bot' && msg.confidence !== undefined && (
-              <div className="max-w-[85%]">
-                <ConfidenceDisplay
-                  confidence={msg.confidence}
-                  explanation={msg.confidence_explanation}
-                  scamDetected={msg.scam_detected || false}
-                  indicators={msg.scam_indicators}
-                  detailedAnalysis={msg.detailed_analysis}
-                />
+            {/* Confidence Display - Website Style */}
+            {msg.sender === 'bot' && msg.confidence && (
+              <div className="max-w-[80%]">
+                <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-white font-bold uppercase text-xs tracking-widest">
+                      Analysis Complete
+                    </span>
+                    <span className="text-blue-400 font-black text-sm">
+                      {msg.confidence}% Confidence
+                    </span>
+                  </div>
+                  
+                  <div className="bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-1000"
+                      style={{ width: `${msg.confidence}%` }}
+                    />
+                  </div>
+                  
+                  {msg.confidence_explanation && (
+                    <p className="text-gray-400 text-xs mt-3 font-medium uppercase tracking-wider">
+                      {msg.confidence_explanation}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
         ))}
         
-        {/* Thinking Animation */}
-        {thinking && (
-          <div className="flex justify-start animate-in slide-in-from-bottom duration-300">
-            <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-4 md:p-6 rounded-2xl shadow-xl">
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-6 rounded-2xl">
               <div className="flex items-center gap-4">
                 <div className="flex gap-1">
                   {[0, 1, 2].map(i => (
                     <div
                       key={i}
-                      className={`w-2 h-2 bg-${currentPersona.color}-400 rounded-full animate-bounce`}
+                      className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
                       style={{ animationDelay: `${i * 200}ms` }}
                     />
                   ))}
                 </div>
-                <span className="text-sm text-gray-300">
+                <span className="text-gray-300 text-sm font-medium uppercase tracking-wider">
                   {currentPersona.name} is analyzing...
                 </span>
               </div>
@@ -405,108 +296,77 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* Fixed Input Area - COMPLETELY REWRITTEN FOR MOBILE */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 md:p-6 bg-black/80 backdrop-blur-xl border-t border-white/10 z-50">
+      {/* Input Area - Website Aesthetic */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-black/90 backdrop-blur-xl border-t border-white/5">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-white/20 shadow-2xl">
+          <div className="bg-black/80 backdrop-blur-xl rounded-xl border border-white/10">
             
-            {/* Control Buttons Row */}
-            <div className="flex items-center justify-between p-3 border-b border-white/10">
-              
-              {/* Voice Input Button */}
+            {/* Controls Row */}
+            <div className="flex items-center justify-between p-4 border-b border-white/5">
               <button
-                type="button"
-                onClick={isListening ? stopListening : startListening}
+                onClick={isListening ? () => setIsListening(false) : startListening}
                 disabled={loading}
                 className={`
-                  flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-sm font-medium border
+                  px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border
                   ${isListening 
-                    ? 'bg-red-500 border-red-400 text-white animate-pulse' 
+                    ? 'bg-red-600 border-red-500 text-white' 
                     : 'bg-white/5 border-white/20 text-gray-300 hover:bg-white/10'
                   }
-                  disabled:opacity-50 disabled:cursor-not-allowed
                 `}
               >
-                🎤 {isListening ? 'Mic ON' : 'Mic OFF'}
+                Mic {isListening ? 'ON' : 'OFF'}
               </button>
 
-              {/* Speech Toggle Button */}
               <button
-                type="button"
                 onClick={toggleTTS}
                 className={`
-                  flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-sm font-medium border relative
+                  px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all border relative
                   ${autoTTS 
-                    ? 'bg-green-500 border-green-400 text-white' 
+                    ? 'bg-green-600 border-green-500 text-white' 
                     : 'bg-gray-700 border-gray-600 text-gray-300'
                   }
                 `}
               >
-                🔊 {autoTTS ? 'Speech ON' : 'Speech OFF'}
+                Speech {autoTTS ? 'ON' : 'OFF'}
                 {isSpeaking && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-400 rounded-full animate-pulse" />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
                 )}
               </button>
-
-              {/* Image Upload */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/20 text-gray-300 hover:bg-white/10 transition-all text-sm font-medium disabled:opacity-50"
-              >
-                📎 Image
-              </button>
-
-              <input 
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
             </div>
             
-            {/* Input Area - FIXED FOR MOBILE */}
+            {/* Input Row */}
             <div className="p-4">
-              <div className="flex items-end gap-3">
-                
-                {/* Text Input - COMPLETELY FIXED */}
+              <div className="flex items-end gap-4">
                 <div className="flex-1">
                   <textarea 
                     ref={inputRef}
-                    className="w-full bg-transparent text-white placeholder-gray-400 focus:outline-none text-base py-3 px-4 resize-none min-h-[60px] max-h-[120px] border-0"
                     value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                      isListening 
-                        ? "🎤 Listening..." 
-                        : `Message ${currentPersona.name}...`
-                    }
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder={isListening ? "Listening..." : `Message ${currentPersona.name}...`}
                     disabled={isListening || loading}
-                    rows={2}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck="false"
+                    className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none text-base py-4 px-0 resize-none min-h-[50px] max-h-[100px] font-medium"
+                    rows={1}
                   />
                 </div>
                 
-                {/* Send Button */}
                 <button 
-                  type="button"
                   onClick={() => handleSend()}
                   disabled={loading || !input.trim()}
                   className={`
-                    px-6 py-4 rounded-xl font-medium text-sm transition-all shadow-lg border min-w-[80px]
+                    px-8 py-4 rounded-lg font-bold text-sm uppercase tracking-widest transition-all
                     ${input.trim() && !loading
-                      ? `bg-gradient-to-r ${getPersonaGradient()} border-white/20 text-white hover:shadow-${currentPersona.color}-500/30`
-                      : 'bg-gray-700 border-gray-600 text-gray-400 cursor-not-allowed'
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-500 hover:to-blue-600'
+                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                     }
                   `}
                 >
-                  {loading ? '...' : 'Send'}
+                  {loading ? 'Sending...' : 'Send'}
                 </button>
               </div>
             </div>
