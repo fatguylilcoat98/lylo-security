@@ -1,38 +1,58 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Login from './pages/Login';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Assessment from './pages/Assessment';
 import Dashboard from './pages/Dashboard';
-import Chat from './pages/Chat';
-import Success from './pages/Success';
 
-export default function App() {
-  
-  useEffect(() => {
-    const sessionActive = localStorage.getItem('lylo_session_active');
-    const userEmail = localStorage.getItem('lylo_user_email');
-    const assessmentDone = localStorage.getItem('lylo_assessment_complete');
-    
-    // SAFETY CHECK: If they are logged in and already finished the questions
-    if (sessionActive === 'true' && userEmail) {
-      if (window.location.pathname === '/') {
-        // If they already did the assessment, go to dashboard. If not, go to assessment.
-        window.location.href = assessmentDone === 'true' ? '/dashboard' : '/assessment';
-      }
+// THE CRASH REPORTER
+// This catches the invisible errors and prints them on the screen
+class CrashReporter extends React.Component<any, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-white text-black p-10 font-mono overflow-auto">
+          <h1 className="text-3xl font-bold text-red-600 mb-4">🚨 CRASH DETECTED</h1>
+          <div className="bg-gray-100 p-6 rounded-lg border-2 border-red-600 mb-6">
+            <h2 className="font-bold mb-2">The Error:</h2>
+            <p className="text-lg text-red-700 font-bold mb-4">
+              {this.state.error && this.state.error.toString()}
+            </p>
+            <h2 className="font-bold mb-2">Where it happened:</h2>
+            <pre className="text-xs bg-black text-white p-4 rounded">
+              {this.state.error && this.state.error.stack}
+            </pre>
+          </div>
+          <p className="text-xl font-bold">
+            👉 COPY THE TEXT ABOVE AND PASTE IT TO CLAUDE.
+          </p>
+        </div>
+      );
     }
-  }, []);
+    return this.props.children;
+  }
+}
 
+// YOUR MAIN APP (Wrapped in the reporter)
+function App() {
   return (
-    <BrowserRouter>
-      <div className="bg-[#02040a] min-h-screen text-slate-200 font-sans">
+    <CrashReporter>
+      <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<Navigate to="/assessment" replace />} />
           <Route path="/assessment" element={<Assessment />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/success" element={<Success />} />
         </Routes>
-      </div>
-    </BrowserRouter>
+      </BrowserRouter>
+    </CrashReporter>
   );
 }
+
+export default App;
