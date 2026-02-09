@@ -3,33 +3,42 @@ import { Send, Mic, Volume2, VolumeX, Brain, Globe, Utensils, Zap, ShieldCheck, 
 import { sendChatMessage } from '../lib/api';
 
 export default function ChatInterface({ profile }: { profile: any }) {
-  // --- STATE ---
+  // --- CORE SYSTEM STATE ---
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isAutoTalk, setIsAutoTalk] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('female');
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logic
+  // Auto-scroll ensures testers never miss the latest "Bodyguard" intel
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // --- AUTO-TALK ENGINE ---
+  // --- REFINED BODYGUARD VOICE ENGINE ---
   const speak = (text: string) => {
     if (!isAutoTalk) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Establishing the "Authority" tone
     utterance.rate = 1.0; 
-    utterance.pitch = 0.85; // Professional Bodyguard pitch
+    utterance.pitch = voiceGender === 'male' ? 0.8 : 1.05; 
+    
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes('Google') || v.lang.includes('en-US'));
+    if (preferredVoice) utterance.voice = preferredVoice;
+
     window.speechSynthesis.speak(utterance);
   };
 
+  // --- THE COMMAND TRIGGER (YOUR BRAIN + TITAN UI) ---
   const handleSend = async () => {
     if (!input.trim() || loading) return;
     
@@ -39,7 +48,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
     setLoading(true);
 
     try {
-      // PLUGGING IN YOUR EXISTING API LOGIC
+      // PRESERVING YOUR EXACT API CALL: TAVILY + PINECONE + GEMINI
       const response = await sendChatMessage(userMsg.content, profile, profile.access_code);
       
       const botMsg = { 
@@ -65,7 +74,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
   return (
     <div className="flex h-screen bg-[#050505] text-[#E5E7EB] overflow-hidden font-['Inter']" style={{ fontSize: `${zoomLevel}%` }}>
       
-      {/* MAIN COMMAND COLUMN */}
+      {/* MAIN COMMAND CENTER */}
       <div className="flex-1 flex flex-col border-r border-white/5 relative">
         
         {/* FIXED HEADER: LOCKED */}
@@ -73,7 +82,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
           <div className="max-w-5xl mx-auto flex items-center justify-between h-12">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{profile.name}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{profile.name || "Christopher"}</span>
             </div>
             
             <img src="lylo-sheild.png" alt="LYLO" className="w-10 h-10 object-contain" />
@@ -83,16 +92,21 @@ export default function ChatInterface({ profile }: { profile: any }) {
                 <button onClick={() => setZoomLevel(Math.max(80, zoomLevel - 10))} className="p-2 hover:text-blue-500"><Minus size={14}/></button>
                 <button onClick={() => setZoomLevel(Math.min(150, zoomLevel + 10))} className="p-2 hover:text-blue-500"><Plus size={14}/></button>
               </div>
-              <button onClick={() => setIsAutoTalk(!isAutoTalk)} className="text-gray-500 hover:text-blue-500">
-                {isAutoTalk ? <Volume2 size={20} /> : <VolumeX size={20} />}
-              </button>
+              <div className="flex items-center gap-1">
+                 <button onClick={() => setIsAutoTalk(!isAutoTalk)} className="text-gray-500 hover:text-blue-500 mr-2">
+                    {isAutoTalk ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                 </button>
+                 <button onClick={() => setVoiceGender(voiceGender === 'male' ? 'female' : 'male')} className="text-[9px] font-black uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                   {voiceGender === 'male' ? 'M' : 'F'}
+                 </button>
+              </div>
               <button onClick={() => setMenuOpen(!menuOpen)} className="lg:hidden text-gray-500"><Menu size={20}/></button>
             </div>
           </div>
         </header>
 
         {/* SCROLLABLE CHAT: THE ONLY MOVING PART */}
-        <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/5 via-transparent to-transparent scroll-smooth">
+        <main ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/5 via-transparent to-transparent scroll-smooth">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-30">
                 <Zap size={40} className="text-blue-500" />
@@ -132,8 +146,8 @@ export default function ChatInterface({ profile }: { profile: any }) {
         {/* FIXED FOOTER: LOCKED */}
         <footer className="flex-none bg-black border-t border-white/5 p-6 pb-10">
           <div className="max-w-4xl mx-auto flex gap-4 items-center bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-2 focus-within:border-blue-600 transition-all">
-            <button className="p-3 text-gray-600 hover:text-blue-500"><Camera size={22} /></button>
-            <button className="p-3 text-gray-600 hover:text-blue-500"><Upload size={22} /></button>
+            <button className="p-3 text-gray-600 hover:text-blue-500 transition-colors"><Camera size={22} /></button>
+            <button className="p-3 text-gray-600 hover:text-blue-500 transition-colors"><Upload size={22} /></button>
             <input 
               className="flex-1 bg-transparent p-2 text-sm text-white focus:outline-none placeholder:text-gray-800"
               value={input}
@@ -144,7 +158,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
             <button onClick={handleSend} className="bg-blue-600 p-3.5 rounded-full text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
               <Send size={20} />
             </button>
-            <button className="p-3 text-gray-600 hover:text-blue-500"><Mic size={22} /></button>
+            <button className="p-3 text-gray-600 hover:text-blue-500 transition-colors"><Mic size={22} /></button>
           </div>
         </footer>
       </div>
@@ -155,7 +169,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
 
         <div className="space-y-4">
             <div className="flex items-center gap-3 text-blue-500"><Brain size={18} /><span className="text-[10px] font-black uppercase tracking-[0.3em]">Pinecone Vault</span></div>
-            <p className="text-[10px] text-gray-600 leading-relaxed italic uppercase tracking-widest">Recalling Xbox 360 mods, PC Build specs, and user preferences.</p>
+            <p className="text-[10px] text-gray-600 leading-relaxed italic uppercase tracking-widest">Recalling technical mods, building specs, and user preferences.</p>
         </div>
 
         <div className="space-y-4">
@@ -170,7 +184,7 @@ export default function ChatInterface({ profile }: { profile: any }) {
 
         <div className="mt-auto p-6 rounded-3xl bg-red-900/5 border border-red-900/20">
             <div className="flex items-center gap-3 text-red-500 mb-4"><ShieldCheck size={20} /><span className="text-[10px] font-black uppercase tracking-[0.3em]">Truth Protocol</span></div>
-            <p className="text-[9px] text-red-700 font-bold uppercase leading-relaxed tracking-widest">Anti-Hallucination active. Every response cross-referenced with Tavily data.</p>
+            <p className="text-[9px] text-red-700 font-bold uppercase leading-relaxed tracking-widest text-center">Anti-Hallucination active. Every response cross-referenced with Tavily data.</p>
         </div>
       </div>
 
