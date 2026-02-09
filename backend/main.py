@@ -20,6 +20,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# =====================================================
+# EASY BETA TESTER SETUP - ADD EMAILS HERE
+# =====================================================
+ELITE_BETA_TESTERS = {
+    "stangman9898@gmail.com": "elite",  # Christopher - Founder
+    "aubrey@example.com": "elite",      # Add Aubrey
+    "tiffani@example.com": "elite",     # Add Tiffani
+    # ADD MORE BETA TESTERS HERE:
+    # "friend@email.com": "elite",
+    # "family@email.com": "pro",
+}
+# =====================================================
+
 USER_LEARNING_CACHE = {}
 USER_USAGE_TRACKING = defaultdict(lambda: {"daily": {}, "monthly": {}})
 
@@ -67,7 +80,7 @@ TIERS = {
     }
 }
 
-# FIXED GEMINI SETUP - THIS IS THE IMPORTANT PART
+# FIXED GEMINI SETUP
 genai = None
 model = None
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
@@ -79,8 +92,23 @@ if api_key:
         import google.generativeai as genai_lib
         genai_lib.configure(api_key=api_key)
         genai = genai_lib
-        model = genai.GenerativeModel('gemini-1.5-pro')  # RIGHT  # FIXED: Changed from 'gemini-pro'
-        print("✅ LYLO Brain: Gemini neural networks ONLINE")
+        
+        # TRY MULTIPLE MODEL NAMES
+        models_to_try = ['gemini-1.5-pro', 'gemini-pro', 'gemini-1.5-flash-latest']
+        
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name)
+                print(f"✅ LYLO Brain: {model_name} ONLINE")
+                break
+            except Exception as model_error:
+                print(f"⚠️ Model {model_name} failed: {model_error}")
+                continue
+        
+        if not model:
+            print("⚠️ All models failed - using fallback")
+            model = genai.GenerativeModel('gemini-pro')
+            
     except ImportError as e:
         print(f"⚠️ Import Error: {e} - Install google-generativeai")
         genai = None
@@ -94,6 +122,18 @@ else:
 
 def create_user_hash(email: str) -> str:
     return hashlib.sha256(email.lower().encode()).hexdigest()[:16]
+
+def get_user_tier(email: str) -> str:
+    """Check if user is a beta tester with special access"""
+    email_lower = email.lower().strip()
+    
+    # Check beta tester list
+    if email_lower in ELITE_BETA_TESTERS:
+        tier = ELITE_BETA_TESTERS[email_lower]
+        print(f"🌟 Beta Tester Detected: {email_lower} -> {tier.upper()}")
+        return tier
+    
+    return "free"
 
 def get_user_usage(user_hash: str) -> UserUsage:
     today = datetime.now().strftime("%Y-%m-%d")
@@ -181,19 +221,6 @@ def update_user_learning(user_hash: str, message: str, tier: str) -> None:
         profile["confidence_preferences"] = "high"
     elif any(phrase in message_lower for phrase in ["just tell me", "simple answer", "yes or no"]):
         profile["confidence_preferences"] = "low"
-    
-    interest_keywords = {
-        "technology": ["tech", "computer", "programming", "coding", "app", "software"],
-        "finance": ["money", "investment", "bitcoin", "stocks", "savings", "scam", "fraud"],
-        "health": ["health", "medical", "doctor", "medicine", "wellness"],
-        "family": ["family", "grandchildren", "kids", "spouse", "relatives"],
-        "hobbies": ["hobby", "collect", "garden", "craft", "music", "read"]
-    }
-    
-    for interest, keywords in interest_keywords.items():
-        if any(keyword in message_lower for keyword in keywords):
-            if interest not in profile["interests"]:
-                profile["interests"].append(interest)
 
 def get_confidence_explanation(confidence: int, user_profile: Dict) -> str:
     confidence_pref = user_profile.get("confidence_preferences", "medium")
@@ -246,43 +273,9 @@ def get_personalized_prompt(persona: str, tier: str, user_hash: str) -> str:
         "friend": "You're the empathetic best friend who really listens and cares. Be supportive, casual, and genuinely interested in helping them."
     }
     
-    tech_context = ""
-    if profile["tech_level"] == "advanced":
-        tech_context = "They understand technology well - you can use technical terms."
-    elif profile["tech_level"] == "beginner":
-        tech_context = "Keep explanations simple and avoid jargon - they're still learning."
-    else:
-        tech_context = "Use moderate technical detail - they know the basics."
-    
-    comm_context = ""
-    if profile["communication_style"] == "direct":
-        comm_context = "Be concise and to the point - they prefer quick, efficient answers."
-    elif profile["communication_style"] == "detailed":
-        comm_context = "They appreciate thorough explanations and context."
-    elif profile["communication_style"] == "polite":
-        comm_context = "They value politeness and courtesy."
-    
-    confidence_context = ""
-    if profile["confidence_preferences"] == "high":
-        confidence_context = "They want detailed confidence information - always explain your reasoning and percentage."
-    elif profile["confidence_preferences"] == "low":
-        confidence_context = "They prefer simple, direct answers without too much explanation."
-    else:
-        confidence_context = "Provide moderate detail about your confidence level."
-    
-    interest_context = ""
-    if profile["interests"]:
-        interest_context = f"Their interests include: {', '.join(profile['interests'])}. Reference these naturally when relevant."
-    
     return f"""You are LYLO, this person's AI bodyguard who talks like a real human friend, not a robot.
 
 PERSONALITY: {base_personality.get(persona, base_personality["guardian"])}
-
-PERSONALIZATION:
-{tech_context}
-{comm_context}
-{confidence_context}
-{interest_context}
 
 CONFIDENCE RULES (CRITICAL):
 - ALWAYS include a confidence percentage (0-100%) with your main answer
@@ -334,16 +327,6 @@ def detect_scam_advanced(message: str) -> Tuple[bool, int, List[str], str]:
                 risk_score += 15
                 analysis.append(f"⚠️ Found '{indicator}' - often used in {category.replace('_', ' ')} attempts")
     
-    urgency_words = ["immediately", "now", "quickly", "urgent", "asap", "today only"]
-    urgency_count = sum(1 for word in urgency_words if word in message_lower)
-    if urgency_count >= 2:
-        risk_score += 10
-        analysis.append("⚠️ Multiple urgency words - scammers create false time pressure")
-    
-    if any(pattern in message_lower for pattern in ["recive", "goverment", "acounts", "secuirty"]):
-        risk_score += 5
-        analysis.append("⚠️ Spelling errors - often found in scam messages")
-    
     scam_detected = risk_score >= 30
     confidence = min(98, risk_score + 20) if scam_detected else max(5, 95 - risk_score)
     
@@ -359,7 +342,8 @@ async def root():
         "features": ["Individual Learning", "Usage Tracking", "Confidence Scoring"],
         "active_users": len(USER_LEARNING_CACHE),
         "gemini_status": "Connected" if model else "Demo Mode",
-        "api_key_status": "Found" if api_key else "Missing"
+        "api_key_status": "Found" if api_key else "Missing",
+        "beta_testers": len(ELITE_BETA_TESTERS)
     }
 
 @app.post("/chat")
@@ -372,9 +356,13 @@ async def chat(
     session_id: str = Form("demo")
 ):
     user_hash = create_user_hash(user_email)
-    print(f"📩 {persona.title()} ({tier}) from User-{user_hash[:8]}: {msg[:50]}...")
     
-    can_send, reason, usage_info = can_send_message(user_hash, tier)
+    # Override tier if user is beta tester
+    actual_tier = get_user_tier(user_email)
+    
+    print(f"📩 {persona.title()} ({actual_tier}) from User-{user_hash[:8]}: {msg[:50]}...")
+    
+    can_send, reason, usage_info = can_send_message(user_hash, actual_tier)
     
     if not can_send:
         return {
@@ -383,21 +371,16 @@ async def chat(
             "scam_detected": False,
             "usage_info": usage_info,
             "upgrade_needed": True,
-            "tier_info": TIERS[tier]
+            "tier_info": TIERS[actual_tier]
         }
     
     usage = get_user_usage(user_hash)
     is_overage = usage_info.get("is_overage", False)
     
-    update_user_learning(user_hash, msg, tier)
+    update_user_learning(user_hash, msg, actual_tier)
     
     usage.messages_today += 1
     usage.messages_this_month += 1
-    
-    if is_overage:
-        overage_cost = TIERS[tier]["overage_price"]
-        usage.overages_this_month += 1
-        usage.total_cost_this_month += overage_cost
     
     if not model:
         return {
@@ -414,11 +397,11 @@ async def chat(
         "elite": ["guardian", "friend", "chef", "techie", "lawyer", "roast"]
     }
     
-    if persona not in allowed_personas.get(tier, ["guardian"]):
+    if persona not in allowed_personas.get(actual_tier, ["guardian"]):
         return {
-            "answer": f"I'd love to be {persona} for you, but that's a {'Pro' if tier == 'free' else 'Elite'} feature! Want to upgrade to unlock all my personalities?",
+            "answer": f"I'd love to be {persona} for you, but that's a {'Pro' if actual_tier == 'free' else 'Elite'} feature! Want to upgrade to unlock all my personalities?",
             "upgrade_needed": True,
-            "available_personas": allowed_personas.get(tier, ["guardian"]),
+            "available_personas": allowed_personas.get(actual_tier, ["guardian"]),
             "usage_info": usage_info
         }
     
@@ -438,44 +421,22 @@ async def chat(
             pass
         
         user_profile = get_user_learning_profile(user_hash)
-        system_prompt = get_personalized_prompt(persona, tier, user_hash)
-        
-        legal_context = ""
-        if tier == "elite":
-            legal_keywords = ["scammed", "fraud", "lost money", "stolen", "lawyer", "legal", "recover"]
-            if scam_detected or any(word in msg.lower() for word in legal_keywords):
-                legal_context = "\n\nELITE FEATURE: Since this involves potential fraud, offer to connect them with our legal partners for recovery assistance."
-        
-        confidence_instruction = f"""
-
-CONFIDENCE SCORING INSTRUCTION:
-Based on your analysis, provide a confidence percentage (0-100%) for your main answer.
-- 95-100%: You're certain based on clear evidence
-- 80-94%: You're confident but there could be exceptions  
-- 60-79%: You're somewhat sure but recommend verification
-- Below 60%: You're uncertain and they should definitely get human help
-
-For this message, your confidence in scam detection should be around {confidence}% based on the analysis.
-"""
+        system_prompt = get_personalized_prompt(persona, actual_tier, user_hash)
         
         full_prompt = f"""{system_prompt}
 
 {context}
 
-{legal_context}
-
-{confidence_instruction}
-
 SCAM ANALYSIS: {detailed_analysis}
 
 They just said: "{msg}"
 
-Respond naturally as a human friend. Include your confidence percentage prominently in your response. If this looks like a scam, warn them clearly with your confidence level. If you're not sure about something, say so and suggest they verify with someone they trust."""
+Respond naturally as a human friend. Include your confidence percentage prominently in your response. If this looks like a scam, warn them clearly with your confidence level."""
 
         response = model.generate_content(
             full_prompt,
             generation_config={
-                'max_output_tokens': 600 if tier == "elite" else 400 if tier == "pro" else 250,
+                'max_output_tokens': 600 if actual_tier == "elite" else 400 if actual_tier == "pro" else 250,
                 'temperature': 0.8,
                 'top_p': 0.8
             }
@@ -491,27 +452,15 @@ Respond naturally as a human friend. Include your confidence percentage prominen
             "scam_detected": scam_detected,
             "scam_indicators": indicators,
             "detailed_analysis": detailed_analysis,
-            "tier_info": TIERS[tier],
+            "tier_info": TIERS[actual_tier],
             "usage_info": {
                 **usage_info,
                 "messages_today": usage.messages_today,
                 "is_overage": is_overage,
-                "overage_cost": TIERS[tier]["overage_price"] if is_overage else 0
+                "current_tier": actual_tier
             },
-            "personalization_active": True,
-            "learned_preferences": {
-                "tech_level": user_profile["tech_level"],
-                "communication_style": user_profile["communication_style"],
-                "total_conversations": user_profile["total_messages"]
-            }
+            "personalization_active": True
         }
-        
-        if tier == "elite" and (scam_detected or any(word in msg.lower() for word in ["scammed", "fraud", "legal", "recover"])):
-            result["legal_connect"] = {
-                "available": True,
-                "message": "I can connect you with our legal partners for recovery assistance - included with Elite.",
-                "confidence_in_legal_need": confidence if scam_detected else 60
-            }
         
         return result
         
@@ -524,108 +473,15 @@ Respond naturally as a human friend. Include your confidence percentage prominen
             "usage_info": usage_info
         }
 
-@app.get("/user-stats/{user_email}")
-async def get_user_stats(user_email: str):
-    user_hash = create_user_hash(user_email)
-    usage = get_user_usage(user_hash)
-    profile = get_user_learning_profile(user_hash)
-    
+# Simple endpoint to check beta tester status
+@app.get("/check-access/{user_email}")
+async def check_access(user_email: str):
+    tier = get_user_tier(user_email)
     return {
-        "usage": {
-            "messages_today": usage.messages_today,
-            "messages_this_month": usage.messages_this_month,
-            "overages_this_month": usage.overages_this_month,
-            "total_cost_this_month": usage.total_cost_this_month,
-            "tier": usage.tier
-        },
-        "learning_profile": {
-            "tech_level": profile["tech_level"],
-            "communication_style": profile["communication_style"],
-            "interests": profile["interests"],
-            "total_conversations": profile["total_messages"],
-            "confidence_preferences": profile["confidence_preferences"]
-        },
-        "privacy_note": "This data is temporary and never accessed by humans"
-    }
-
-@app.post("/clear-user-data")
-async def clear_user_data(user_email: str = Form(...)):
-    user_hash = create_user_hash(user_email)
-    
-    cleared_items = []
-    if user_hash in USER_LEARNING_CACHE:
-        del USER_LEARNING_CACHE[user_hash]
-        cleared_items.append("learning_profile")
-    
-    if user_hash in USER_USAGE_TRACKING:
-        del USER_USAGE_TRACKING[user_hash]
-        cleared_items.append("usage_tracking")
-    
-    return {
-        "status": "success", 
-        "message": f"Cleared: {', '.join(cleared_items) if cleared_items else 'No data found'}",
-        "privacy_confirmed": True
-    }
-
-@app.get("/tiers")
-async def get_tiers():
-    return {
-        "tiers": TIERS,
-        "features": {
-            "free": "Basic scam detection with 5 daily messages",
-            "pro": "Advanced features with 50 daily messages + overage options", 
-            "elite": "Unlimited usage with legal recovery assistance"
-        }
-    }
-
-@app.post("/legal-connect")
-async def connect_legal(
-    user_id: str = Form(...),
-    case_type: str = Form("scam_recovery"),
-    tier: str = Form("free"),
-    user_email: str = Form(...),
-    description: str = Form("")
-):
-    if tier != "elite":
-        raise HTTPException(
-            status_code=403, 
-            detail="Legal connect requires Elite tier membership"
-        )
-    
-    case_id = f"LYLO_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    return {
-        "status": "success",
-        "message": "Legal consultation request submitted!",
-        "case_id": case_id,
-        "case_type": case_type,
-        "next_steps": [
-            "Our legal partner will contact you within 24 hours",
-            "Gather any documentation related to your case", 
-            "Initial consultation is free for Elite members"
-        ],
-        "estimated_response": "24 hours"
-    }
-@app.post("/set-elite-access")
-async def set_elite_access(
-    user_email: str = Form(...),
-    access_code: str = Form(...) 
-):
-    """Grant elite access to specific users"""
-    
-    # Your secret code for granting elite access
-    if access_code != "LYLO_BETA_2026":
-        raise HTTPException(status_code=403, detail="Invalid access code")
-    
-    user_hash = create_user_hash(user_email)
-    
-    # Set elite tier in localStorage equivalent
-    USER_USAGE_TRACKING[user_hash].tier = "elite"
-    
-    return {
-        "status": "success",
-        "message": f"Elite access granted to {user_email}",
-        "tier": "elite"
+        "email": user_email,
+        "tier": tier,
+        "is_beta_tester": tier != "free",
+        "features": TIERS[tier]["features"]
     }
 
 if __name__ == "__main__":
@@ -633,5 +489,6 @@ if __name__ == "__main__":
     print("🔒 Privacy Features: Individual learning, usage tracking, confidence scoring")
     print("💰 Monetization: Tiered pricing with overage handling")
     print("🎯 Features: Personalized AI, scam detection, legal integration")
+    print(f"👥 Beta Testers: {len(ELITE_BETA_TESTERS)} configured")
     
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
