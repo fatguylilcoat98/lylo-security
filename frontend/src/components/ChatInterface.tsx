@@ -36,7 +36,6 @@ export default function ChatInterface({
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [thinking, setThinking] = useState(false);
-  const [showLegalConnect, setShowLegalConnect] = useState(false);
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   
@@ -75,23 +74,6 @@ export default function ChatInterface({
     utterance.pitch = 1.0;
     utterance.volume = 0.9;
     
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoices = ['Samantha', 'Karen', 'Daniel', 'Alex', 'Victoria', 'Thomas'];
-    
-    let selectedVoice = voices.find(voice => 
-      preferredVoices.some(preferred => voice.name.includes(preferred))
-    );
-    
-    if (!selectedVoice) {
-      selectedVoice = voices.find(voice => 
-        voice.lang.startsWith('en') && !voice.name.includes('Google')
-      );
-    }
-    
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-    
     setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
@@ -120,7 +102,13 @@ export default function ChatInterface({
         const transcript = event.results[0][0].transcript;
         setInput(transcript);
         setIsListening(false);
-        setTimeout(() => handleSend(transcript), 100);
+        
+        // Auto-send after voice input
+        setTimeout(() => {
+          if (transcript.trim()) {
+            handleSend(transcript);
+          }
+        }, 100);
       };
 
       recognitionRef.current.onerror = () => setIsListening(false);
@@ -129,7 +117,7 @@ export default function ChatInterface({
   }, []);
 
   const startListening = () => {
-    if (recognitionRef.current && !isListening) {
+    if (recognitionRef.current && !isListening && !loading) {
       window.speechSynthesis?.cancel();
       setIsSpeaking(false);
       setIsListening(true);
@@ -175,38 +163,17 @@ export default function ChatInterface({
     event.target.value = '';
   };
 
-  const handleLegalConnect = async (caseType: string = "scam_recovery") => {
-    try {
-      const result = await connectLegal(
-        Date.now().toString(),
-        caseType,
-        userEmail,
-        "User requested legal assistance from chat"
-      );
-      
-      const legalMsg: Message = {
-        id: Date.now(),
-        content: `✅ ${result.message}\n\nCase ID: ${result.case_id}\n\nNext steps:\n${result.next_steps.map((step: string, i: number) => `${i + 1}. ${step}`).join('\n')}`,
-        sender: 'bot',
-        timestamp: Date.now()
-      };
-      
-      setMessages(prev => [...prev, legalMsg]);
-      setShowLegalConnect(false);
-    } catch (error) {
-      console.error('Legal connect error:', error);
-    }
-  };
-
   const handleSend = async (messageText?: string, imageData?: string) => {
-    const textToSend = messageText || input;
-    if (!textToSend.trim() || loading) return;
+    const textToSend = messageText || input.trim();
+    if (!textToSend || loading) return;
     
+    // Stop any current speech
     if (isSpeaking) {
       window.speechSynthesis?.cancel();
       setIsSpeaking(false);
     }
     
+    // Add user message
     if (!imageData) {
       const userMsg: Message = { 
         id: Date.now(), 
@@ -217,6 +184,7 @@ export default function ChatInterface({
       setMessages(prev => [...prev, userMsg]);
     }
     
+    // Clear input and set loading
     setInput('');
     setLoading(true);
     setThinking(true);
@@ -298,6 +266,28 @@ export default function ChatInterface({
       green: 'from-green-500 to-emerald-500'
     };
     return gradients[currentPersona.color as keyof typeof gradients] || gradients.cyan;
+  };
+
+  // Handle input change - FIXED VERSION
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setInput(newValue);
+  };
+
+  // Handle key press - FIXED VERSION  
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Allow shift+enter for new line
+        return;
+      } else {
+        // Send message on enter
+        e.preventDefault();
+        if (input.trim() && !loading) {
+          handleSend();
+        }
+      }
+    }
   };
 
   return (
@@ -389,38 +379,6 @@ export default function ChatInterface({
                 />
               </div>
             )}
-
-            {/* Legal Connect Option */}
-            {msg.legal_connect?.available && !showLegalConnect && (
-              <div className="max-w-[85%]">
-                <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-400/30 rounded-2xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-yellow-400 font-semibold text-sm">⚖️ Legal Assistance Available</span>
-                  </div>
-                  <p className="text-gray-300 text-sm mb-3">{msg.legal_connect.message}</p>
-                  <button
-                    onClick={() => setShowLegalConnect(true)}
-                    className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Connect with Legal Partner
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Usage Warning */}
-            {msg.usage_info?.is_overage && (
-              <div className="max-w-[85%]">
-                <div className="bg-orange-500/20 border border-orange-400/30 rounded-2xl p-3">
-                  <div className="text-orange-400 text-sm font-medium mb-1">
-                    ⚠️ Over daily limit
-                  </div>
-                  <div className="text-orange-300 text-xs">
-                    This message cost ${msg.usage_info.overage_cost?.toFixed(2)} extra
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ))}
         
@@ -447,50 +405,7 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* Legal Connect Modal */}
-      {showLegalConnect && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-black/90 backdrop-blur-xl border border-white/20 rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center gap-3 mb-4">
-              <h3 className="text-xl font-bold text-white">⚖️ Legal Assistance</h3>
-            </div>
-            
-            <p className="text-gray-300 mb-6">
-              Connect with our legal partners for scam recovery assistance. This service is included with your Elite membership.
-            </p>
-            
-            <div className="space-y-3 mb-6">
-              <button
-                onClick={() => handleLegalConnect("scam_recovery")}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
-              >
-                Scam Recovery Case
-              </button>
-              <button
-                onClick={() => handleLegalConnect("fraud_investigation")}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
-              >
-                Fraud Investigation
-              </button>
-              <button
-                onClick={() => handleLegalConnect("identity_theft")}
-                className="w-full bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-3 rounded-lg transition-colors"
-              >
-                Identity Theft
-              </button>
-            </div>
-            
-            <button
-              onClick={() => setShowLegalConnect(false)}
-              className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Fixed Input Area - Mobile Optimized */}
+      {/* Fixed Input Area - COMPLETELY REWRITTEN FOR MOBILE */}
       <div className="fixed bottom-0 left-0 right-0 p-3 md:p-6 bg-black/80 backdrop-blur-xl border-t border-white/10 z-50">
         <div className="max-w-4xl mx-auto">
           <div className="bg-black/60 backdrop-blur-xl rounded-2xl border border-white/20 shadow-2xl">
@@ -500,6 +415,7 @@ export default function ChatInterface({
               
               {/* Voice Input Button */}
               <button
+                type="button"
                 onClick={isListening ? stopListening : startListening}
                 disabled={loading}
                 className={`
@@ -516,6 +432,7 @@ export default function ChatInterface({
 
               {/* Speech Toggle Button */}
               <button
+                type="button"
                 onClick={toggleTTS}
                 className={`
                   flex items-center gap-2 px-4 py-2 rounded-xl transition-all text-sm font-medium border relative
@@ -533,6 +450,7 @@ export default function ChatInterface({
 
               {/* Image Upload */}
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/20 text-gray-300 hover:bg-white/10 transition-all text-sm font-medium disabled:opacity-50"
@@ -549,23 +467,18 @@ export default function ChatInterface({
               />
             </div>
             
-            {/* Input Area */}
+            {/* Input Area - FIXED FOR MOBILE */}
             <div className="p-4">
               <div className="flex items-end gap-3">
                 
-                {/* Text Input - Much Larger for Mobile */}
+                {/* Text Input - COMPLETELY FIXED */}
                 <div className="flex-1">
                   <textarea 
                     ref={inputRef}
-                    className="w-full bg-transparent text-white placeholder-gray-400 focus:outline-none text-base py-3 px-4 resize-none min-h-[60px] max-h-[120px]"
+                    className="w-full bg-transparent text-white placeholder-gray-400 focus:outline-none text-base py-3 px-4 resize-none min-h-[60px] max-h-[120px] border-0"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
                     placeholder={
                       isListening 
                         ? "🎤 Listening..." 
@@ -573,11 +486,16 @@ export default function ChatInterface({
                     }
                     disabled={isListening || loading}
                     rows={2}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
                   />
                 </div>
                 
                 {/* Send Button */}
                 <button 
+                  type="button"
                   onClick={() => handleSend()}
                   disabled={loading || !input.trim()}
                   className={`
