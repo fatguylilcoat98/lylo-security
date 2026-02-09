@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Dynamic import of Lucide icons
+// Dynamic icon imports
 const importIcons = async () => {
   try {
     const icons = await import('lucide-react');
@@ -66,7 +66,8 @@ export default function Assessment() {
   const [step, setStep] = useState(1);
   const [techLevel, setTechLevel] = useState('');
   const [selectedPersona, setSelectedPersona] = useState('');
-  const [vaultName, setVaultName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [selectedTier, setSelectedTier] = useState('free');
   const [icons, setIcons] = useState<any>(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const navigate = useNavigate();
@@ -79,10 +80,18 @@ export default function Assessment() {
   const completeAssessment = async () => {
     setIsCompleting(true);
     
+    // Validate email
+    if (!userEmail || !userEmail.includes('@')) {
+      alert('Please enter a valid email address');
+      setIsCompleting(false);
+      return;
+    }
+    
     // Save data to localStorage
     localStorage.setItem('lylo_tech_level', techLevel);
     localStorage.setItem('lylo_selected_persona', selectedPersona);
-    localStorage.setItem('lylo_vault_name', vaultName || 'My Vault');
+    localStorage.setItem('lylo_user_email', userEmail);
+    localStorage.setItem('lylo_user_tier', selectedTier);
     localStorage.setItem('lylo_assessment_complete', 'true');
     
     // Fade out animation
@@ -94,9 +103,10 @@ export default function Assessment() {
 
   const canProceed = () => {
     switch (step) {
-      case 1: return techLevel !== '';
-      case 2: return selectedPersona !== '';
-      case 3: return vaultName.trim() !== '';
+      case 1: return userEmail.includes('@');
+      case 2: return techLevel !== '';
+      case 3: return selectedPersona !== '';
+      case 4: return selectedTier !== '';
       default: return false;
     }
   };
@@ -148,6 +158,9 @@ export default function Assessment() {
               src="/logo.png" 
               alt="LYLO" 
               className="w-16 h-16 drop-shadow-[0_0_16px_rgba(6,182,212,0.6)]"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
             />
             <div>
               <h1 className="text-4xl font-black bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
@@ -158,8 +171,8 @@ export default function Assessment() {
           </div>
           
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-white mb-2">Initial Setup</h2>
-            <p className="text-gray-400">Step {step} of 3</p>
+            <h2 className="text-2xl font-bold text-white mb-2">Setup Your AI Bodyguard</h2>
+            <p className="text-gray-400">Step {step} of 4</p>
           </div>
         </div>
 
@@ -168,7 +181,7 @@ export default function Assessment() {
           <div className="h-2 bg-gray-800/50 backdrop-blur-xl rounded-full overflow-hidden border border-white/10">
             <div 
               className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out shadow-lg shadow-cyan-500/30"
-              style={{ width: `${(step / 3) * 100}%` }}
+              style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
         </div>
@@ -176,8 +189,44 @@ export default function Assessment() {
         {/* Step Content */}
         <div className="w-full max-w-4xl">
           
-          {/* Step 1: Tech Level */}
+          {/* Step 1: Email */}
           {step === 1 && (
+            <div className="text-center animate-in slide-in-from-right duration-500">
+              <div className="mb-8">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-2xl">
+                  {icons?.Mail && <icons.Mail className="w-10 h-10 text-white" />}
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-4">What's your email?</h3>
+                <p className="text-gray-400 max-w-md mx-auto">
+                  This helps LYLO remember you and learn your preferences privately. We never store your actual email - only a secure identifier.
+                </p>
+              </div>
+
+              <div className="max-w-md mx-auto">
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={userEmail}
+                    onChange={(e) => setUserEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className="w-full px-6 py-4 bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400 focus:bg-black/60 transition-all text-center text-lg"
+                  />
+                  {userEmail.includes('@') && (
+                    <div className="absolute -right-3 -top-3 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                      {icons?.Check && <icons.Check className="w-5 h-5 text-white" />}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-4 text-xs text-gray-500">
+                  🔒 Your email is hashed for privacy - we never see the actual address
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Tech Level */}
+          {step === 2 && (
             <div className="text-center animate-in slide-in-from-right duration-500">
               <div className="mb-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-2xl">
@@ -185,7 +234,7 @@ export default function Assessment() {
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-4">What's your tech experience?</h3>
                 <p className="text-gray-400 max-w-md mx-auto">
-                  This helps LYLO adjust its communication style and technical depth.
+                  This helps LYLO adjust its communication style and technical depth for you.
                 </p>
               </div>
 
@@ -245,8 +294,8 @@ export default function Assessment() {
             </div>
           )}
 
-          {/* Step 2: Choose Persona */}
-          {step === 2 && (
+          {/* Step 3: Choose Persona */}
+          {step === 3 && (
             <div className="text-center animate-in slide-in-from-right duration-500">
               <div className="mb-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
@@ -254,7 +303,7 @@ export default function Assessment() {
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-4">Choose your AI bodyguard</h3>
                 <p className="text-gray-400 max-w-md mx-auto">
-                  Each personality has unique skills and communication styles.
+                  Each personality has unique skills and communication styles. You can change this later.
                 </p>
               </div>
 
@@ -303,39 +352,110 @@ export default function Assessment() {
             </div>
           )}
 
-          {/* Step 3: Vault Name */}
-          {step === 3 && (
+          {/* Step 4: Choose Tier */}
+          {step === 4 && (
             <div className="text-center animate-in slide-in-from-right duration-500">
               <div className="mb-8">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center shadow-2xl">
-                  {icons?.Lock && <icons.Lock className="w-10 h-10 text-white" />}
+                  {icons?.Crown && <icons.Crown className="w-10 h-10 text-white" />}
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-4">Name your secure vault</h3>
+                <h3 className="text-2xl font-bold text-white mb-4">Choose your protection level</h3>
                 <p className="text-gray-400 max-w-md mx-auto">
-                  Give your personal data vault a memorable name.
+                  Start with any tier - you can always upgrade later as your needs grow.
                 </p>
               </div>
 
-              <div className="max-w-md mx-auto">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={vaultName}
-                    onChange={(e) => setVaultName(e.target.value)}
-                    placeholder="e.g., Fort Knox, The Bunker, My Sanctuary"
-                    className="w-full px-6 py-4 bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400 focus:bg-black/60 transition-all text-center text-lg"
-                    maxLength={30}
-                  />
-                  {vaultName && (
-                    <div className="absolute -right-3 -top-3 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                      {icons?.Check && <icons.Check className="w-5 h-5 text-white" />}
+              <div className="grid gap-6 max-w-4xl mx-auto md:grid-cols-3">
+                {[
+                  {
+                    id: 'free',
+                    name: 'Free Tier',
+                    price: '$0',
+                    period: '/forever',
+                    description: 'Perfect for trying LYLO',
+                    features: [
+                      '5 messages per day',
+                      'Basic scam detection',
+                      '2 AI personalities',
+                      'Confidence scoring'
+                    ],
+                    color: 'gray',
+                    popular: false
+                  },
+                  {
+                    id: 'pro',
+                    name: 'Pro Tier',
+                    price: '$9.99',
+                    period: '/month',
+                    description: 'For regular protection needs',
+                    features: [
+                      '50 messages per day',
+                      'Advanced analysis',
+                      '4 AI personalities',
+                      'Voice mode & image upload',
+                      'Overage options'
+                    ],
+                    color: 'blue',
+                    popular: true
+                  },
+                  {
+                    id: 'elite',
+                    name: 'Elite Tier',
+                    price: '$29.99',
+                    period: '/month',
+                    description: 'Ultimate protection & recovery',
+                    features: [
+                      'Unlimited messages',
+                      'All 6 AI personalities',
+                      'Legal recovery assistance',
+                      '24/7 priority support',
+                      'Advanced threat analysis'
+                    ],
+                    color: 'yellow',
+                    popular: false
+                  }
+                ].map((tier) => (
+                  <button
+                    key={tier.id}
+                    onClick={() => setSelectedTier(tier.id)}
+                    className={`
+                      relative p-6 rounded-2xl border transition-all duration-200 text-left
+                      backdrop-blur-xl shadow-lg hover:shadow-xl
+                      ${selectedTier === tier.id
+                        ? tier.color === 'blue' ? 'bg-blue-500/20 border-blue-400 shadow-blue-500/20' :
+                          tier.color === 'yellow' ? 'bg-yellow-500/20 border-yellow-400 shadow-yellow-500/20' :
+                          'bg-gray-500/20 border-gray-400 shadow-gray-500/20'
+                        : 'bg-black/40 border-white/10 hover:bg-black/60 hover:border-white/20'
+                      }
+                    `}
+                  >
+                    {tier.popular && (
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                        <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold">
+                          POPULAR
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="text-center">
+                      <h4 className="text-xl font-bold text-white mb-2">{tier.name}</h4>
+                      <div className="mb-4">
+                        <span className="text-3xl font-black text-white">{tier.price}</span>
+                        <span className="text-gray-400 text-sm">{tier.period}</span>
+                      </div>
+                      <p className="text-sm text-gray-400 mb-4">{tier.description}</p>
+                      
+                      <div className="space-y-2">
+                        {tier.features.map((feature, index) => (
+                          <div key={index} className="flex items-center gap-2 text-sm text-gray-300">
+                            {icons?.Check && <icons.Check className="w-4 h-4 text-green-400" />}
+                            {feature}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-                
-                <div className="mt-4 text-xs text-gray-500">
-                  {vaultName.length}/30 characters
-                </div>
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -353,7 +473,7 @@ export default function Assessment() {
             </button>
           )}
           
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               onClick={() => setStep(step + 1)}
               disabled={!canProceed()}
@@ -372,6 +492,13 @@ export default function Assessment() {
               Activate LYLO
             </button>
           )}
+        </div>
+
+        {/* Privacy Note */}
+        <div className="mt-8 text-center max-w-md">
+          <p className="text-xs text-gray-500">
+            🔒 Your data is private and secure. We use temporary learning that's never accessed by humans and gets automatically cleared.
+          </p>
         </div>
       </div>
     </div>
