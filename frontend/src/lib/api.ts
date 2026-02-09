@@ -62,16 +62,24 @@ export async function sendChatMessage(
 ): Promise<ChatResponse> {
   
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    const backendUrl = 'https://lylo-backend.onrender.com';
     const tier = localStorage.getItem('lylo_user_tier') || 'free';
     
+    // Make sure all required fields are sent
     const formData = new FormData();
     formData.append('msg', message);
     formData.append('history', JSON.stringify(history));
     formData.append('persona', persona);
     formData.append('tier', tier);
-    formData.append('user_email', userEmail);
+    formData.append('user_email', userEmail || 'demo@example.com');
     formData.append('session_id', sessionId);
+
+    console.log('Sending to backend:', {
+      msg: message,
+      persona,
+      tier,
+      user_email: userEmail || 'demo@example.com'
+    });
 
     const response = await fetch(`${backendUrl}/chat`, {
       method: 'POST',
@@ -79,6 +87,8 @@ export async function sendChatMessage(
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Backend error:', response.status, errorText);
       throw new Error(`Backend error: ${response.status}`);
     }
 
@@ -88,7 +98,7 @@ export async function sendChatMessage(
   } catch (error) {
     console.error("LYLO Backend Error:", error);
     return {
-      answer: "I'm having trouble connecting to my backend. Is the server running?",
+      answer: "I'm having trouble connecting to my backend. The server is running but there's a communication issue.",
       confidence_score: 0,
       scam_detected: false,
       scam_indicators: ["Connection Error"],
@@ -105,7 +115,7 @@ export async function sendChatMessage(
 
 export async function getUserStats(userEmail: string): Promise<UserStats | null> {
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    const backendUrl = 'https://lylo-backend.onrender.com';
     
     const response = await fetch(`${backendUrl}/user-stats/${encodeURIComponent(userEmail)}`);
     
@@ -119,7 +129,7 @@ export async function getUserStats(userEmail: string): Promise<UserStats | null>
 
 export async function clearUserData(userEmail: string): Promise<boolean> {
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    const backendUrl = 'https://lylo-backend.onrender.com';
     
     const formData = new FormData();
     formData.append('user_email', userEmail);
@@ -143,7 +153,7 @@ export async function connectLegal(
   description: string = ""
 ): Promise<any> {
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    const backendUrl = 'https://lylo-backend.onrender.com';
     const tier = localStorage.getItem('lylo_user_tier') || 'free';
     
     const formData = new FormData();
@@ -171,7 +181,7 @@ export async function connectLegal(
 
 export async function getTiers(): Promise<any> {
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:10000';
+    const backendUrl = 'https://lylo-backend.onrender.com';
     
     const response = await fetch(`${backendUrl}/tiers`);
     
