@@ -45,7 +45,8 @@ export default function ChatInterface({
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [transcript, setTranscript] = useState(''); // Real-time transcript
+  const [transcript, setTranscript] = useState('');
+  const [speechTimeout, setSpeechTimeout] = useState<NodeJS.Timeout | null>(null);
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -69,24 +70,38 @@ export default function ChatInterface({
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
+      if (speechTimeout) {
+        clearTimeout(speechTimeout);
+      }
     };
-  }, [stream]);
+  }, [stream, speechTimeout]);
 
-  // FIXED: CONTINUOUS VOICE RECOGNITION LIKE CLAUDE
+  // FIXED: NO-TIMEOUT SPEECH RECOGNITION FOR ELDERLY/DISABLED USERS
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      // CLAUDE-STYLE SETTINGS
+      // ACCESSIBILITY-FRIENDLY SETTINGS
       recognition.continuous = true;        // Keep listening
       recognition.interimResults = true;    // Show real-time results
       recognition.lang = 'en-US';
       recognition.maxAlternatives = 1;
+      
+      // CRITICAL: No automatic timeout for accessibility
+      if (recognition.serviceURI) {
+        recognition.serviceURI = 'wss://www.google.com/speech-api/v2/recognize';
+      }
 
       recognition.onstart = () => {
-        console.log('🎤 Continuous recording started');
+        console.log('🎤 Continuous recording started (no timeout)');
         setIsListening(true);
+        
+        // Clear any existing timeout
+        if (speechTimeout) {
+          clearTimeout(speechTimeout);
+          setSpeechTimeout(null);
+        }
       };
 
       recognition.onresult = (event: any) => {
@@ -103,35 +118,87 @@ export default function ChatInterface({
           }
         }
 
-        // Update transcript in real-time (like Claude)
+        // Update transcript in real-time
         const currentText = input + finalTranscript + interimTranscript;
         setTranscript(currentText);
-        setInput(input + finalTranscript); // Only add final results to input
+        setInput(input + finalTranscript);
         
         console.log('🎤 Real-time transcript:', currentText);
+        
+        // RESET SILENCE TIMEOUT (give users more time)
+        if (speechTimeout) {
+          clearTimeout(speechTimeout);
+        }
+        
+        // 30 second silence timeout (much longer for elderly users)
+        const timeout = setTimeout(() => {
+          console.log('🎤 Extended silence detected, keeping mic open');
+          // Don't stop - just log. Let users control when to stop.
+        }, 30000);
+        
+        setSpeechTimeout(timeout);
       };
 
       recognition.onend = () => {
         console.log('🎤 Recognition ended');
-        setIsListening(false);
-        setTranscript('');
+        
+        // AUTO-RESTART if user didn't manually stop (for continuous listening)
+        if (isListening && !loading) {
+          console.log('🎤 Auto-restarting for continuous listening');
+          setTimeout(() => {
+            try {
+              recognition.start();
+            } catch (error) {
+              console.log('🎤 Restart failed, user may have stopped manually');
+            }
+          }, 100);
+        } else {
+          setIsListening(false);
+          setTranscript('');
+        }
       };
 
       recognition.onerror = (event: any) => {
         console.error('🎤 Speech error:', event.error);
-        if (event.error !== 'no-speech') {
+        
+        // Handle different error types
+        if (event.error === 'no-speech') {
+          console.log('🎤 No speech detected, continuing to listen...');
+          // Don't stop for no-speech - keep listening for elderly users
+          return;
+        }
+        
+        if (event.error === 'audio-capture') {
+          alert('Microphone not accessible. Please check permissions.');
           setIsListening(false);
-          setTranscript('');
+        } else if (event.error === 'not-allowed') {
+          alert('Microphone permission denied. Please enable in browser settings.');
+          setIsListening(false);
+        } else if (event.error === 'network') {
+          console.log('🎤 Network error, will retry...');
+          // Try to restart
+          setTimeout(() => {
+            if (isListening) {
+              try {
+                recognition.start();
+              } catch (e) {
+                console.log('🎤 Network restart failed');
+              }
+            }
+          }, 2000);
+        } else {
+          // For other errors, try to continue
+          console.log('🎤 Other error, attempting to continue:', event.error);
         }
       };
       
       recognitionRef.current = recognition;
       setMicSupported(true);
-      console.log('✅ Continuous speech recognition ready');
+      console.log('✅ Accessibility-friendly speech recognition ready');
     } else {
       setMicSupported(false);
     }
-  }, [input]);
+  }, [input, isListening, loading, speechTimeout]);
 
   const loadUserStats = async () => {
     try {
@@ -174,18 +241,25 @@ export default function ChatInterface({
     }
 
     if (isListening) {
-      // Stop recording
-      recognitionRef.current?.stop();
+      // MANUAL STOP
+      console.log('🎤 Manual stop requested');
       setIsListening(false);
       setTranscript('');
+      if (speechTimeout) {
+        clearTimeout(speechTimeout);
+        setSpeechTimeout(null);
+      }
+      recognitionRef.current?.stop();
     } else {
-      // Start continuous recording
+      // START CONTINUOUS RECORDING
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
       }
       try {
+        console.log('🎤 Starting continuous recording (no timeout)');
         recognitionRef.current?.start();
+        setIsListening(true);
       } catch (error) {
         console.error('🎤 Start error:', error);
       }
@@ -271,7 +345,7 @@ export default function ChatInterface({
     
     if ((!textToSend && !selectedImage) || loading) return;
 
-    console.log('📤 Sending:', textToSend);
+    console.log('📤 Sending with message history for memory:', textToSend);
 
     let previewContent = textToSend;
     if (selectedImage) {
@@ -290,9 +364,15 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
+      // SEND FULL CONVERSATION HISTORY FOR PINECONE MEMORY
+      const conversationHistory = messages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
       const response = await sendChatMessage(
         textToSend || "Analyze this image", 
-        [], 
+        conversationHistory, // Send full history for memory
         currentPersona.id,
         userEmail,
         selectedImage
@@ -656,8 +736,15 @@ export default function ChatInterface({
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
           
+          {/* ACCESSIBILITY STATUS BAR */}
+          {isListening && (
+            <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-xs font-bold text-center">
+              🎤 LISTENING - No time limit for accessibility. Click "Mic OFF" when ready.
+            </div>
+          )}
+          
           <div className="flex items-center justify-between mb-3">
-            {/* CONTINUOUS MIC TOGGLE */}
+            {/* NO-TIMEOUT MIC TOGGLE */}
             <button
               onClick={toggleListening}
               disabled={loading || !micSupported}
@@ -761,11 +848,11 @@ export default function ChatInterface({
             <div className="flex-1">
               <textarea 
                 ref={inputRef}
-                value={displayText} // Shows real-time transcript when listening
-                onChange={(e) => !isListening && setInput(e.target.value)} // Only editable when not listening
+                value={displayText} 
+                onChange={(e) => !isListening && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder={
-                  isListening ? "🎤 Listening... (speak now)" 
+                  isListening ? "🎤 Listening... (no time limit)" 
                   : selectedImage ? `Image selected: ${selectedImage.name}. Add context...` 
                   : `Message ${currentPersona.name}...`
                 }
@@ -798,4 +885,3 @@ export default function ChatInterface({
     </div>
   );
 }
-
