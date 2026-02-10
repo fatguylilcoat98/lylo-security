@@ -17,6 +17,12 @@ export interface UserProfile {
   is_elite: boolean;
   fontsize: number;
 }
+export interface PersonaConfig {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+}
 export interface ScamAlert {
   isActive: boolean;
   confidence: number;
