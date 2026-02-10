@@ -1,14 +1,16 @@
+// DIRECT CONNECTION TO YOUR RENDER BACKEND
+const API_URL = 'https://lylo-backend.onrender.com';
+
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'bot';
   content: string;
-  timestamp: number;
 }
 
 export interface ChatResponse {
   answer: string;
   confidence_score: number;
-  confidence_explanation?: string;
   scam_detected: boolean;
+  confidence_explanation?: string;
   scam_indicators?: string[];
   detailed_analysis?: string;
   web_search_used?: boolean;
@@ -34,42 +36,53 @@ export interface UserStats {
   };
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'https://lylo-backend.onrender.com';
-
 export const sendChatMessage = async (
   message: string,
-  history: ChatMessage[],
-  persona: string,
-  userEmail: string,
-  sessionId?: string
+  history: any[],
+  personaId: string,
+  userEmail: string
 ): Promise<ChatResponse> => {
-  const formData = new FormData();
-  formData.append('msg', message);
-  formData.append('history', JSON.stringify(history));
-  formData.append('persona', persona);
-  formData.append('user_email', userEmail);
-  formData.append('user_location', '');
-  
-  const response = await fetch(`${API_BASE}/chat`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const formData = new FormData();
+    formData.append('msg', message);
+    // Ensure history matches what backend expects
+    formData.append('history', JSON.stringify(history)); 
+    formData.append('persona', personaId);
+    formData.append('user_email', userEmail);
+    // Default location to empty if not provided
+    formData.append('user_location', ''); 
 
-  if (!response.ok) {
-    throw new Error(`Chat API error: ${response.status}`);
+    const response = await fetch(`${API_URL}/chat`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server Error: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('API Connection Error:', error);
+    // Return a safe fallback so the app doesn't crash
+    return {
+      answer: "I'm having trouble connecting to the server. Please check your internet connection.",
+      confidence_score: 0,
+      scam_detected: false,
+      confidence_explanation: "Connection Failed"
+    };
   }
-
-  return response.json();
 };
 
-export const getUserStats = async (userEmail: string): Promise<UserStats> => {
-  const response = await fetch(`${API_BASE}/user-stats/${userEmail}`);
-  
-  if (!response.ok) {
-    throw new Error(`Stats API error: ${response.status}`);
+export const getUserStats = async (email: string): Promise<UserStats | null> => {
+  try {
+    const response = await fetch(`${API_URL}/user-stats/${email}`);
+    if (!response.ok) throw new Error('Failed to fetch stats');
+    return await response.json();
+  } catch (error) {
+    console.error('Stats Error:', error);
+    return null;
   }
-
-  return response.json();
 };
 
 export const saveQuiz = async (
@@ -82,22 +95,24 @@ export const saveQuiz = async (
     question5: string;
   }
 ): Promise<{ status: string }> => {
-  const formData = new FormData();
-  formData.append('user_email', userEmail);
-  formData.append('question1', answers.question1);
-  formData.append('question2', answers.question2);
-  formData.append('question3', answers.question3);
-  formData.append('question4', answers.question4);
-  formData.append('question5', answers.question5);
-  
-  const response = await fetch(`${API_BASE}/quiz`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const formData = new FormData();
+    formData.append('user_email', userEmail);
+    formData.append('question1', answers.question1);
+    formData.append('question2', answers.question2);
+    formData.append('question3', answers.question3);
+    formData.append('question4', answers.question4);
+    formData.append('question5', answers.question5);
 
-  if (!response.ok) {
-    throw new Error(`Quiz API error: ${response.status}`);
+    const response = await fetch(`${API_URL}/quiz`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error(`Quiz API error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error('Quiz Save Error:', error);
+    return { status: "error" };
   }
-
-  return response.json();
 };
