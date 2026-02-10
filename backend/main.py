@@ -11,13 +11,13 @@ from collections import defaultdict
 from tavily import TavilyClient
 from pinecone import Pinecone, ServerlessSpec
 import google.generativeai as genai
-from openai import AsyncOpenAI  # NEW: OpenAI Client
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 # Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="8.0.0 - DUAL CORE BATTLE MODE")
+app = FastAPI(title="LYLO Backend", version="9.0.0 - THE TRIBUNAL")
 
 # CORS Setup
 app.add_middleware(
@@ -32,7 +32,7 @@ app.add_middleware(
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # NEW
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # --- DIAGNOSTICS ---
 def mask_key(key):
@@ -75,7 +75,7 @@ if GEMINI_API_KEY:
     except Exception as e:
         print(f"⚠️ Gemini Error: {e}")
 
-# OpenAI (NEW)
+# OpenAI
 openai_client = None
 if OPENAI_API_KEY:
     try:
@@ -104,7 +104,7 @@ def store_user_memory(user_id: str, content: str, role: str):
     }
     USER_CONVERSATIONS[user_id].append(entry)
 
-# --- HELPER 2: SEARCH ---
+# --- HELPER 2: SEARCH (The Evidence Gatherer) ---
 async def search_web_tavily(query: str, location: str = "") -> str:
     if not tavily_client:
         return ""
@@ -113,13 +113,17 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         response = tavily_client.search(
             query=full_query,
             search_depth="basic", 
-            max_results=2,
+            max_results=3, # Increased to 3 for better evidence
             include_answer=True
         )
+        evidence = []
         if response.get("answer"):
-            return f"LIVE FACT: {response['answer']}"
-        snippets = [r['content'] for r in response.get('results', [])]
-        return f"LIVE CONTEXT: {' | '.join(snippets[:2])}"
+            evidence.append(f"DIRECT ANSWER: {response['answer']}")
+        
+        for r in response.get('results', []):
+            evidence.append(f"SOURCE ({r['url']}): {r['content']}")
+            
+        return "\n".join(evidence)
     except Exception as e:
         print(f"Search Error: {e}")
         return ""
@@ -132,14 +136,14 @@ def get_user_context(user_id: str) -> str:
             context_parts.append(f"{q}: {a}")
     return " | ".join(context_parts)
 
-# --- THE BATTLE ARENA (Dual AI Logic) ---
+# --- THE TRIBUNAL (Strict Fact Checking) ---
 
 async def call_gemini(prompt: str):
     """Worker function for Gemini"""
     if not GEMINI_API_KEY: return None
     try:
-        # Try Flash first (Speed), then Pro (Smarts)
-        for model_name in ['gemini-1.5-flash', 'gemini-1.5-pro']:
+        # Auto-fallback logic
+        for model_name in ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']:
             try:
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
@@ -154,11 +158,11 @@ async def call_gemini(prompt: str):
         return None
 
 async def call_openai(prompt: str):
-    """Worker function for OpenAI (ChatGPT)"""
+    """Worker function for OpenAI"""
     if not openai_client: return None
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini", # Or gpt-4o for smarter (more expensive)
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a backend API. Respond ONLY in JSON."},
                 {"role": "user", "content": prompt}
@@ -175,10 +179,10 @@ async def call_openai(prompt: str):
 
 async def generate_ai_response(msg: str, persona: str, user_context: str, web_data: str, history_text: str):
     
-    # 1. Prepare The Master Prompt
+    # 1. THE STRICT PROMPT (The "Courtroom" Instructions)
     personas = {
         "guardian": "You are The Guardian. Protective, vigilant, and serious.",
-        "roast": "You are The Roast Master. Witty, sarcastic, and funny. Roast the user gently.",
+        "roast": "You are The Roast Master. Witty, sarcastic, and funny.",
         "chef": "You are The Chef. Warm, encouraging, and food-obsessed.",
         "techie": "You are The Techie. Detailed, nerdy, and precise.",
         "lawyer": "You are The Lawyer. Formal, cautious, and professional.",
@@ -188,15 +192,26 @@ async def generate_ai_response(msg: str, persona: str, user_context: str, web_da
 
     prompt = f"""
     {system_instruction}
+    
+    *** EVIDENCE (LIVE WEB DATA) ***
+    {web_data}
+    ********************************
+    
     USER PROFILE: {user_context}
-    LIVE WEB DATA: {web_data}
     HISTORY: {history_text}
     MESSAGE: "{msg}"
     
-    INSTRUCTIONS:
-    1. Answer authentically.
-    2. Use Web Data if valid.
-    3. Provide 'confidence_score' (0-100).
+    STRICT INSTRUCTIONS:
+    1. Answer the user's question.
+    2. GROUNDING RULE: If 'EVIDENCE' is provided, you MUST use it. 
+       - Do not make up facts not present in the evidence.
+       - If the evidence contradicts your internal knowledge, trust the evidence.
+       - If the evidence is empty, rely on internal knowledge but lower confidence.
+    3. SCAM CHECK: If the user message looks like a scam/phishing, flag it.
+    4. CONFIDENCE SCORE (0-100):
+       - 90-100: Fact is explicitly in the EVIDENCE.
+       - 70-89: Fact is common knowledge but not in evidence.
+       - 0-50: You are guessing or hallucinating.
     
     OUTPUT FORMAT (JSON):
     {{
@@ -207,9 +222,8 @@ async def generate_ai_response(msg: str, persona: str, user_context: str, web_da
     """
 
     # 2. THE BATTLE: Run both models in parallel
-    print("⚔️  STARTING AI BATTLE: Gemini vs OpenAI...")
+    print("⚖️  THE TRIBUNAL IS IN SESSION...")
     
-    # Use asyncio.gather to run them at the SAME time (Speed)
     results = await asyncio.gather(
         call_gemini(prompt),
         call_openai(prompt)
@@ -218,31 +232,35 @@ async def generate_ai_response(msg: str, persona: str, user_context: str, web_da
     gemini_result = results[0]
     openai_result = results[1]
 
-    # 3. JUDGEMENT DAY: Pick the winner
+    # 3. JUDGEMENT DAY
     
-    # Scenario A: Both Failed
+    # Fallback if both fail
     if not gemini_result and not openai_result:
         return {"answer": "System Failure: Both AI cores unresponsive.", "confidence_score": 0, "scam_detected": False}
 
-    # Scenario B: One Failed (The Backup Plan)
+    # If only one survives, they win by default
     if gemini_result and not openai_result:
-        print(f"🏆 Winner: {gemini_result['model_used']} (OpenAI Failed)")
+        print(f"🏆 Default Winner: {gemini_result['model_used']}")
         return gemini_result
     if openai_result and not gemini_result:
-        print(f"🏆 Winner: {openai_result['model_used']} (Gemini Failed)")
+        print(f"🏆 Default Winner: {openai_result['model_used']}")
         return openai_result
 
-    # Scenario C: THE FIGHT (Compare Confidence)
+    # 4. CROSS-EXAMINATION (Compare Scores)
     gemini_conf = gemini_result.get('confidence_score', 0)
     openai_conf = openai_result.get('confidence_score', 0)
     
-    print(f"📊 Scores -> Gemini: {gemini_conf}% | OpenAI: {openai_conf}%")
+    print(f"📊 Evidence Check -> Gemini: {gemini_conf}% | OpenAI: {openai_conf}%")
+    
+    # The Penalty Logic: If one model is super confident (95+) and the other is low (<50), 
+    # the low one likely found contradictory evidence or no evidence.
+    # However, for now, we trust the HIGH score because we instructed them to lower it if unsure.
     
     if gemini_conf >= openai_conf:
-        print(f"🏆 Winner: {gemini_result['model_used']}")
+        print(f"🏆 Verdict: {gemini_result['model_used']} is more accurate.")
         return gemini_result
     else:
-        print(f"🏆 Winner: {openai_result['model_used']}")
+        print(f"🏆 Verdict: {openai_result['model_used']} is more accurate.")
         return openai_result
 
 
@@ -265,15 +283,17 @@ async def chat(
     except:
         history_text = ""
 
-    # 2. SMART SEARCH
+    # 2. EVIDENCE GATHERING (Always search for context)
     web_data = ""
-    if len(msg.split()) > 2 and tavily_client:
+    # We search if message is > 2 words OR if it contains "fact" keywords
+    if tavily_client and (len(msg.split()) > 2 or "?" in msg):
         web_data = await search_web_tavily(msg, user_location)
+        print("🔎 Evidence Gathered from Web")
 
     # 3. GET CONTEXT
     user_context = get_user_context(user_id)
 
-    # 4. GENERATE RESPONSE (The Battle)
+    # 4. TRIBUNAL JUDGEMENT
     data = await generate_ai_response(msg, persona, user_context, web_data, history_text)
 
     # 5. SAVE MEMORY
