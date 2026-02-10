@@ -14,12 +14,10 @@ import google.generativeai as genai
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Load Environment Variables
 load_dotenv()
 
 app = FastAPI(title="LYLO Backend", version="9.0.0 - THE TRIBUNAL")
 
-# CORS Setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,20 +26,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API KEYS ---
+# API KEYS
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# DIAGNOSTIC PRINTS
 print(f"🔍 DEBUG: Tavily Key loaded? {bool(TAVILY_API_KEY)}")
 print(f"🧠 DEBUG: Pinecone Key loaded? {bool(PINECONE_API_KEY)}")
 print(f"🤖 DEBUG: Gemini Key loaded? {bool(GEMINI_API_KEY)}")
 print(f"🔥 DEBUG: OpenAI Key loaded? {bool(OPENAI_API_KEY)}")
 
-# --- CLIENT SETUP ---
-# TAVILY 401 FIX
+# CLIENT SETUP
 tavily_client = None
 if TAVILY_API_KEY:
     try:
@@ -49,10 +45,7 @@ if TAVILY_API_KEY:
         print("✅ Tavily Client Initialized")
     except Exception as e:
         print(f"⚠️ Tavily Init Error: {e}")
-else:
-    print("❌ Tavily: No API key found")
 
-# Pinecone
 pc = None
 memory_index = None
 if PINECONE_API_KEY:
@@ -71,7 +64,6 @@ if PINECONE_API_KEY:
     except Exception as e:
         print(f"⚠️ Pinecone Warning: {e}")
 
-# Gemini - GEMINI 404 FIX
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
@@ -81,7 +73,6 @@ if GEMINI_API_KEY:
     except Exception as e:
         print(f"⚠️ Gemini Error: {e}")
 
-# OpenAI
 openai_client = None
 if OPENAI_API_KEY:
     try:
@@ -90,7 +81,6 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-# --- DATA STORAGE (Preserve All Features) ---
 ELITE_USERS = {"stangman9898@gmail.com": "elite"}
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
@@ -98,7 +88,6 @@ QUIZ_ANSWERS = defaultdict(dict)
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
-# --- HELPER FUNCTIONS ---
 def store_user_memory(user_id: str, content: str, role: str):
     USER_CONVERSATIONS[user_id].append({
         "role": role,
@@ -107,9 +96,8 @@ def store_user_memory(user_id: str, content: str, role: str):
     })
 
 async def search_web_tavily(query: str, location: str = "") -> str:
-    """TAVILY 401 FIX - Proper error handling"""
     if not tavily_client: 
-        return "EVIDENCE: Web search unavailable - no API access"
+        return "EVIDENCE: Web search unavailable"
     
     try:
         full_query = f"{query} {location}".strip()
@@ -134,14 +122,11 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"Tavily Search Error: {e}")
         return f"EVIDENCE: Search failed - {str(e)}"
 
-# --- THE TRIBUNAL ENGINES (GEMINI 404 FIX) ---
 async def call_gemini(prompt: str):
-    """GEMINI 404 FIX - Clean model names with fallback chain"""
     if not gemini_ready: 
         return None
     
-    # FALLBACK CHAIN: Try pro first, then flash
-    models_to_try = ['gemini-1.5-pro', 'gemini-1.5-flash']  # NO "models/" prefix
+    models_to_try = ['gemini-1.5-pro', 'gemini-1.5-flash']
     
     for model_name in models_to_try:
         try:
@@ -171,7 +156,6 @@ async def call_gemini(prompt: str):
     return None
 
 async def call_openai(prompt: str):
-    """OpenAI competitor in the tribunal"""
     if not openai_client: 
         return None
         
@@ -193,7 +177,6 @@ async def call_openai(prompt: str):
         print(f"❌ OpenAI failed: {e}")
         return None
 
-# --- MAIN ENDPOINTS ---
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -206,11 +189,9 @@ async def chat(
     
     print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]}")
     
-    # 1. Gather Evidence
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
     web_evidence = await search_web_tavily(msg, user_location) if len(msg.split()) > 2 else ""
     
-    # 2. Persona Definitions
     persona_prompts = {
         "guardian": "You are The Guardian. Protective, vigilant, serious about security.",
         "roast": "You are The Roast Master. Sarcastic, funny, witty but ultimately helpful.",
@@ -220,7 +201,6 @@ async def chat(
         "friend": "You are The Best Friend. Empathetic, casual, supportive and chill."
     }
     
-    # 3. Build Tribunal Prompt with GROUNDING instructions
     quiz_context = QUIZ_ANSWERS.get(user_id, {})
     
     tribunal_prompt = f"""
@@ -246,16 +226,13 @@ REQUIRED OUTPUT JSON FORMAT:
 }}
 """
 
-    # 4. THE TRIBUNAL BATTLE (Dual-Core)
     print("⚔️ TRIBUNAL: Launching dual AI battle...")
     
     gemini_task = call_gemini(tribunal_prompt)
     openai_task = call_openai(tribunal_prompt)
     
-    # Battle them simultaneously
     results = await asyncio.gather(gemini_task, openai_task, return_exceptions=True)
     
-    # Filter valid results
     valid_results = []
     for i, result in enumerate(results):
         model_name = "Gemini" if i == 0 else "OpenAI"
@@ -265,12 +242,10 @@ REQUIRED OUTPUT JSON FORMAT:
         else:
             print(f"❌ {model_name}: Failed")
     
-    # 5. THE JUDGE (Higher confidence wins)
     if valid_results:
         winner = max(valid_results, key=lambda x: x.get('confidence_score', 0))
         print(f"🏆 WINNER: {winner.get('model', 'Unknown')} with {winner.get('confidence_score', 0)}% confidence")
     else:
-        # Emergency fallback
         winner = {
             "answer": f"I'm having technical difficulties right now, but I'm here to help! (Emergency mode active)",
             "confidence_score": 60,
@@ -279,11 +254,9 @@ REQUIRED OUTPUT JSON FORMAT:
         }
         print("🚨 TRIBUNAL: All models failed, using emergency fallback")
     
-    # 6. Store Memory
     store_user_memory(user_id, msg, "user")
     store_user_memory(user_id, winner['answer'], "bot")
     
-    # 7. Return Result
     return {
         "answer": winner['answer'],
         "confidence_score": winner.get('confidence_score', 60),
@@ -299,18 +272,15 @@ REQUIRED OUTPUT JSON FORMAT:
 
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
-    """USAGE STATS FIX - Proper JSON structure"""
     user_id = create_user_id(user_email)
     tier = ELITE_USERS.get(user_email.lower(), "free")
     conversations = USER_CONVERSATIONS.get(user_id, [])
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     
-    # Calculate usage limits
     limit = 100 if tier == "elite" else 10
     current_usage = len(conversations)
     usage_percentage = min(100, (current_usage / limit) * 100) if limit > 0 else 0
     
-    # Today's conversations
     today = datetime.now().strftime("%Y-%m-%d")
     conversations_today = len([c for c in conversations if c.get('timestamp', '').startswith(today)])
     
@@ -340,15 +310,14 @@ async def save_quiz(
     question4: str = Form(...), 
     question5: str = Form(...)
 ):
-    """Quiz endpoint - preserve existing functionality"""
     user_id = create_user_id(user_email)
     
     QUIZ_ANSWERS[user_id] = {
-        "concern": question1,      # What worries you most online?
-        "style": question2,        # How do you like to communicate?
-        "device": question3,       # What devices do you use?
-        "interest": question4,     # Any hobbies or interests?
-        "access": question5        # Do you need accessibility help?
+        "concern": question1,
+        "style": question2,
+        "device": question3,
+        "interest": question4,
+        "access": question5
     }
     
     print(f"📝 Quiz saved for user {user_email[:20]}")
@@ -364,13 +333,9 @@ async def root():
             "openai": "✅ Ready" if openai_client else "❌ Offline",
             "tavily": "✅ Ready" if tavily_client else "❌ Offline",
             "pinecone": "✅ Ready" if memory_index else "❌ Offline"
-        },
-        "features": ["Dual-Core AI Battle", "Real-time Web Intelligence", "Personal Memory", "Scam Detection"]
+        }
     }
 
 if __name__ == "__main__":
     print("🚀 LYLO TRIBUNAL SYSTEM STARTING")
-    print("⚔️ Dual-Core AI Battle Mode: Gemini vs OpenAI")
-    print("🏆 Winner determined by highest confidence score")
-    
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
