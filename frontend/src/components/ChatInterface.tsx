@@ -45,6 +45,7 @@ export default function ChatInterface({
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [transcript, setTranscript] = useState(''); // Real-time transcript
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -63,7 +64,6 @@ export default function ChatInterface({
     }
   }, [messages]);
 
-  // Cleanup camera stream when component unmounts
   useEffect(() => {
     return () => {
       if (stream) {
@@ -72,62 +72,66 @@ export default function ChatInterface({
     };
   }, [stream]);
 
-  // --- FIXED SPEECH RECOGNITION SETUP ---
+  // FIXED: CONTINUOUS VOICE RECOGNITION LIKE CLAUDE
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      // CLAUDE-STYLE SETTINGS
+      recognition.continuous = true;        // Keep listening
+      recognition.interimResults = true;    // Show real-time results
       recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
-        console.log('🎤 Speech recognition started');
+        console.log('🎤 Continuous recording started');
         setIsListening(true);
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript.trim();
-        console.log('🎤 Speech result:', transcript);
-        
-        if (transcript && transcript.length > 0) {
-          setInput(transcript);
-          setIsListening(false);
-          console.log('🎤 Sending transcript:', transcript);
-          handleSend(transcript);
-        } else {
-          console.log('🎤 Empty transcript received');
-          setIsListening(false);
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        // Process all results
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript + ' ';
+          } else {
+            interimTranscript += result[0].transcript;
+          }
         }
+
+        // Update transcript in real-time (like Claude)
+        const currentText = input + finalTranscript + interimTranscript;
+        setTranscript(currentText);
+        setInput(input + finalTranscript); // Only add final results to input
+        
+        console.log('🎤 Real-time transcript:', currentText);
       };
 
       recognition.onend = () => {
-        console.log('🎤 Speech recognition ended');
+        console.log('🎤 Recognition ended');
         setIsListening(false);
+        setTranscript('');
       };
 
       recognition.onerror = (event: any) => {
         console.error('🎤 Speech error:', event.error);
-        setIsListening(false);
-        
-        if (event.error === 'no-speech') {
-          console.log('🎤 No speech detected');
-        } else if (event.error === 'not-allowed') {
-          alert('Microphone access denied. Please enable microphone permissions.');
-        } else {
-          console.log('🎤 Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          setIsListening(false);
+          setTranscript('');
         }
       };
       
       recognitionRef.current = recognition;
       setMicSupported(true);
-      console.log('✅ Speech recognition initialized');
+      console.log('✅ Continuous speech recognition ready');
     } else {
-      console.log('❌ Speech recognition not supported');
       setMicSupported(false);
     }
-  }, []);
+  }, [input]);
 
   const loadUserStats = async () => {
     try {
@@ -162,25 +166,28 @@ export default function ChatInterface({
     }
   }, [messages, autoTTS]);
 
-  const startListening = () => {
+  // TOGGLE CONTINUOUS RECORDING
+  const toggleListening = () => {
     if (!micSupported) {
-      alert('Speech recognition not supported on this device');
+      alert('Speech recognition not supported');
       return;
     }
-    
-    if (recognitionRef.current && !loading && !isListening) {
+
+    if (isListening) {
+      // Stop recording
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setTranscript('');
+    } else {
+      // Start continuous recording
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
       }
-      
       try {
-        console.log('🎤 Starting speech recognition...');
-        setInput('');
-        recognitionRef.current.start();
+        recognitionRef.current?.start();
       } catch (error) {
-        console.error('🎤 Failed to start recognition:', error);
-        setIsListening(false);
+        console.error('🎤 Start error:', error);
       }
     }
   };
@@ -199,14 +206,13 @@ export default function ChatInterface({
     else onZoomChange(85);
   };
 
-  // CAMERA FUNCTIONALITY
   const openCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: { ideal: 1280 }, 
           height: { ideal: 720 },
-          facingMode: 'environment' // Use back camera by default
+          facingMode: 'environment'
         }
       });
       
@@ -218,8 +224,8 @@ export default function ChatInterface({
         videoRef.current.srcObject = mediaStream;
       }
     } catch (error) {
-      console.error('Camera access error:', error);
-      alert('Could not access camera. Please check permissions.');
+      console.error('Camera error:', error);
+      alert('Camera access denied. Check permissions.');
     }
   };
 
@@ -247,7 +253,7 @@ export default function ChatInterface({
             const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
             setSelectedImage(file);
             closeCamera();
-            console.log('📸 Photo captured:', file);
+            console.log('📸 Photo captured');
           }
         }, 'image/jpeg', 0.9);
       }
@@ -257,21 +263,15 @@ export default function ChatInterface({
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedImage(e.target.files[0]);
-      console.log('📁 Image uploaded:', e.target.files[0]);
     }
   };
 
-  const handleSend = async (messageText?: string) => {
-    const textToSend = messageText || input.trim();
+  const handleSend = async () => {
+    const textToSend = input.trim();
     
-    if ((!textToSend && !selectedImage) || loading) {
-      console.log('❌ Send blocked - no content or loading:', { textToSend, selectedImage, loading });
-      return;
-    }
+    if ((!textToSend && !selectedImage) || loading) return;
 
-    console.log('📤 Sending message:', textToSend);
-    console.log('📤 Message source:', messageText ? 'voice' : 'typed');
-    console.log('📤 Has image:', !!selectedImage);
+    console.log('📤 Sending:', textToSend);
 
     let previewContent = textToSend;
     if (selectedImage) {
@@ -290,16 +290,13 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      console.log('📤 Calling sendChatMessage API...');
       const response = await sendChatMessage(
-        textToSend || "What do you see in this image?", 
+        textToSend || "Analyze this image", 
         [], 
         currentPersona.id,
         userEmail,
         selectedImage
       );
-      
-      console.log('📥 Response received:', response);
       
       const botMsg: Message = { 
         id: (Date.now() + 1).toString(), 
@@ -317,7 +314,7 @@ export default function ChatInterface({
       await loadUserStats();
       
     } catch (error) {
-      console.error('❌ Chat error:', error);
+      console.error('❌ Send error:', error);
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         content: "Connection error. Please try again.", 
@@ -350,6 +347,9 @@ export default function ChatInterface({
     if (userEmail.toLowerCase().includes('stangman')) return 'Christopher';
     return userEmail.split('@')[0];
   };
+
+  // Display text: show real-time transcript when listening, otherwise input
+  const displayText = isListening ? transcript : input;
 
   return (
     <div style={{
@@ -657,9 +657,10 @@ export default function ChatInterface({
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
           
           <div className="flex items-center justify-between mb-3">
+            {/* CONTINUOUS MIC TOGGLE */}
             <button
-              onClick={startListening}
-              disabled={loading || isListening || !micSupported}
+              onClick={toggleListening}
+              disabled={loading || !micSupported}
               className={`
                 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-[0.1em] transition-all
                 ${isListening 
@@ -672,7 +673,7 @@ export default function ChatInterface({
               `}
               style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
             >
-              Mic {isListening ? 'ON' : micSupported ? 'OFF' : 'N/A'}
+              Mic {isListening ? 'ON' : 'OFF'}
             </button>
 
             <button 
@@ -709,7 +710,6 @@ export default function ChatInterface({
                onChange={handleImageSelect}
              />
 
-             {/* ENHANCED CAMERA BUTTON WITH OPTIONS */}
              <div className="relative">
                <button
                  onClick={(e) => {
@@ -731,7 +731,6 @@ export default function ChatInterface({
                   </svg>
                </button>
 
-               {/* CAMERA OPTIONS DROPDOWN */}
                {showCameraOptions && (
                  <div className="absolute bottom-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[160px] z-[100005] shadow-2xl">
                    <button
@@ -762,27 +761,29 @@ export default function ChatInterface({
             <div className="flex-1">
               <textarea 
                 ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                value={displayText} // Shows real-time transcript when listening
+                onChange={(e) => !isListening && setInput(e.target.value)} // Only editable when not listening
                 onKeyDown={handleKeyPress}
                 placeholder={
-                  isListening ? "Listening..." 
+                  isListening ? "🎤 Listening... (speak now)" 
                   : selectedImage ? `Image selected: ${selectedImage.name}. Add context...` 
                   : `Message ${currentPersona.name}...`
                 }
-                disabled={loading || isListening}
-                className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2"
+                disabled={loading}
+                className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${
+                  isListening ? 'text-yellow-300' : ''
+                }`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
                 rows={1}
               />
             </div>
             
             <button 
-              onClick={() => handleSend()}
-              disabled={loading || (!input.trim() && !selectedImage) || isListening}
+              onClick={handleSend}
+              disabled={loading || (!input.trim() && !selectedImage)}
               className={`
                 px-6 py-3 rounded-lg font-bold text-sm uppercase tracking-[0.1em] transition-all
-                ${(input.trim() || selectedImage) && !loading && !isListening
+                ${(input.trim() || selectedImage) && !loading
                   ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20'
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                 }
@@ -797,3 +798,4 @@ export default function ChatInterface({
     </div>
   );
 }
+
