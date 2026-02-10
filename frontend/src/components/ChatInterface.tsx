@@ -40,13 +40,11 @@ export default function ChatInterface({
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
-  // NEW: Image State
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
-  // NEW: File Input Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -79,7 +77,7 @@ export default function ChatInterface({
         console.log('🎤 Speech result:', transcript);
         setInput(transcript);
         setIsListening(false);
-        setTimeout(() => handleSend(transcript), 500);
+        setTimeout(() => handleSend(transcript), 200); // Fixed delay for smoother send
       };
 
       recognition.onend = () => {
@@ -90,7 +88,6 @@ export default function ChatInterface({
       recognition.onerror = (event: any) => {
         console.error('🎤 Speech error:', event.error);
         setIsListening(false);
-        // Auto-restart if it was an error, unless user manually stopped
         if (event.error === 'no-speech') {
             setIsListening(false);
         }
@@ -117,21 +114,16 @@ export default function ChatInterface({
 
   const speakText = (text: string) => {
     if (!autoTTS || !text || isSpeaking) return;
-    
-    // Clean text of markdown and timestamps for speaking
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
-    
     if (window.speechSynthesis && cleanText) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 0.85;
+      utterance.rate = 0.9;
       utterance.pitch = 1.0;
       utterance.volume = 0.9;
-      
       setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
-      
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -148,13 +140,11 @@ export default function ChatInterface({
       alert('Speech recognition not supported on this device');
       return;
     }
-
     if (recognitionRef.current && !loading && !isListening) {
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
       }
-      
       try {
         console.log('🎤 Starting speech recognition...');
         recognitionRef.current.start();
@@ -173,7 +163,12 @@ export default function ChatInterface({
     setAutoTTS(!autoTTS);
   };
 
-  // NEW: Handle Image Selection
+  const cycleFontSize = () => {
+    if (zoomLevel < 100) onZoomChange(100);
+    else if (zoomLevel < 125) onZoomChange(125);
+    else onZoomChange(85);
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         setSelectedImage(e.target.files[0]);
@@ -186,7 +181,6 @@ export default function ChatInterface({
 
     console.log('📤 Sending message:', textToSend);
 
-    // Create preview content
     let previewContent = textToSend;
     if (selectedImage) {
         previewContent = textToSend ? `${textToSend} [Image Attached]` : "[Image Attached]";
@@ -204,16 +198,13 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      // Pass image to API
       const response = await sendChatMessage(
         textToSend, 
         [], 
         currentPersona.id,
         userEmail,
-        selectedImage // NEW
+        selectedImage
       );
-      
-      console.log('📥 Response:', response);
       
       const botMsg: Message = { 
         id: (Date.now() + 1).toString(), 
@@ -222,12 +213,12 @@ export default function ChatInterface({
         timestamp: new Date(),
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
-        scamIndicators: [] // RESTORED
+        scamIndicators: [] 
       };
       
       setMessages(prev => [...prev, botMsg]);
-      setSelectedImage(null); // Clear image
-      if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+      setSelectedImage(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       await loadUserStats();
       
     } catch (error) {
@@ -280,7 +271,7 @@ export default function ChatInterface({
     }}>
       
       {/* HEADER */}
-      <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative">
+      <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           
           <div className="relative">
@@ -300,7 +291,7 @@ export default function ChatInterface({
 
             {/* FULL DROPDOWN RESTORED */}
             {showDropdown && (
-              <div className="absolute top-10 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[250px] z-[100000] max-h-[80vh] overflow-y-auto shadow-2xl">
+              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[250px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
                 
                 <div className="mb-3 p-2 bg-white/5 rounded-lg">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Account Status</h3>
@@ -409,9 +400,9 @@ export default function ChatInterface({
       {/* MESSAGES AREA */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-3 py-2 space-y-3"
+        className="flex-1 overflow-y-auto px-3 py-2 space-y-3 relative z-[100000]"
         style={{ 
-          paddingBottom: '160px', // Increased padding for taller input area
+          paddingBottom: '160px', 
           minHeight: 0,
           fontSize: `${zoomLevel / 100}rem`
         }}
@@ -515,10 +506,10 @@ export default function ChatInterface({
       </div>
 
       {/* FIXED BOTTOM INPUT - LOCKED POSITION */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100000]">
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
           
-          {/* CONTROLS ROW */}
+          {/* TOP CONTROLS ROW: Mic - Font - Voice */}
           <div className="flex items-center justify-between mb-3">
             <button
               onClick={startListening}
@@ -537,6 +528,14 @@ export default function ChatInterface({
             >
               Mic {isListening ? 'ON' : micSupported ? 'OFF' : 'N/A'}
             </button>
+
+            {/* NEW: FONT SIZE BUTTON */}
+            <button 
+               onClick={cycleFontSize} 
+               className="text-xs px-3 py-1 rounded bg-zinc-800 text-blue-400 font-bold border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide"
+             >
+               Text Size: {zoomLevel}%
+             </button>
 
             <button
               onClick={toggleTTS}
@@ -579,7 +578,7 @@ export default function ChatInterface({
                `}
                title="Upload Image"
              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
