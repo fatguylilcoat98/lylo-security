@@ -22,7 +22,6 @@ export default function Dashboard() {
     
     setUserEmail(savedEmail);
 
-    // Redirect to assessment if no email
     if (!savedEmail) {
       window.location.href = '/assessment';
     }
@@ -34,14 +33,13 @@ export default function Dashboard() {
   }, [currentPersona]);
 
   const adjustZoom = (delta: number) => {
-    setZoomLevel(prev => Math.max(50, Math.min(150, prev + delta)));
+    setZoomLevel(prev => Math.max(75, Math.min(125, prev + delta)));
   };
 
   const handleUsageUpdate = () => {
     setUsageUpdateTrigger(prev => prev + 1);
   };
 
-  // Generate User Name
   const userName = userEmail ? userEmail.split('@')[0] : 'Commander';
 
   return (
@@ -51,52 +49,19 @@ export default function Dashboard() {
       userEmail={userEmail}
       onUsageUpdate={handleUsageUpdate}
     >
-      {/* Header with Controls */}
-      <div className="p-4 border-b border-white/10 bg-black/40 backdrop-blur-xl">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-lg font-bold text-white">
-              Active: <span className="text-cyan-400">{currentPersonaConfig.name}</span>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-2 bg-black/40 backdrop-blur-xl rounded-xl border border-white/10 px-3 py-2">
-              <button
-                onClick={() => adjustZoom(-10)}
-                className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded transition-all"
-              >
-                A-
-              </button>
-              <span className="text-xs text-gray-300 min-w-[3rem] text-center">
-                {zoomLevel}%
-              </span>
-              <button
-                onClick={() => adjustZoom(10)}
-                className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded transition-all"
-              >
-                A+
-              </button>
-            </div>
-            
-            {/* Status */}
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span>Neural Link Active</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 relative" style={{ fontSize: `${zoomLevel}%` }}>
+      {/* UI PURGE: The Header is GONE. 
+         We are passing the zoom controls down to the chat interface 
+         so they can float inside the window instead of taking up space.
+      */}
+      <div className="flex-1 relative h-full" style={{ fontSize: `${zoomLevel}%` }}>
         <ChatInterface 
           currentPersona={currentPersonaConfig} 
           userEmail={userEmail}
-          zoomLevel={zoomLevel}
-          onUsageUpdate={handleUsageUpdate}
           userName={userName}
+          zoomLevel={zoomLevel}
+          onZoomIn={() => adjustZoom(10)}
+          onZoomOut={() => adjustZoom(-10)}
+          onUsageUpdate={handleUsageUpdate}
         />
       </div>
     </Layout>
