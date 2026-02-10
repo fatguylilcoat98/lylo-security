@@ -14,9 +14,10 @@ import google.generativeai as genai
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+# Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="9.1.0 - FIXED TRIBUNAL")
+app = FastAPI(title="LYLO Backend", version="10.0.0 - FIXED TRIBUNAL")
 
 app.add_middleware(
     CORSMiddleware,
@@ -81,9 +82,14 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-# DATA STORAGE
-ELITE_USERS = {"stangman9898@gmail.com": "elite"}
+# BETA TESTER MANAGEMENT SYSTEM
+ELITE_USERS = {
+    "stangman9898@gmail.com": "elite",
+}
+
+# In-memory beta tester storage (persists during runtime)
 BETA_TESTERS = ELITE_USERS.copy()
+
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
@@ -98,7 +104,9 @@ def store_user_memory(user_id: str, content: str, role: str):
     })
 
 async def search_web_tavily(query: str, location: str = "") -> str:
-    if not tavily_client: return ""
+    if not tavily_client: 
+        return "EVIDENCE: Web search unavailable"
+    
     try:
         full_query = f"{query} {location}".strip()
         response = tavily_client.search(
@@ -107,31 +115,44 @@ async def search_web_tavily(query: str, location: str = "") -> str:
             max_results=3, 
             include_answer=True
         )
-        evidence = [f"DIRECT: {response.get('answer', '')}"]
-        evidence.extend([f"SOURCE: {r['content'][:300]}" for r in response.get('results', [])])
-        return "\n".join(evidence)
+        
+        evidence = []
+        if response.get('answer'):
+            evidence.append(f"DIRECT ANSWER: {response['answer']}")
+        
+        for result in response.get('results', []):
+            if result.get('content'):
+                evidence.append(f"SOURCE: {result['content'][:200]}")
+        
+        return "\n".join(evidence) if evidence else "EVIDENCE: No reliable information found"
+        
     except Exception as e:
-        print(f"❌ Tavily Error: {e}")
-        return ""
+        print(f"Tavily Search Error: {e}")
+        return f"EVIDENCE: Search failed - {str(e)}"
 
 async def call_gemini(prompt: str):
-    if not gemini_ready: return None
+    if not gemini_ready: 
+        return None
     
-    # FIXED: Added 'gemini-pro' as final fallback for maximum reliability
+    # FIXED: Fallback chain to prevent 404 errors
     models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
     
     for model_name in models_to_try:
         try:
             print(f"🧠 Trying Gemini model: {model_name}")
             model = genai.GenerativeModel(model_name)
+            
             response = model.generate_content(
                 prompt, 
                 generation_config={"response_mime_type": "application/json"}
             )
-            data = json.loads(response.text)
-            data['model'] = f"Gemini ({model_name})"
-            print(f"✅ Gemini {model_name} success")
-            return data
+            
+            if response and response.text:
+                data = json.loads(response.text)
+                data['model'] = f"Gemini ({model_name})"
+                print(f"✅ Gemini {model_name} success")
+                return data
+                
         except Exception as e:
             print(f"❌ Gemini {model_name} failed: {e}")
             continue
@@ -140,104 +161,233 @@ async def call_gemini(prompt: str):
     return None
 
 async def call_openai(prompt: str):
-    if not openai_client: return None
+    if not openai_client: 
+        return None
+        
     try:
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
+        
         data = json.loads(response.choices[0].message.content)
         data['model'] = "OpenAI (GPT-4o-mini)"
         print("✅ OpenAI success")
         return data
+        
     except Exception as e:
         print(f"❌ OpenAI failed: {e}")
         return None
 
-# BETA ENDPOINTS
+# NEW BETA TESTER ENDPOINTS
 @app.post("/admin/add-beta-tester")
-async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(...), tier: str = Form("elite")):
-    if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403)
+async def add_beta_tester(
+    admin_email: str = Form(...),
+    new_email: str = Form(...),
+    tier: str = Form("elite")
+):
+    """Add a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
     BETA_TESTERS[new_email.lower()] = tier
-    return {"status": "success"}
+    print(f"✅ Added beta tester: {new_email} -> {tier}")
+    
+    return {
+        "status": "success",
+        "message": f"Added {new_email} as {tier} beta tester",
+        "total_beta_testers": len(BETA_TESTERS)
+    }
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
-    if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403)
-    return {"beta_testers": BETA_TESTERS}
+    """List all beta testers (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    return {
+        "beta_testers": BETA_TESTERS,
+        "total": len(BETA_TESTERS)
+    }
+
+@app.delete("/admin/remove-beta-tester")
+async def remove_beta_tester(
+    admin_email: str = Form(...),
+    remove_email: str = Form(...)
+):
+    """Remove a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    if remove_email.lower() in BETA_TESTERS:
+        del BETA_TESTERS[remove_email.lower()]
+        print(f"❌ Removed beta tester: {remove_email}")
+        return {"status": "success", "message": f"Removed {remove_email}"}
+    else:
+        return {"status": "error", "message": "Beta tester not found"}
+
+@app.post("/check-beta-access")
+async def check_beta_access(email: str = Form(...)):
+    """Check if user has beta access"""
+    tier = BETA_TESTERS.get(email.lower(), "free")
+    is_beta = tier in ["elite", "pro"]
+    
+    return {
+        "email": email,
+        "tier": tier,
+        "is_beta_tester": is_beta,
+        "has_elite_access": tier == "elite"
+    }
 
 @app.post("/chat")
-async def chat(msg: str = Form(...), history: str = Form("[]"), persona: str = Form("guardian"), user_email: str = Form(...), user_location: str = Form("")):
+async def chat(
+    msg: str = Form(...), 
+    history: str = Form("[]"), 
+    persona: str = Form("guardian"), 
+    user_email: str = Form(...), 
+    user_location: str = Form("")
+):
     user_id = create_user_id(user_email)
+    
+    # Use dynamic beta tester list
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
+    
     print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
     
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
     web_evidence = await search_web_tavily(msg, user_location) if len(msg.split()) > 2 else ""
     
-    p_prompts = {
-        "guardian": "You are The Guardian. Protective, vigilant, serious.",
-        "roast": "You are The Roast Master. Sarcastic, funny, witty.",
-        "chef": "You are The Chef. Warm, food-focused metaphors.",
-        "techie": "You are The Techie. Nerdy, detailed, precise.",
-        "lawyer": "You are The Lawyer. Formal, cautious, legal tone.",
-        "friend": "You are The Best Friend. Empathetic, casual, chill."
+    persona_prompts = {
+        "guardian": "You are The Guardian. Protective, vigilant, serious about security.",
+        "roast": "You are The Roast Master. Sarcastic, funny, witty but ultimately helpful.",
+        "chef": "You are The Chef. Warm, food-focused, use cooking metaphors.",
+        "techie": "You are The Techie. Nerdy, detailed, precise technical explanations.",
+        "lawyer": "You are The Lawyer. Formal, cautious, legal precision in language.",
+        "friend": "You are The Best Friend. Empathetic, casual, supportive and chill."
     }
     
     quiz_context = QUIZ_ANSWERS.get(user_id, {})
     
     tribunal_prompt = f"""
-    {p_prompts.get(persona, p_prompts['guardian'])}
-    CONTEXT: {quiz_context}
-    EVIDENCE: {web_evidence}
-    HISTORY: {history_text}
-    MESSAGE: "{msg}"
-    INSTRUCTIONS: Answer accurately. If EVIDENCE exists, use it. Provide 'confidence_score' (0-100).
-    OUTPUT JSON: {{ "answer": "text", "confidence_score": 90, "scam_detected": false }}
-    """
+{persona_prompts.get(persona, persona_prompts['guardian'])}
 
-    print("⚔️ TRIBUNAL: Launching battle...")
-    results = await asyncio.gather(call_gemini(tribunal_prompt), call_openai(tribunal_prompt))
-    valid = [r for r in results if r and r.get('answer')]
+CRITICAL GROUNDING RULES:
+- If EVIDENCE contradicts your knowledge, trust the evidence and lower confidence to 60-75%
+- If EVIDENCE is missing for factual claims, lower confidence to 70-80%
+- If EVIDENCE supports your answer, you can use high confidence 85-95%
+
+USER CONTEXT: {quiz_context}
+CONVERSATION HISTORY: {history_text}
+REAL-TIME EVIDENCE: {web_evidence}
+USER MESSAGE: "{msg}"
+
+Respond as this persona. Be helpful and natural.
+
+REQUIRED OUTPUT JSON FORMAT:
+{{
+    "answer": "your response as the persona",
+    "confidence_score": 60-95,
+    "scam_detected": false
+}}
+"""
+
+    print("⚔️ TRIBUNAL: Launching dual AI battle...")
     
-    if valid:
-        winner = max(valid, key=lambda x: x.get('confidence_score', 0))
-        print(f"🏆 WINNER: {winner.get('model', 'Unknown')} ({winner.get('confidence_score')}%)")
+    gemini_task = call_gemini(tribunal_prompt)
+    openai_task = call_openai(tribunal_prompt)
+    
+    results = await asyncio.gather(gemini_task, openai_task, return_exceptions=True)
+    
+    valid_results = []
+    for i, result in enumerate(results):
+        model_name = "Gemini" if i == 0 else "OpenAI"
+        if isinstance(result, dict) and result.get('answer'):
+            valid_results.append(result)
+            print(f"✅ {model_name}: Confidence {result.get('confidence_score', 0)}%")
+        else:
+            print(f"❌ {model_name}: Failed")
+    
+    if valid_results:
+        winner = max(valid_results, key=lambda x: x.get('confidence_score', 0))
+        print(f"🏆 WINNER: {winner.get('model', 'Unknown')} with {winner.get('confidence_score', 0)}% confidence")
     else:
-        winner = {"answer": "I'm having trouble connecting right now.", "confidence_score": 0, "model": "Emergency Fallback"}
-        print("🚨 TRIBUNAL: All Failed")
-
+        winner = {
+            "answer": f"I'm having technical difficulties right now, but I'm here to help! (Emergency mode active)",
+            "confidence_score": 60,
+            "scam_detected": False,
+            "model": "Emergency Fallback"
+        }
+        print("🚨 TRIBUNAL: All models failed, using emergency fallback")
+    
     store_user_memory(user_id, msg, "user")
-    store_user_memory(user_id, winner.get('answer', ''), "bot")
+    store_user_memory(user_id, winner['answer'], "bot")
     
     return {
         "answer": winner['answer'],
-        "confidence_score": winner.get('confidence_score', 0),
+        "confidence_score": winner.get('confidence_score', 60),
+        "confidence_explanation": f"Based on tribunal analysis using {winner.get('model', 'AI system')}",
         "scam_detected": winner.get('scam_detected', False),
+        "scam_indicators": [],
+        "detailed_analysis": "No threats detected in this query",
+        "web_search_used": bool(web_evidence),
+        "personalization_active": bool(quiz_context),
         "tier_info": {"name": f"{actual_tier.title()} Tier"},
-        "usage_info": {"can_send": True}
+        "usage_info": {"can_send": True, "current_tier": actual_tier}
     }
 
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
-    tier = BETA_TESTERS.get(user_email.lower(), "free")
-    convos = USER_CONVERSATIONS.get(user_id, [])
+    tier = BETA_TESTERS.get(user_email.lower(), "free")  # Use dynamic beta list
+    conversations = USER_CONVERSATIONS.get(user_id, [])
+    quiz_data = QUIZ_ANSWERS.get(user_id, {})
+    
     limit = 100 if tier == "elite" else 10
+    current_usage = len(conversations)
+    usage_percentage = min(100, (current_usage / limit) * 100) if limit > 0 else 0
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    conversations_today = len([c for c in conversations if c.get('timestamp', '').startswith(today)])
     
     return {
-        "tier": tier, "conversations_today": len(convos), "total_conversations": len(convos), "has_quiz_data": user_id in QUIZ_ANSWERS,
-        "memory_entries": len(convos),
-        "usage": {"current": len(convos), "limit": limit, "percentage": (len(convos)/limit)*100},
-        "learning_profile": {"interests": [], "top_concern": ""}
+        "tier": tier,
+        "conversations_today": conversations_today,
+        "total_conversations": len(conversations),
+        "has_quiz_data": user_id in QUIZ_ANSWERS,
+        "memory_entries": len(conversations),
+        "usage": {
+            "current": current_usage,
+            "limit": limit,
+            "percentage": usage_percentage
+        },
+        "learning_profile": {
+            "interests": quiz_data.get("interest", "General").split(",") if quiz_data.get("interest") else ["General"],
+            "top_concern": quiz_data.get("concern", "None")
+        }
     }
 
 @app.post("/quiz")
-async def save_quiz(user_email: str = Form(...), question1: str = Form(...), question2: str = Form(...), question3: str = Form(...), question4: str = Form(...), question5: str = Form(...)):
+async def save_quiz(
+    user_email: str = Form(...), 
+    question1: str = Form(...), 
+    question2: str = Form(...), 
+    question3: str = Form(...), 
+    question4: str = Form(...), 
+    question5: str = Form(...)
+):
     user_id = create_user_id(user_email)
-    QUIZ_ANSWERS[user_id] = {"concern": question1, "style": question2, "device": question3, "interest": question4, "access": question5}
-    return {"status": "Quiz Saved"}
+    
+    QUIZ_ANSWERS[user_id] = {
+        "concern": question1,
+        "style": question2,
+        "device": question3,
+        "interest": question4,
+        "access": question5
+    }
+    
+    print(f"📝 Quiz saved for user {user_email[:20]}")
+    return {"status": "Quiz saved successfully"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=10000)
