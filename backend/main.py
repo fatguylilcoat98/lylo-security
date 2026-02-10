@@ -91,7 +91,7 @@ ELITE_USERS = {
     "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
     "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
     "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
-    "test@gmail.com": {"tier": "elite", "name": "Beta Tester"}
+    "Cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
 }
 
 # Build BETA_TESTERS from ELITE_USERS for compatibility
