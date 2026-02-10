@@ -665,20 +665,191 @@ async def save_quiz(
     }
     return {"status": "Quiz saved successfully"}
 
+# ELITE SCAM RECOVERY CENTER
+@app.get("/scam-recovery/{user_email}")
+async def get_scam_recovery_info(user_email: str):
+    # Check if user is elite
+    user_data = ELITE_USERS.get(user_email.lower(), None)
+    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
+        raise HTTPException(status_code=403, detail="Elite access required")
+    
+    recovery_guide = {
+        "title": "🚨 BEEN SCAMMED? ASSET RECOVERY CENTER",
+        "subtitle": "Elite Members Only - Complete Recovery Guide",
+        "immediate_actions": [
+            "🛑 STOP - Do not send any more money or information",
+            "📞 Contact your bank/credit card company immediately",
+            "🔒 Change all passwords and enable 2FA on all accounts",
+            "📊 Document everything - save screenshots, emails, texts",
+            "🚔 File a police report with your local law enforcement"
+        ],
+        "recovery_steps": [
+            {
+                "step": 1,
+                "title": "Secure Your Accounts",
+                "actions": [
+                    "Change banking passwords immediately",
+                    "Enable two-factor authentication everywhere",
+                    "Check credit reports for unauthorized accounts",
+                    "Monitor bank statements daily"
+                ]
+            },
+            {
+                "step": 2,
+                "title": "Report the Scam", 
+                "actions": [
+                    "File complaint with FTC at reportfraud.ftc.gov",
+                    "Report to FBI's IC3.gov if over $5,000 lost",
+                    "Contact state attorney general's office",
+                    "Report to Better Business Bureau"
+                ]
+            },
+            {
+                "step": 3,
+                "title": "Financial Recovery",
+                "actions": [
+                    "Contact bank fraud department within 24-48 hours",
+                    "Dispute charges with credit card companies",
+                    "File chargeback requests immediately",
+                    "Consider hiring asset recovery specialist if large amount"
+                ]
+            },
+            {
+                "step": 4,
+                "title": "Document Everything",
+                "actions": [
+                    "Save all communication (emails, texts, calls)",
+                    "Screenshot bank transactions and transfers", 
+                    "Keep records of all reports filed",
+                    "Maintain timeline of events"
+                ]
+            }
+        ],
+        "phone_scripts": {
+            "bank_script": "Hello, I need to report fraudulent activity on my account. I was the victim of a scam and unauthorized transfers were made. I need to dispute these charges and secure my account immediately. Can you help me file a fraud claim?",
+            "credit_card_script": "I need to report unauthorized charges on my card due to a scam. I want to dispute these transactions and request a chargeback. Can you walk me through the process and issue a new card?",
+            "police_script": "I want to file a report for financial fraud. I was scammed out of $[AMOUNT] through [METHOD]. I have documentation of all communications and transactions. What information do you need from me?"
+        },
+        "important_contacts": [
+            {
+                "organization": "FTC Fraud Reports",
+                "website": "reportfraud.ftc.gov",
+                "phone": "1-877-FTC-HELP",
+                "description": "Primary federal fraud reporting"
+            },
+            {
+                "organization": "FBI Internet Crime Complaint Center",
+                "website": "ic3.gov",
+                "phone": "Contact local FBI field office",
+                "description": "For internet-based scams over $5,000"
+            },
+            {
+                "organization": "IRS Identity Theft Hotline",
+                "website": "irs.gov/identity-theft",
+                "phone": "1-800-908-4490",
+                "description": "For tax-related identity theft"
+            },
+            {
+                "organization": "Social Security Fraud Hotline",
+                "website": "ssa.gov/fraudreport",
+                "phone": "1-800-269-0271",
+                "description": "For Social Security number misuse"
+            }
+        ],
+        "recovery_timeline": {
+            "immediate": "0-24 hours: Secure accounts, contact bank, stop all payments",
+            "short_term": "1-7 days: File all reports, dispute charges, change passwords",
+            "medium_term": "1-4 weeks: Follow up on disputes, work with investigators",
+            "long_term": "1-6 months: Asset recovery process, legal action if needed"
+        },
+        "prevention_tips": [
+            "Never give personal info to unsolicited callers",
+            "Verify company legitimacy through independent research",
+            "Be suspicious of urgent payment requests",
+            "Use secure payment methods, avoid wire transfers",
+            "Trust your instincts - if it feels wrong, it probably is"
+        ],
+        "elite_notice": "This comprehensive recovery guide is exclusive to LYLO Elite members. Share responsibly."
+    }
+    
+    return recovery_guide
+
+@app.post("/scam-recovery-chat")
+async def scam_recovery_chat(
+    user_email: str = Form(...),
+    situation: str = Form(...),
+    amount_lost: str = Form(""),
+    scam_type: str = Form(""),
+    time_since: str = Form("")
+):
+    # Check if user is elite
+    user_data = ELITE_USERS.get(user_email.lower(), None)
+    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
+        return {"error": "Elite access required for personalized recovery assistance"}
+    
+    # Get personalized recovery advice
+    user_display_name = user_data.get("name") if isinstance(user_data, dict) else "User"
+    
+    recovery_prompt = f"""
+You are a specialized fraud recovery advisor helping {user_display_name} who has been scammed.
+
+SITUATION: {situation}
+AMOUNT LOST: {amount_lost}
+SCAM TYPE: {scam_type}
+TIME SINCE SCAM: {time_since}
+
+Provide specific, actionable recovery advice based on their situation. Include:
+1. Immediate priority actions
+2. Specific recovery strategies for this scam type
+3. Realistic timeline expectations
+4. Who to contact first
+5. Documentation needed
+
+Be empathetic but direct. Focus on practical steps they can take TODAY.
+"""
+    
+    # Use AI to generate personalized advice
+    try:
+        if openai_client:
+            response = await openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": recovery_prompt}],
+                max_tokens=800,
+                temperature=0.3
+            )
+            
+            advice = response.choices[0].message.content
+        else:
+            advice = f"Hello {user_display_name}, I understand you've been through a difficult situation. Based on what you've shared, here are your immediate next steps: 1) Contact your financial institution within 24 hours, 2) File reports with FTC and local police, 3) Document all evidence, 4) Consider professional asset recovery if the amount is substantial."
+    
+        return {
+            "personalized_advice": advice,
+            "user_name": user_display_name,
+            "priority_level": "HIGH" if any(keyword in scam_type.lower() for keyword in ["wire", "crypto", "investment"]) else "MEDIUM"
+        }
+    
+    except Exception as e:
+        return {
+            "personalized_advice": f"I'm having technical difficulties, but {user_display_name}, your situation is important. Please immediately contact your bank and file a police report. Use the recovery guide for detailed steps.",
+            "user_name": user_display_name,
+            "priority_level": "HIGH"
+        }
+
 # STATUS CHECK
 @app.get("/")
 async def root():
     return {
-        "status": "LYLO BETA READY - CUSTOM NAMES",
-        "version": "9.5.0",
+        "status": "LYLO BETA READY - SCAM RECOVERY",
+        "version": "9.6.0",
         "systems": {
             "internet_search": "✅ Ready" if tavily_client else "❌ Offline",
             "memory_system": "✅ Ready" if memory_index else "❌ Offline",
             "gemini_vision": "✅ Ready" if gemini_ready else "❌ Offline",
-            "openai_vision": "✅ Ready" if openai_client else "❌ Offline"
+            "openai_vision": "✅ Ready" if openai_client else "❌ Offline",
+            "scam_recovery": "✅ Elite Only"
         },
         "beta_testers": len(ELITE_USERS),
-        "features": ["🌐 Real Internet", "🧠 Memory", "👁️ Vision", "🔒 Access Control", "👤 Custom Names"]
+        "features": ["🌐 Real Internet", "🧠 Memory", "👁️ Vision", "🔒 Access Control", "👤 Custom Names", "🚨 Scam Recovery"]
     }
 
 if __name__ == "__main__":
