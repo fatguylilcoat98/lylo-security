@@ -3,9 +3,7 @@ import uvicorn
 import json
 import hashlib
 import asyncio
-import numpy as np
-import stripe
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List
 from datetime import datetime
@@ -16,12 +14,10 @@ import google.generativeai as genai
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="12.2.0 - FULL FAT PRIVACY")
+app = FastAPI(title="LYLO Backend", version="9.1.0 - THE TRIBUNAL WITH ACCESS CONTROL")
 
-# CORS Setup - Critical for Mobile
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,28 +26,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API KEYS ---
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+# API KEYS
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# --- DIAGNOSTICS (System Status Only) ---
-print("\n--- SYSTEM DIAGNOSTICS ---")
-print(f"🔍 Tavily Key:   {'OK' if TAVILY_API_KEY else 'MISSING'}")
-print(f"🧠 Pinecone Key: {'OK' if PINECONE_API_KEY else 'MISSING'}")
-print(f"🤖 Gemini Key:   {'OK' if GEMINI_API_KEY else 'MISSING'}")
-print(f"🔥 OpenAI Key:   {'OK' if OPENAI_API_KEY else 'MISSING'}")
-print(f"💳 Stripe Key:   {'OK' if STRIPE_SECRET_KEY else 'MISSING'}")
-print("--------------------------\n")
+print(f"🔍 DEBUG: Tavily Key loaded? {bool(TAVILY_API_KEY)}")
+print(f"🧠 DEBUG: Pinecone Key loaded? {bool(PINECONE_API_KEY)}")
+print(f"🤖 DEBUG: Gemini Key loaded? {bool(GEMINI_API_KEY)}")
+print(f"🔥 DEBUG: OpenAI Key loaded? {bool(OPENAI_API_KEY)}")
 
-# --- STRIPE SETUP ---
-if STRIPE_SECRET_KEY:
-    stripe.api_key = STRIPE_SECRET_KEY
-
-# --- CLIENT SETUP ---
-# Tavily
+# CLIENT SETUP
 tavily_client = None
 if TAVILY_API_KEY:
     try:
@@ -60,31 +46,24 @@ if TAVILY_API_KEY:
     except Exception as e:
         print(f"⚠️ Tavily Init Error: {e}")
 
-# Pinecone
 pc = None
 memory_index = None
 if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "lylo-memory"
-        existing_indexes = [idx.name for idx in pc.list_indexes()] if pc else []
-        if index_name not in existing_indexes:
-            try:
-                pc.create_index(
-                    name=index_name,
-                    dimension=768, 
-                    metric="cosine",
-                    spec=ServerlessSpec(cloud="aws", region="us-east-1")
-                )
-            except Exception as e:
-                print(f"⚠️ Index creation skipped: {e}")
-        
+        if index_name not in [idx.name for idx in pc.list_indexes()]:
+            pc.create_index(
+                name=index_name,
+                dimension=768, 
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
         memory_index = pc.Index(index_name)
         print("✅ Pinecone Memory Online")
     except Exception as e:
         print(f"⚠️ Pinecone Warning: {e}")
 
-# Gemini Config
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
@@ -92,310 +71,452 @@ if GEMINI_API_KEY:
         gemini_ready = True
         print("✅ Gemini Configured")
     except Exception as e:
-        print(f"⚠️ Gemini Config Error: {e}")
+        print(f"⚠️ Gemini Error: {e}")
 
-# OpenAI
 openai_client = None
 if OPENAI_API_KEY:
     try:
         openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI Connected")
+        print("✅ OpenAI Client Ready")
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-# --- DATA STORAGE ---
-ELITE_USERS = {"stangman9898@gmail.com": "elite"}
-BETA_TESTERS = ELITE_USERS.copy() 
+# BETA TESTER MANAGEMENT SYSTEM
+ELITE_USERS = {
+    "stangman9898@gmail.com": "elite",
+    # Add more beta testers here - Christopher can easily add emails
+    # "friend@example.com": "elite",
+    # "investor@example.com": "elite",
+    # "family@example.com": "elite",
+}
+
+# In-memory beta tester storage (persists during runtime)
+BETA_TESTERS = ELITE_USERS.copy()
+
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
-# --- HELPER FUNCTIONS ---
 def store_user_memory(user_id: str, content: str, role: str):
     USER_CONVERSATIONS[user_id].append({
-        "role": role, "content": content, "timestamp": datetime.now().isoformat()
+        "role": role,
+        "content": content,
+        "timestamp": datetime.now().isoformat()
     })
 
 async def search_web_tavily(query: str, location: str = "") -> str:
-    if not tavily_client: return ""
+    """ENHANCED Tavily search with better error handling"""
+    if not tavily_client: 
+        print("❌ Tavily: No client available")
+        return "EVIDENCE: Web search unavailable - client not initialized"
+    
     try:
-        full_query = f"{query} {location}".strip()
+        # Enhanced query building
+        search_query = f"{query} {location}".strip()
+        print(f"🔍 Tavily: Searching for '{search_query}'")
+        
         response = tavily_client.search(
-            query=full_query, 
-            search_depth="basic", 
-            max_results=3, 
-            include_answer=True
+            query=search_query, 
+            search_depth="advanced",  # Changed from "basic" for better results
+            max_results=5,  # Increased from 3
+            include_answer=True,
+            include_domains=None,
+            exclude_domains=None
         )
-        evidence = [f"DIRECT: {response.get('answer', '')}"]
-        evidence.extend([f"SOURCE: {r['content'][:300]}" for r in response.get('results', [])])
-        return "\n".join(evidence)
+        
+        print(f"🔍 Tavily: Response received - {type(response)}")
+        
+        evidence = []
+        
+        # Process the answer
+        if response and response.get('answer'):
+            evidence.append(f"DIRECT ANSWER: {response['answer']}")
+            print(f"✅ Tavily: Direct answer found")
+        
+        # Process search results
+        results = response.get('results', []) if response else []
+        for i, result in enumerate(results[:3]):  # Limit to top 3 results
+            if result.get('content'):
+                content = result['content'][:300]  # Increased from 200
+                evidence.append(f"SOURCE {i+1}: {content}")
+        
+        final_evidence = "\n".join(evidence) if evidence else "EVIDENCE: No reliable information found"
+        print(f"✅ Tavily: Returning evidence ({len(evidence)} items)")
+        return final_evidence
+        
     except Exception as e:
-        print(f"❌ Tavily Error: {e}")
-        return ""
+        error_msg = f"Tavily Search Error: {str(e)}"
+        print(f"❌ {error_msg}")
+        return f"EVIDENCE: Search failed - {str(e)}"
 
-# --- DYNAMIC GEMINI MODEL FINDER (PREVENTS 404s) ---
-def get_working_gemini_model():
-    if not gemini_ready: return None
-    try:
-        # Ask Google specifically what is available
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # Priority preferences
-        priority_list = [
-            'gemini-1.5-flash', 
-            'gemini-1.5-pro',
-            'gemini-pro',
-            'gemini-1.0-pro'
-        ]
-        
-        # Match priority against available
-        for priority in priority_list:
-            for actual_name in available_models:
-                if priority in actual_name:
-                    return actual_name
-        
-        # Fallback to first available
-        if available_models:
-            return available_models[0]
-            
-    except Exception as e:
-        print(f"⚠️ Auto-discovery failed: {e}")
-    
-    return 'gemini-pro'
-
-# --- THE TRIBUNAL ENGINES ---
 async def call_gemini(prompt: str):
+    """GEMINI 404 FIX - Correct model names and API configuration"""
     if not gemini_ready: 
-        print("❌ Gemini blocked: API Key not configured")
         return None
     
-    try:
-        model_name = get_working_gemini_model()
-        print(f"🧠 Gemini Selected: {model_name}")
-        
-        model = genai.GenerativeModel(model_name)
-        
+    # CORRECTED MODEL NAMES for current Gemini API
+    models_to_try = [
+        'gemini-1.5-pro-latest',
+        'gemini-1.5-flash-latest',
+        'gemini-pro',
+        'gemini-1.5-flash'
+    ]
+    
+    for model_name in models_to_try:
         try:
-            response = model.generate_content(
-                prompt, 
-                generation_config={"response_mime_type": "application/json"}
-            )
-        except:
-            # Fallback for models that don't support JSON mode
-            response = model.generate_content(prompt)
-
-        if response.text:
-            clean_text = response.text.strip()
-            # Remove markdown code blocks if present
-            if clean_text.startswith("```json"):
-                clean_text = clean_text.replace("```json", "").replace("```", "")
+            print(f"🧠 Trying Gemini model: {model_name}")
             
+            # Create model instance
+            model = genai.GenerativeModel(model_name)
+            
+            # Try with JSON mode first
             try:
-                data = json.loads(clean_text)
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=500,
+                        temperature=0.7,
+                        response_mime_type="application/json"
+                    )
+                )
             except:
-                # Wrap plain text in JSON
-                data = {"answer": clean_text, "confidence_score": 85, "scam_detected": False}
-
-            data['model'] = f"Gemini ({model_name})"
-            print(f"✅ SUCCESS: Gemini answered")
-            return data
+                # Fallback to regular mode if JSON mode fails
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=500,
+                        temperature=0.7
+                    )
+                )
             
-    except Exception as e:
-        print(f"❌ Gemini CRITICAL Failure: {str(e)}")
-        return None
+            if response and response.text:
+                try:
+                    # Try to parse as JSON
+                    data = json.loads(response.text)
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, extract key info and create structured response
+                    text = response.text.strip()
+                    
+                    # Try to extract confidence if mentioned
+                    confidence = 85
+                    if "confidence" in text.lower():
+                        import re
+                        conf_match = re.search(r'(\d+)%', text)
+                        if conf_match:
+                            confidence = int(conf_match.group(1))
+                    
+                    data = {
+                        "answer": text,
+                        "confidence_score": confidence,
+                        "scam_detected": False
+                    }
+                
+                data['model'] = f"Gemini ({model_name})"
+                print(f"✅ Gemini {model_name} success")
+                return data
+                
+        except Exception as e:
+            print(f"❌ Gemini {model_name} failed: {e}")
+            continue
+    
+    print("❌ All Gemini models failed")
+    return None
 
 async def call_openai(prompt: str):
-    if not openai_client: return None
+    if not openai_client: 
+        return None
+        
     try:
-        res = await openai_client.chat.completions.create(
+        response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            max_tokens=500,
+            temperature=0.7
         )
-        data = json.loads(res.choices[0].message.content)
-        data['model'] = "OpenAI (GPT-4o)"
+        
+        data = json.loads(response.choices[0].message.content)
+        data['model'] = "OpenAI (GPT-4o-mini)"
+        print("✅ OpenAI success")
         return data
+        
     except Exception as e:
-        print(f"❌ OpenAI Error: {e}")
+        print(f"❌ OpenAI failed: {e}")
         return None
 
-# --- ADMIN / BETA TESTER ENDPOINTS ---
+# ACCESS CONTROL ENDPOINTS
+@app.post("/verify-access")
+async def verify_access(email: str = Form(...)):
+    """Verify if user has access to the platform"""
+    user_email = email.lower()
+    
+    # Check if user is in beta testers list
+    tier = BETA_TESTERS.get(user_email, None)
+    
+    if tier:
+        return {
+            "access_granted": True,
+            "tier": tier,
+            "user_name": "Christopher" if "stangman" in user_email else user_email.split('@')[0],
+            "is_beta": True
+        }
+    else:
+        return {
+            "access_granted": False,
+            "message": "You're not on the approved list yet. Please join the waitlist at mylylo.pro",
+            "tier": "none",
+            "user_name": user_email.split('@')[0],
+            "is_beta": False
+        }
+
+# BETA TESTER MANAGEMENT ENDPOINTS
 @app.post("/admin/add-beta-tester")
-async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(...), tier: str = Form("elite")):
-    if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403, detail="Unauthorized")
+async def add_beta_tester(
+    admin_email: str = Form(...),
+    new_email: str = Form(...),
+    tier: str = Form("elite")
+):
+    """Add a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
     BETA_TESTERS[new_email.lower()] = tier
-    return {"status": "success", "message": f"Added {new_email}", "total": len(BETA_TESTERS)}
+    print(f"✅ Added beta tester: {new_email} -> {tier}")
+    
+    return {
+        "status": "success",
+        "message": f"Added {new_email} as {tier} beta tester",
+        "total_beta_testers": len(BETA_TESTERS)
+    }
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
-    if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403, detail="Unauthorized")
-    return {"beta_testers": BETA_TESTERS, "count": len(BETA_TESTERS)}
+    """List all beta testers (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    return {
+        "beta_testers": BETA_TESTERS,
+        "total": len(BETA_TESTERS)
+    }
 
 @app.delete("/admin/remove-beta-tester")
-async def remove_beta_tester(admin_email: str = Form(...), remove_email: str = Form(...)):
-    if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403, detail="Unauthorized")
+async def remove_beta_tester(
+    admin_email: str = Form(...),
+    remove_email: str = Form(...)
+):
+    """Remove a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
     if remove_email.lower() in BETA_TESTERS:
         del BETA_TESTERS[remove_email.lower()]
-        return {"status": "success"}
-    return {"status": "error", "message": "Not found"}
+        print(f"❌ Removed beta tester: {remove_email}")
+        return {"status": "success", "message": f"Removed {remove_email}"}
+    else:
+        return {"status": "error", "message": "Beta tester not found"}
 
 @app.post("/check-beta-access")
 async def check_beta_access(email: str = Form(...)):
+    """Check if user has beta access"""
     tier = BETA_TESTERS.get(email.lower(), "free")
-    return {"email": email, "tier": tier, "is_beta": tier in ["elite", "pro"]}
+    is_beta = tier in ["elite", "pro"]
+    
+    return {
+        "email": email,
+        "tier": tier,
+        "is_beta_tester": is_beta,
+        "has_elite_access": tier == "elite"
+    }
 
-# --- STRIPE PAYMENT ENDPOINT ---
-@app.post("/create-checkout-session")
-async def create_checkout(user_email: str = Form(...)):
-    if not STRIPE_SECRET_KEY: 
-        raise HTTPException(status_code=500, detail="Stripe not configured")
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {'name': 'Elite Tier Upgrade'},
-                    'unit_amount': 2000, 
-                },
-                'quantity': 1,
-            }],
-            mode='payment',
-            success_url='[https://lylo.ai/success](https://lylo.ai/success)',
-            cancel_url='[https://lylo.ai/cancel](https://lylo.ai/cancel)',
-        )
-        return {"id": session.id, "url": session.url}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# --- MAIN CHAT ENDPOINT (PRIVACY ENFORCED) ---
+# MAIN CHAT ENDPOINT WITH ACCESS CONTROL
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
     history: str = Form("[]"), 
     persona: str = Form("guardian"), 
     user_email: str = Form(...), 
-    user_location: str = Form(""),
-    file: UploadFile = File(None) 
+    user_location: str = Form("")
 ):
+    # VERIFY ACCESS FIRST
+    tier = BETA_TESTERS.get(user_email.lower(), None)
+    if not tier:
+        return {
+            "answer": "Access denied. Please join our waitlist at mylylo.pro for access to LYLO.",
+            "confidence_score": 100,
+            "confidence_explanation": "Access control active",
+            "scam_detected": False,
+            "scam_indicators": [],
+            "detailed_analysis": "User not authorized",
+            "web_search_used": False,
+            "personalization_active": False,
+            "tier_info": {"name": "No Access"},
+            "usage_info": {"can_send": False, "current_tier": "none"}
+        }
+    
+    # Continue with existing chat logic
     user_id = create_user_id(user_email)
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
     
-    # --- PRIVACY LOGGING ---
-    # Mask email (s*****@gmail.com)
-    masked_email = "Unknown"
-    if user_email and "@" in user_email:
-        name_part, domain_part = user_email.split("@")
-        masked_email = f"{name_part[:1]}*****@{domain_part}"
+    print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
     
-    # Log status WITHOUT content
-    image_status = "Image: YES" if file else "Image: NO"
-    print(f"🎯 PROCESSING: {masked_email} (Tier: {actual_tier})")
-    print(f"   Status: Request Received [CONTENT REDACTED] | {image_status}")
-    # -----------------------
-
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
-    web_data = await search_web_tavily(msg, user_location) if len(msg.split()) > 2 else ""
     
-    p_prompts = {
-        "guardian": "You are The Guardian. Protective, vigilant, serious.",
-        "roast": "You are The Roast Master. Sarcastic, funny, witty.",
-        "chef": "You are The Chef. Warm, food-focused metaphors.",
-        "techie": "You are The Techie. Nerdy, detailed, precise.",
-        "lawyer": "You are The Lawyer. Formal, cautious, legal tone.",
-        "friend": "You are The Best Friend. Empathetic, casual, chill."
+    # Enhanced web search triggers
+    web_search_triggers = ["weather", "temperature", "forecast", "news", "current", "today", "price", "stock", "what's", "who is", "where is", "when is"]
+    should_search = len(msg.split()) > 2 and any(trigger in msg.lower() for trigger in web_search_triggers)
+    web_evidence = await search_web_tavily(msg, user_location) if should_search else ""
+    
+    persona_prompts = {
+        "guardian": "You are The Guardian. Protective, vigilant, serious about security.",
+        "roast": "You are The Roast Master. Sarcastic, funny, witty but ultimately helpful.",
+        "chef": "You are The Chef. Warm, food-focused, use cooking metaphors.",
+        "techie": "You are The Techie. Nerdy, detailed, precise technical explanations.",
+        "lawyer": "You are The Lawyer. Formal, cautious, legal precision in language.",
+        "friend": "You are The Best Friend. Empathetic, casual, supportive and chill."
     }
     
-    image_instruction = ""
-    if file:
-        image_instruction = "[SYSTEM: The user has uploaded an image. Acknowledge it. If you cannot see it yet, ask them to describe it.]"
+    quiz_context = QUIZ_ANSWERS.get(user_id, {})
+    
+    tribunal_prompt = f"""
+{persona_prompts.get(persona, persona_prompts['guardian'])}
 
-    prompt = f"""
-    {p_prompts.get(persona, p_prompts['guardian'])}
-    CONTEXT: {QUIZ_ANSWERS.get(user_id, {})}
-    EVIDENCE: {web_data}
-    HISTORY: {history_text}
-    IMAGE_CONTEXT: {image_instruction}
-    MESSAGE: "{msg}"
-    
-    INSTRUCTIONS:
-    1. Answer accurately. If EVIDENCE is present, use it.
-    2. Provide a 'confidence_score' (0-100).
-    3. If EVIDENCE contradicts your knowledge, lower confidence.
-    
-    OUTPUT JSON:
-    {{ "answer": "text", "confidence_score": 90, "scam_detected": false }}
-    """
+CRITICAL GROUNDING RULES:
+- If EVIDENCE contradicts your knowledge, trust the evidence and lower confidence to 60-75%
+- If EVIDENCE is missing for factual claims, lower confidence to 70-80%
+- If EVIDENCE supports your answer, you can use high confidence 85-95%
 
-    print("⚔️ TRIBUNAL: Launching Battle...")
-    results = await asyncio.gather(call_gemini(prompt), call_openai(prompt))
-    valid = [r for r in results if r and r.get('answer')]
+USER CONTEXT: {quiz_context}
+CONVERSATION HISTORY: {history_text}
+REAL-TIME EVIDENCE: {web_evidence}
+USER MESSAGE: "{msg}"
+
+Respond as this persona. Be helpful and natural.
+
+REQUIRED OUTPUT JSON FORMAT:
+{{
+    "answer": "your response as the persona",
+    "confidence_score": 60-95,
+    "scam_detected": false
+}}
+"""
+
+    print("⚔️ TRIBUNAL: Launching dual AI battle...")
     
-    if valid:
-        winner = max(valid, key=lambda x: x.get('confidence_score', 0))
-        print(f"🏆 WINNER: {winner.get('model', 'Unknown')} ({winner.get('confidence_score')}%)")
+    gemini_task = call_gemini(tribunal_prompt)
+    openai_task = call_openai(tribunal_prompt)
+    
+    results = await asyncio.gather(gemini_task, openai_task, return_exceptions=True)
+    
+    valid_results = []
+    for i, result in enumerate(results):
+        model_name = "Gemini" if i == 0 else "OpenAI"
+        if isinstance(result, dict) and result.get('answer'):
+            valid_results.append(result)
+            print(f"✅ {model_name}: Confidence {result.get('confidence_score', 0)}%")
+        else:
+            print(f"❌ {model_name}: Failed")
+    
+    if valid_results:
+        winner = max(valid_results, key=lambda x: x.get('confidence_score', 0))
+        print(f"🏆 WINNER: {winner.get('model', 'Unknown')} with {winner.get('confidence_score', 0)}% confidence")
     else:
         winner = {
-            "answer": "I'm having trouble connecting to my neural network right now. Please try again in a moment.", 
-            "confidence_score": 0, 
-            "model": "Offline"
+            "answer": f"I'm having technical difficulties right now, but I'm here to help! (Emergency mode active)",
+            "confidence_score": 60,
+            "scam_detected": False,
+            "model": "Emergency Fallback"
         }
-        print("🚨 TRIBUNAL: All Failed")
-
-    # Store memory (safe to store internally, just not log)
+        print("🚨 TRIBUNAL: All models failed, using emergency fallback")
+    
     store_user_memory(user_id, msg, "user")
-    store_user_memory(user_id, winner.get('answer', ''), "bot")
+    store_user_memory(user_id, winner['answer'], "bot")
     
     return {
         "answer": winner['answer'],
-        "confidence_score": winner.get('confidence_score', 0),
+        "confidence_score": winner.get('confidence_score', 60),
+        "confidence_explanation": f"Based on tribunal analysis using {winner.get('model', 'AI system')}",
         "scam_detected": winner.get('scam_detected', False),
+        "scam_indicators": [],
+        "detailed_analysis": "No threats detected in this query",
+        "web_search_used": bool(web_evidence),
+        "personalization_active": bool(quiz_context),
         "tier_info": {"name": f"{actual_tier.title()} Tier"},
-        "usage_info": {"can_send": True}
+        "usage_info": {"can_send": True, "current_tier": actual_tier}
     }
 
-# --- STATS & QUIZ ---
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
-    tier = BETA_TESTERS.get(user_email.lower(), "free")
-    convos = USER_CONVERSATIONS.get(user_id, [])
+    tier = BETA_TESTERS.get(user_email.lower(), "free")  # Use dynamic beta list
+    conversations = USER_CONVERSATIONS.get(user_id, [])
+    quiz_data = QUIZ_ANSWERS.get(user_id, {})
+    
     limit = 100 if tier == "elite" else 10
+    current_usage = len(conversations)
+    usage_percentage = min(100, (current_usage / limit) * 100) if limit > 0 else 0
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    conversations_today = len([c for c in conversations if c.get('timestamp', '').startswith(today)])
     
     return {
-        "tier": tier, "conversations_today": len(convos), "total_conversations": len(convos), "has_quiz_data": user_id in QUIZ_ANSWERS,
-        "memory_entries": len(convos),
-        "usage": {"current": len(convos), "limit": limit, "percentage": (len(convos)/limit)*100},
-        "learning_profile": {"interests": [], "top_concern": ""}
-    }
-
-@app.post("/quiz")
-async def save_quiz(user_email: str = Form(...), question1: str = Form(...), question2: str = Form(...), question3: str = Form(...), question4: str = Form(...), question5: str = Form(...)):
-    user_id = create_user_id(user_email)
-    QUIZ_ANSWERS[user_id] = {"concern": question1, "style": question2, "device": question3, "interest": question4, "access": question5}
-    return {"status": "Quiz Saved"}
-
-# --- ROOT STATUS ---
-@app.get("/")
-async def root():
-    return {
-        "status": "LYLO TRIBUNAL SYSTEM ONLINE",
-        "version": "12.2.0",
-        "beta_testers": len(BETA_TESTERS),
-        "engines": {
-            "gemini": "Ready" if gemini_ready else "Offline",
-            "openai": "Ready" if openai_client else "Offline",
-            "tavily": "Ready" if tavily_client else "Offline",
-            "pinecone": "Ready" if memory_index else "Offline",
-            "stripe": "Ready" if 'stripe' in globals() and stripe.api_key else "Offline"
+        "tier": tier,
+        "conversations_today": conversations_today,
+        "total_conversations": len(conversations),
+        "has_quiz_data": user_id in QUIZ_ANSWERS,
+        "memory_entries": len(conversations),
+        "usage": {
+            "current": current_usage,
+            "limit": limit,
+            "percentage": usage_percentage
+        },
+        "learning_profile": {
+            "interests": quiz_data.get("interest", "General").split(",") if quiz_data.get("interest") else ["General"],
+            "top_concern": quiz_data.get("concern", "None")
         }
     }
 
+@app.post("/quiz")
+async def save_quiz(
+    user_email: str = Form(...), 
+    question1: str = Form(...), 
+    question2: str = Form(...), 
+    question3: str = Form(...), 
+    question4: str = Form(...), 
+    question5: str = Form(...)
+):
+    user_id = create_user_id(user_email)
+    
+    QUIZ_ANSWERS[user_id] = {
+        "concern": question1,
+        "style": question2,
+        "device": question3,
+        "interest": question4,
+        "access": question5
+    }
+    
+    print(f"📝 Quiz saved for user {user_email[:20]}")
+    return {"status": "Quiz saved successfully"}
+
+@app.get("/")
+async def root():
+    return {
+        "status": "LYLO TRIBUNAL SYSTEM WITH ACCESS CONTROL ONLINE",
+        "version": "9.1.0",
+        "engines": {
+            "gemini": "✅ Ready" if gemini_ready else "❌ Offline",
+            "openai": "✅ Ready" if openai_client else "❌ Offline",
+            "tavily": "✅ Ready" if tavily_client else "❌ Offline",
+            "pinecone": "✅ Ready" if memory_index else "❌ Offline"
+        },
+        "beta_testers": len(BETA_TESTERS),
+        "access_control": "✅ Active"
+    }
+
 if __name__ == "__main__":
-    print("🚀 LYLO SYSTEM STARTING...")
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+    print("🚀 LYLO TRIBUNAL SYSTEM WITH ACCESS CONTROL STARTING")
+    print(f"👥 Beta Testers: {len(BETA_TESTERS)}")
+    print("🔒 Access Control: ACTIVE")
+    uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
