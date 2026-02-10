@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="9.4.0 - BETA READY")
+app = FastAPI(title="LYLO Backend", version="9.5.0 - CUSTOM NAMES")
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,9 +85,23 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"❌ OpenAI Failed: {e}")
 
-# USER MANAGEMENT
-ELITE_USERS = {"stangman9898@gmail.com": "elite"}
-BETA_TESTERS = ELITE_USERS.copy()
+# USER MANAGEMENT WITH CUSTOM NAMES
+ELITE_USERS = {
+    "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
+    "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
+    "investor@example.com": {"tier": "elite", "name": "Michael"},
+    "family@example.com": {"tier": "elite", "name": "Mom"},
+    "test@gmail.com": {"tier": "elite", "name": "Beta Tester"}
+}
+
+# Build BETA_TESTERS from ELITE_USERS for compatibility
+BETA_TESTERS = {}
+for email, data in ELITE_USERS.items():
+    if isinstance(data, dict):
+        BETA_TESTERS[email] = data["tier"]
+    else:
+        BETA_TESTERS[email] = data  # Backward compatibility
+
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
@@ -326,17 +340,25 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
         print(f"❌ OpenAI failed: {e}")
         return None
 
-# ACCESS CONTROL
+# ACCESS CONTROL WITH CUSTOM NAMES
 @app.post("/verify-access")
 async def verify_access(email: str = Form(...)):
     user_email = email.lower()
-    tier = BETA_TESTERS.get(user_email, None)
+    user_data = ELITE_USERS.get(user_email, None)
     
-    if tier:
+    if user_data:
+        # Handle both old format (string) and new format (dict)
+        if isinstance(user_data, dict):
+            tier = user_data["tier"]
+            display_name = user_data["name"]
+        else:
+            tier = user_data
+            display_name = "Christopher" if "stangman" in user_email else user_email.split('@')[0]
+        
         return {
             "access_granted": True,
             "tier": tier,
-            "user_name": "Christopher" if "stangman" in user_email else user_email.split('@')[0],
+            "user_name": display_name,
             "is_beta": True
         }
     else:
@@ -349,31 +371,91 @@ async def verify_access(email: str = Form(...)):
         }
 
 @app.post("/admin/add-beta-tester")
-async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(...), tier: str = Form("elite")):
+async def add_beta_tester(
+    admin_email: str = Form(...), 
+    new_email: str = Form(...), 
+    tier: str = Form("elite"),
+    name: str = Form("")
+):
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    BETA_TESTERS[new_email.lower()] = tier
-    print(f"✅ Beta tester added: {new_email}")
+    # Determine display name
+    if name:
+        display_name = name
+    else:
+        display_name = new_email.split('@')[0]
     
-    return {"status": "success", "message": f"Added {new_email}"}
+    # Add to ELITE_USERS with name
+    ELITE_USERS[new_email.lower()] = {"tier": tier, "name": display_name}
+    BETA_TESTERS[new_email.lower()] = tier
+    
+    print(f"✅ Beta tester added: {new_email} -> {display_name} ({tier})")
+    
+    return {
+        "status": "success", 
+        "message": f"Added {display_name} ({new_email}) as {tier} beta tester"
+    }
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    return {"beta_testers": BETA_TESTERS, "total": len(BETA_TESTERS)}
+    formatted_testers = {}
+    for email, data in ELITE_USERS.items():
+        if isinstance(data, dict):
+            formatted_testers[email] = f"{data['name']} ({data['tier']})"
+        else:
+            formatted_testers[email] = f"{email.split('@')[0]} ({data})"
+    
+    return {
+        "beta_testers": formatted_testers, 
+        "total": len(ELITE_USERS)
+    }
 
 @app.delete("/admin/remove-beta-tester")
 async def remove_beta_tester(admin_email: str = Form(...), remove_email: str = Form(...)):
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    if remove_email.lower() in BETA_TESTERS:
+    if remove_email.lower() in ELITE_USERS:
+        user_info = ELITE_USERS[remove_email.lower()]
+        del ELITE_USERS[remove_email.lower()]
         del BETA_TESTERS[remove_email.lower()]
-        return {"status": "success", "message": f"Removed {remove_email}"}
-    return {"status": "error", "message": "Not found"}
+        
+        display_name = user_info["name"] if isinstance(user_info, dict) else remove_email.split('@')[0]
+        return {"status": "success", "message": f"Removed {display_name} ({remove_email})"}
+    
+    return {"status": "error", "message": "Beta tester not found"}
+
+@app.post("/check-beta-access")
+async def check_beta_access(email: str = Form(...)):
+    user_data = ELITE_USERS.get(email.lower(), None)
+    
+    if user_data:
+        if isinstance(user_data, dict):
+            tier = user_data["tier"]
+            display_name = user_data["name"]
+        else:
+            tier = user_data
+            display_name = email.split('@')[0]
+        
+        return {
+            "email": email,
+            "tier": tier,
+            "display_name": display_name,
+            "is_beta_tester": True,
+            "has_elite_access": tier == "elite"
+        }
+    
+    return {
+        "email": email,
+        "tier": "free",
+        "display_name": email.split('@')[0],
+        "is_beta_tester": False,
+        "has_elite_access": False
+    }
 
 # MAIN CHAT WITH INTERNET & MEMORY
 @app.post("/chat")
@@ -385,17 +467,32 @@ async def chat(
     user_location: str = Form(""),
     file: UploadFile = File(None)
 ):
-    # CHECK ACCESS
-    tier = BETA_TESTERS.get(user_email.lower(), None)
-    if not tier:
+    # CHECK ACCESS WITH CUSTOM NAMES
+    user_data = ELITE_USERS.get(user_email.lower(), None)
+    if not user_data:
         return {
             "answer": "Beta access required. Join waitlist at mylylo.pro",
             "confidence_score": 100,
-            "scam_detected": False
+            "scam_detected": False,
+            "confidence_explanation": "Access control active",
+            "scam_indicators": [],
+            "detailed_analysis": "User not authorized",
+            "web_search_used": False,
+            "personalization_active": False,
+            "tier_info": {"name": "No Access"},
+            "usage_info": {"can_send": False, "current_tier": "none"}
         }
+
+    # Get tier from user data
+    if isinstance(user_data, dict):
+        tier = user_data["tier"]
+        user_display_name = user_data["name"]
+    else:
+        tier = user_data
+        user_display_name = "Christopher" if "stangman" in user_email else user_email.split('@')[0]
     
     user_id = create_user_id(user_email)
-    print(f"🚀 CHAT: {msg[:50]}... from {user_email[:15]} ({tier})")
+    print(f"🚀 CHAT: {msg[:50]}... from {user_display_name} ({tier})")
     
     # PROCESS IMAGE
     image_b64 = None
@@ -451,7 +548,7 @@ async def chat(
     prompt = f"""
 {personas.get(persona, personas['guardian'])}
 
-🧠 MEMORY: You remember past conversations and learn from them.
+🧠 MEMORY: You remember past conversations with {user_display_name} and learn from them.
 🌐 INTERNET: You have access to real-time internet data.
 
 {memory_context}
@@ -460,7 +557,7 @@ async def chat(
 USER PROFILE: {quiz_data}
 REAL-TIME DATA: {web_data}
 
-USER: "{msg}"
+{user_display_name}: "{msg}"
 
 RESPOND NATURALLY as the persona. Use memories and internet data to give accurate, helpful answers. Speak conversationally - no technical formatting.
 """
@@ -483,7 +580,7 @@ RESPOND NATURALLY as the persona. Use memories and internet data to give accurat
         print(f"🏆 Winner: {winner.get('model')} ({winner.get('confidence_score')}%)")
     else:
         winner = {
-            "answer": "I'm having technical difficulties, but I'm here to help!",
+            "answer": f"I'm having technical difficulties, but I'm here to help you {user_display_name}!",
             "confidence_score": 60,
             "scam_detected": False,
             "model": "Emergency Backup"
@@ -507,11 +604,22 @@ RESPOND NATURALLY as the persona. Use memories and internet data to give accurat
         "usage_info": {"can_send": True, "current_tier": tier}
     }
 
-# USER STATS
+# USER STATS WITH CUSTOM NAMES
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
-    tier = BETA_TESTERS.get(user_email.lower(), "free")
+    user_data = ELITE_USERS.get(user_email.lower(), None)
+    
+    if user_data and isinstance(user_data, dict):
+        tier = user_data["tier"]
+        display_name = user_data["name"]
+    elif user_data:
+        tier = user_data
+        display_name = "Christopher" if "stangman" in user_email.lower() else user_email.split('@')[0]
+    else:
+        tier = "free"
+        display_name = user_email.split('@')[0]
+    
     conversations = USER_CONVERSATIONS.get(user_id, [])
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     
@@ -524,6 +632,7 @@ async def get_user_stats(user_email: str):
     
     return {
         "tier": tier,
+        "display_name": display_name,
         "conversations_today": conversations_today,
         "total_conversations": len(conversations),
         "has_quiz_data": user_id in QUIZ_ANSWERS,
@@ -559,16 +668,16 @@ async def save_quiz(
 @app.get("/")
 async def root():
     return {
-        "status": "LYLO BETA READY",
-        "version": "9.4.0",
+        "status": "LYLO BETA READY - CUSTOM NAMES",
+        "version": "9.5.0",
         "systems": {
             "internet_search": "✅ Ready" if tavily_client else "❌ Offline",
             "memory_system": "✅ Ready" if memory_index else "❌ Offline",
             "gemini_vision": "✅ Ready" if gemini_ready else "❌ Offline",
             "openai_vision": "✅ Ready" if openai_client else "❌ Offline"
         },
-        "beta_testers": len(BETA_TESTERS),
-        "features": ["🌐 Real Internet", "🧠 Memory", "👁️ Vision", "🔒 Access Control"]
+        "beta_testers": len(ELITE_USERS),
+        "features": ["🌐 Real Internet", "🧠 Memory", "👁️ Vision", "🔒 Access Control", "👤 Custom Names"]
     }
 
 if __name__ == "__main__":
@@ -577,5 +686,6 @@ if __name__ == "__main__":
     print("🧠 Memory system: ENABLED") 
     print("👁️ Vision analysis: ENABLED")
     print("🔒 Access control: ENABLED")
+    print("👤 Custom names: ENABLED")
     print("✅ BETA READY!")
     uvicorn.run(app, host="0.0.0.0", port=10000)
