@@ -40,11 +40,13 @@ export default function ChatInterface({
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
+  // NEW: Image State
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  // NEW: File Input Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,6 +173,7 @@ export default function ChatInterface({
     setAutoTTS(!autoTTS);
   };
 
+  // NEW: Handle Image Selection
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         setSelectedImage(e.target.files[0]);
@@ -207,7 +210,7 @@ export default function ChatInterface({
         [], 
         currentPersona.id,
         userEmail,
-        selectedImage
+        selectedImage // NEW
       );
       
       console.log('📥 Response:', response);
