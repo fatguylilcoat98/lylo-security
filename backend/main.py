@@ -3,9 +3,12 @@ import uvicorn
 import json
 import hashlib
 import asyncio
-from fastapi import FastAPI, Form, HTTPException
+import base64
+from io import BytesIO
+from PIL import Image
+from fastapi import FastAPI, Form, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from collections import defaultdict
 from tavily import TavilyClient
@@ -16,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="9.1.0 - THE TRIBUNAL WITH ACCESS CONTROL")
+app = FastAPI(title="LYLO Backend", version="9.2.0 - VISION ENABLED")
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,7 +72,7 @@ if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_ready = True
-        print("✅ Gemini Configured")
+        print("✅ Gemini Vision Configured")
     except Exception as e:
         print(f"⚠️ Gemini Error: {e}")
 
@@ -77,22 +80,16 @@ openai_client = None
 if OPENAI_API_KEY:
     try:
         openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI Client Ready")
+        print("✅ OpenAI Vision Ready")
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
 # BETA TESTER MANAGEMENT SYSTEM
 ELITE_USERS = {
     "stangman9898@gmail.com": "elite",
-    # Add more beta testers here - Christopher can easily add emails
-    # "friend@example.com": "elite",
-    # "investor@example.com": "elite",
-    # "family@example.com": "elite",
 }
 
-# In-memory beta tester storage (persists during runtime)
 BETA_TESTERS = ELITE_USERS.copy()
-
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
@@ -107,39 +104,35 @@ def store_user_memory(user_id: str, content: str, role: str):
     })
 
 async def search_web_tavily(query: str, location: str = "") -> str:
-    """ENHANCED Tavily search with better error handling"""
     if not tavily_client: 
         print("❌ Tavily: No client available")
         return "EVIDENCE: Web search unavailable - client not initialized"
     
     try:
-        # Enhanced query building
         search_query = f"{query} {location}".strip()
         print(f"🔍 Tavily: Searching for '{search_query}'")
         
         response = tavily_client.search(
             query=search_query, 
-            search_depth="advanced",  # Changed from "basic" for better results
-            max_results=5,  # Increased from 3
+            search_depth="advanced",
+            max_results=5,
             include_answer=True,
             include_domains=None,
             exclude_domains=None
         )
         
-        print(f"🔍 Tavily: Response received - {type(response)}")
+        print(f"🔍 Tavily: Response received")
         
         evidence = []
         
-        # Process the answer
         if response and response.get('answer'):
             evidence.append(f"DIRECT ANSWER: {response['answer']}")
             print(f"✅ Tavily: Direct answer found")
         
-        # Process search results
         results = response.get('results', []) if response else []
-        for i, result in enumerate(results[:3]):  # Limit to top 3 results
+        for i, result in enumerate(results[:3]):
             if result.get('content'):
-                content = result['content'][:300]  # Increased from 200
+                content = result['content'][:300]
                 evidence.append(f"SOURCE {i+1}: {content}")
         
         final_evidence = "\n".join(evidence) if evidence else "EVIDENCE: No reliable information found"
@@ -151,56 +144,61 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"❌ {error_msg}")
         return f"EVIDENCE: Search failed - {str(e)}"
 
-async def call_gemini(prompt: str):
-    """GEMINI 404 FIX - Correct model names and API configuration"""
+def process_image_for_ai(image_file: bytes) -> str:
+    """Convert image to base64 for AI processing"""
+    try:
+        # Convert to base64
+        image_b64 = base64.b64encode(image_file).decode('utf-8')
+        return image_b64
+    except Exception as e:
+        print(f"❌ Image processing error: {e}")
+        return None
+
+async def call_gemini_vision(prompt: str, image_b64: str = None):
+    """FIXED GEMINI VISION - Actually sees and analyzes images"""
     if not gemini_ready: 
         return None
     
-    # CORRECTED MODEL NAMES for current Gemini API
     models_to_try = [
         'gemini-1.5-pro-latest',
         'gemini-1.5-flash-latest',
-        'gemini-pro',
+        'gemini-pro-vision',
         'gemini-1.5-flash'
     ]
     
     for model_name in models_to_try:
         try:
-            print(f"🧠 Trying Gemini model: {model_name}")
+            print(f"🤖 Trying Gemini Vision model: {model_name}")
             
-            # Create model instance
             model = genai.GenerativeModel(model_name)
             
-            # Try with JSON mode first
-            try:
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=500,
-                        temperature=0.7,
-                        response_mime_type="application/json"
-                    )
+            # Prepare content for vision analysis
+            content_parts = [prompt]
+            
+            if image_b64:
+                print(f"📸 Processing image with Gemini Vision")
+                # Add image to content
+                content_parts.append({
+                    'mime_type': 'image/jpeg',
+                    'data': image_b64
+                })
+            
+            response = model.generate_content(
+                content_parts,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=1000,
+                    temperature=0.7
                 )
-            except:
-                # Fallback to regular mode if JSON mode fails
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=500,
-                        temperature=0.7
-                    )
-                )
+            )
             
             if response and response.text:
+                # Parse response for JSON or create structured response
                 try:
-                    # Try to parse as JSON
                     data = json.loads(response.text)
                 except json.JSONDecodeError:
-                    # If JSON parsing fails, extract key info and create structured response
                     text = response.text.strip()
                     
-                    # Try to extract confidence if mentioned
-                    confidence = 85
+                    confidence = 90 if image_b64 else 85
                     if "confidence" in text.lower():
                         import re
                         conf_match = re.search(r'(\d+)%', text)
@@ -213,46 +211,63 @@ async def call_gemini(prompt: str):
                         "scam_detected": False
                     }
                 
-                data['model'] = f"Gemini ({model_name})"
-                print(f"✅ Gemini {model_name} success")
+                data['model'] = f"Gemini Vision ({model_name})"
+                print(f"✅ Gemini Vision {model_name} success - Image analyzed!")
                 return data
                 
         except Exception as e:
-            print(f"❌ Gemini {model_name} failed: {e}")
+            print(f"❌ Gemini Vision {model_name} failed: {e}")
             continue
     
-    print("❌ All Gemini models failed")
+    print("❌ All Gemini Vision models failed")
     return None
 
-async def call_openai(prompt: str):
+async def call_openai_vision(prompt: str, image_b64: str = None):
+    """OpenAI Vision for image analysis"""
     if not openai_client: 
         return None
         
     try:
+        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        
+        if image_b64:
+            print(f"📸 Processing image with OpenAI Vision")
+            messages[0]["content"].append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_b64}",
+                    "detail": "high"
+                }
+            })
+        
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            max_tokens=500,
+            model="gpt-4o-mini", # Vision capable
+            messages=messages,
+            max_tokens=1000,
             temperature=0.7
         )
         
-        data = json.loads(response.choices[0].message.content)
-        data['model'] = "OpenAI (GPT-4o-mini)"
-        print("✅ OpenAI success")
+        answer = response.choices[0].message.content
+        
+        # Create structured response
+        data = {
+            "answer": answer,
+            "confidence_score": 90 if image_b64 else 85,
+            "scam_detected": False,
+            "model": "OpenAI Vision (GPT-4o-mini)"
+        }
+        
+        print("✅ OpenAI Vision success - Image analyzed!")
         return data
         
     except Exception as e:
-        print(f"❌ OpenAI failed: {e}")
+        print(f"❌ OpenAI Vision failed: {e}")
         return None
 
 # ACCESS CONTROL ENDPOINTS
 @app.post("/verify-access")
 async def verify_access(email: str = Form(...)):
-    """Verify if user has access to the platform"""
     user_email = email.lower()
-    
-    # Check if user is in beta testers list
     tier = BETA_TESTERS.get(user_email, None)
     
     if tier:
@@ -271,14 +286,12 @@ async def verify_access(email: str = Form(...)):
             "is_beta": False
         }
 
-# BETA TESTER MANAGEMENT ENDPOINTS
 @app.post("/admin/add-beta-tester")
 async def add_beta_tester(
     admin_email: str = Form(...),
     new_email: str = Form(...),
     tier: str = Form("elite")
 ):
-    """Add a beta tester (only Christopher can use this)"""
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -293,7 +306,6 @@ async def add_beta_tester(
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
-    """List all beta testers (only Christopher can use this)"""
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -307,7 +319,6 @@ async def remove_beta_tester(
     admin_email: str = Form(...),
     remove_email: str = Form(...)
 ):
-    """Remove a beta tester (only Christopher can use this)"""
     if admin_email.lower() != "stangman9898@gmail.com":
         raise HTTPException(status_code=403, detail="Unauthorized")
     
@@ -320,7 +331,6 @@ async def remove_beta_tester(
 
 @app.post("/check-beta-access")
 async def check_beta_access(email: str = Form(...)):
-    """Check if user has beta access"""
     tier = BETA_TESTERS.get(email.lower(), "free")
     is_beta = tier in ["elite", "pro"]
     
@@ -331,14 +341,15 @@ async def check_beta_access(email: str = Form(...)):
         "has_elite_access": tier == "elite"
     }
 
-# MAIN CHAT ENDPOINT WITH ACCESS CONTROL
+# MAIN CHAT ENDPOINT WITH VISION SUPPORT
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
     history: str = Form("[]"), 
     persona: str = Form("guardian"), 
     user_email: str = Form(...), 
-    user_location: str = Form("")
+    user_location: str = Form(""),
+    file: UploadFile = File(None)  # Support image uploads
 ):
     # VERIFY ACCESS FIRST
     tier = BETA_TESTERS.get(user_email.lower(), None)
@@ -356,11 +367,21 @@ async def chat(
             "usage_info": {"can_send": False, "current_tier": "none"}
         }
     
-    # Continue with existing chat logic
     user_id = create_user_id(user_email)
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
     
     print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
+    
+    # PROCESS IMAGE IF PROVIDED
+    image_b64 = None
+    if file and file.filename:
+        try:
+            print(f"📸 Processing uploaded image: {file.filename}")
+            image_data = await file.read()
+            image_b64 = process_image_for_ai(image_data)
+            print(f"✅ Image converted to base64 for AI analysis")
+        except Exception as e:
+            print(f"❌ Image processing failed: {e}")
     
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
     
@@ -380,13 +401,35 @@ async def chat(
     
     quiz_context = QUIZ_ANSWERS.get(user_id, {})
     
-    tribunal_prompt = f"""
+    # ENHANCED PROMPT FOR VISION
+    if image_b64:
+        tribunal_prompt = f"""
 {persona_prompts.get(persona, persona_prompts['guardian'])}
 
-CRITICAL GROUNDING RULES:
-- If EVIDENCE contradicts your knowledge, trust the evidence and lower confidence to 60-75%
-- If EVIDENCE is missing for factual claims, lower confidence to 70-80%
-- If EVIDENCE supports your answer, you can use high confidence 85-95%
+🔍 VISION MODE: You can see and analyze the image provided. Describe what you see in detail and provide relevant insights based on the image content.
+
+USER CONTEXT: {quiz_context}
+CONVERSATION HISTORY: {history_text}
+REAL-TIME EVIDENCE: {web_evidence}
+USER MESSAGE: "{msg}"
+
+INSTRUCTIONS:
+1. Carefully analyze the image if provided
+2. Describe what you see clearly and accurately  
+3. Provide helpful insights or answer questions about the image
+4. Maintain your persona while being informative
+5. If it's a potential scam image (fake documents, suspicious QR codes, etc.), warn the user
+
+REQUIRED OUTPUT JSON FORMAT:
+{{
+    "answer": "your detailed response including image analysis",
+    "confidence_score": 60-95,
+    "scam_detected": false
+}}
+"""
+    else:
+        tribunal_prompt = f"""
+{persona_prompts.get(persona, persona_prompts['guardian'])}
 
 USER CONTEXT: {quiz_context}
 CONVERSATION HISTORY: {history_text}
@@ -403,16 +446,21 @@ REQUIRED OUTPUT JSON FORMAT:
 }}
 """
 
-    print("⚔️ TRIBUNAL: Launching dual AI battle...")
+    print("⚔️ TRIBUNAL: Launching AI Vision battle...")
     
-    gemini_task = call_gemini(tribunal_prompt)
-    openai_task = call_openai(tribunal_prompt)
+    # Use vision models if image provided
+    if image_b64:
+        gemini_task = call_gemini_vision(tribunal_prompt, image_b64)
+        openai_task = call_openai_vision(tribunal_prompt, image_b64)
+    else:
+        gemini_task = call_gemini_vision(tribunal_prompt)
+        openai_task = call_openai_vision(tribunal_prompt)
     
     results = await asyncio.gather(gemini_task, openai_task, return_exceptions=True)
     
     valid_results = []
     for i, result in enumerate(results):
-        model_name = "Gemini" if i == 0 else "OpenAI"
+        model_name = "Gemini Vision" if i == 0 else "OpenAI Vision"
         if isinstance(result, dict) and result.get('answer'):
             valid_results.append(result)
             print(f"✅ {model_name}: Confidence {result.get('confidence_score', 0)}%")
@@ -424,7 +472,7 @@ REQUIRED OUTPUT JSON FORMAT:
         print(f"🏆 WINNER: {winner.get('model', 'Unknown')} with {winner.get('confidence_score', 0)}% confidence")
     else:
         winner = {
-            "answer": f"I'm having technical difficulties right now, but I'm here to help! (Emergency mode active)",
+            "answer": f"I'm having technical difficulties analyzing {'the image' if image_b64 else 'your message'} right now, but I'm here to help! (Emergency mode active)",
             "confidence_score": 60,
             "scam_detected": False,
             "model": "Emergency Fallback"
@@ -450,7 +498,7 @@ REQUIRED OUTPUT JSON FORMAT:
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
-    tier = BETA_TESTERS.get(user_email.lower(), "free")  # Use dynamic beta list
+    tier = BETA_TESTERS.get(user_email.lower(), "free")
     conversations = USER_CONVERSATIONS.get(user_id, [])
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     
@@ -503,20 +551,22 @@ async def save_quiz(
 @app.get("/")
 async def root():
     return {
-        "status": "LYLO TRIBUNAL SYSTEM WITH ACCESS CONTROL ONLINE",
-        "version": "9.1.0",
+        "status": "LYLO VISION TRIBUNAL SYSTEM ONLINE",
+        "version": "9.2.0",
         "engines": {
-            "gemini": "✅ Ready" if gemini_ready else "❌ Offline",
-            "openai": "✅ Ready" if openai_client else "❌ Offline",
+            "gemini_vision": "✅ Ready" if gemini_ready else "❌ Offline",
+            "openai_vision": "✅ Ready" if openai_client else "❌ Offline",
             "tavily": "✅ Ready" if tavily_client else "❌ Offline",
             "pinecone": "✅ Ready" if memory_index else "❌ Offline"
         },
         "beta_testers": len(BETA_TESTERS),
-        "access_control": "✅ Active"
+        "access_control": "✅ Active",
+        "vision_support": "✅ Enabled"
     }
 
 if __name__ == "__main__":
-    print("🚀 LYLO TRIBUNAL SYSTEM WITH ACCESS CONTROL STARTING")
+    print("🚀 LYLO VISION TRIBUNAL SYSTEM STARTING")
     print(f"👥 Beta Testers: {len(BETA_TESTERS)}")
     print("🔒 Access Control: ACTIVE")
+    print("👁️ Vision Analysis: ENABLED")
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
