@@ -12,7 +12,6 @@ interface ChatInterfaceProps {
   onUsageUpdate?: () => void;
 }
 
-// RESTORED: Full Persona List
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', description: 'Protective Security Expert', color: 'blue' },
   { id: 'roast', name: 'The Roast Master', description: 'Witty but Helpful', color: 'orange' },
@@ -56,7 +55,7 @@ export default function ChatInterface({
     }
   }, [messages]);
 
-  // RESTORED: Detailed Microphone Setup & Error Handling
+  // MICROPHONE SETUP
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -76,7 +75,6 @@ export default function ChatInterface({
         console.log('🎤 Speech result:', transcript);
         setInput(transcript);
         setIsListening(false);
-        // Add a small delay before sending to allow user to see text
         setTimeout(() => handleSend(transcript), 500);
       };
 
@@ -112,18 +110,20 @@ export default function ChatInterface({
   const speakText = (text: string) => {
     if (!autoTTS || !text || isSpeaking) return;
     
-    // Clean text of markdown and timestamps for speaking
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
     
     if (window.speechSynthesis && cleanText) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(cleanText);
+      
       utterance.rate = 0.85;
       utterance.pitch = 1.0;
       utterance.volume = 0.9;
+      
       setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
+      
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -135,16 +135,19 @@ export default function ChatInterface({
     }
   }, [messages, autoTTS]);
 
+  // MICROPHONE ACTIVATION
   const startListening = () => {
     if (!micSupported) {
       alert('Speech recognition not supported on this device');
       return;
     }
+
     if (recognitionRef.current && !loading && !isListening) {
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
       }
+      
       try {
         console.log('🎤 Starting speech recognition...');
         recognitionRef.current.start();
@@ -181,10 +184,9 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      // Send message with full history
       const response = await sendChatMessage(
         textToSend, 
-        [], // History logic handled by backend or expanded here if needed
+        [], 
         currentPersona.id,
         userEmail
       );
@@ -198,7 +200,7 @@ export default function ChatInterface({
         timestamp: new Date(),
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
-        scamIndicators: [] 
+        scamIndicators: []
       };
       
       setMessages(prev => [...prev, botMsg]);
@@ -236,12 +238,13 @@ export default function ChatInterface({
   };
 
   return (
-    // FIXED: z-50 forces this to overlay the original header
-    <div className="fixed inset-0 z-50 flex flex-col h-[100dvh] bg-[#050505] relative overflow-hidden font-sans">
+    // FIXED: z-[9999] forces this div to take top priority, covering the duplicate header
+    <div className="fixed inset-0 z-[9999] flex flex-col h-[100dvh] bg-[#050505] relative overflow-hidden font-sans">
       
-      {/* HEADER */}
+      {/* HEADER - No Overflow */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative">
         <div className="flex items-center justify-between">
+          
           <div className="relative">
             <button
               onClick={(e) => {
@@ -257,9 +260,9 @@ export default function ChatInterface({
               </div>
             </button>
 
-            {/* DROPDOWN MENU */}
             {showDropdown && (
               <div className="absolute top-10 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[250px] z-50 max-h-[80vh] overflow-y-auto">
+                
                 <div className="mb-3 p-2 bg-white/5 rounded-lg">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Account Status</h3>
                   {userStats && (
@@ -308,13 +311,33 @@ export default function ChatInterface({
                 <div className="mb-3">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Text Size</h3>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => onZoomChange(Math.max(50, zoomLevel - 25))} className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs">-</button>
-                    <span className="text-white font-bold text-xs min-w-[40px] text-center">{zoomLevel}%</span>
-                    <button onClick={() => onZoomChange(Math.min(200, zoomLevel + 25))} className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs">+</button>
+                    <button 
+                      onClick={() => onZoomChange(Math.max(50, zoomLevel - 25))}
+                      className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs"
+                    >
+                      -
+                    </button>
+                    <span className="text-white font-bold text-xs min-w-[40px] text-center">
+                      {zoomLevel}%
+                    </span>
+                    <button 
+                      onClick={() => onZoomChange(Math.min(200, zoomLevel + 25))}
+                      className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
 
-                <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
+                <button
+                  onClick={() => {
+                    onLogout();
+                    setShowDropdown(false);
+                  }}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors"
+                >
+                  Logout
+                </button>
               </div>
             )}
           </div>
@@ -323,15 +346,21 @@ export default function ChatInterface({
             <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>
               L<span className="text-[#3b82f6]">Y</span>LO
             </h1>
-            <p className="text-gray-500 text-xs uppercase tracking-[0.3em] font-bold">Digital Bodyguard</p>
+            <p className="text-gray-500 text-xs uppercase tracking-[0.3em] font-bold">
+              Digital Bodyguard
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="text-right">
-              <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{getUserDisplayName()}</div>
+              <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
+                {getUserDisplayName()}
+              </div>
               <div className="flex items-center gap-1 justify-end">
                 <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-gray-400 text-xs uppercase font-bold">{isOnline ? 'Online' : 'Offline'}</span>
+                <span className="text-gray-400 text-xs uppercase font-bold">
+                  {isOnline ? 'Online' : 'Offline'}
+                </span>
               </div>
             </div>
           </div>
@@ -342,25 +371,49 @@ export default function ChatInterface({
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-3"
-        style={{ paddingBottom: '140px', minHeight: 0, fontSize: `${zoomLevel / 100}rem` }}
+        style={{ 
+          paddingBottom: '140px', // Space for fixed input
+          minHeight: 0,
+          fontSize: `${zoomLevel / 100}rem`
+        }}
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
             <div className="w-16 h-16 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-2xl flex items-center justify-center mb-4">
               <span className="text-white font-black text-xl">L</span>
             </div>
-            <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
-            <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium">Your AI Security System is Ready</p>
+            
+            <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">
+              {currentPersona.name}
+            </h2>
+            <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium">
+              Your AI Security System is Ready
+            </p>
           </div>
         )}
         
         {messages.map((msg) => (
           <div key={msg.id} className="space-y-2">
+            
             <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all ${msg.sender === 'user' ? 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] border-[#3b82f6]/30 text-white' : 'bg-black/60 border-white/10 text-gray-100'}`}>
-                <div className="leading-relaxed font-medium">{msg.content}</div>
-                <div className={`text-xs mt-2 opacity-70 font-bold uppercase tracking-wider ${msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'}`}>
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div className={`
+                max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all
+                ${msg.sender === 'user' 
+                  ? 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] border-[#3b82f6]/30 text-white'
+                  : 'bg-black/60 border-white/10 text-gray-100'
+                }
+              `}>
+                <div className="leading-relaxed font-medium">
+                  {msg.content}
+                </div>
+                
+                <div className={`text-xs mt-2 opacity-70 font-bold uppercase tracking-wider ${
+                  msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'
+                }`}>
+                  {msg.timestamp.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
                 </div>
               </div>
             </div>
@@ -369,20 +422,37 @@ export default function ChatInterface({
               <div className="max-w-[85%]">
                 <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-white font-black uppercase text-xs tracking-[0.1em]">Truth Confidence</span>
-                    <span className="text-[#3b82f6] font-black text-sm">{msg.confidenceScore}%</span>
+                    <span className="text-white font-black uppercase text-xs tracking-[0.1em]">
+                      Truth Confidence
+                    </span>
+                    <span className="text-[#3b82f6] font-black text-sm">
+                      {msg.confidenceScore}%
+                    </span>
                   </div>
+                  
                   <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all duration-1000" style={{ width: `${msg.confidenceScore}%` }} />
+                    <div 
+                      className="h-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all duration-1000"
+                      style={{ width: `${msg.confidenceScore}%` }}
+                    />
                   </div>
+                  
                   {msg.scamDetected && (
-                    <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-xs">⚠️ SCAM DETECTED</div>
+                    <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-xs">
+                      ⚠️ SCAM DETECTED
+                      {msg.scamIndicators && msg.scamIndicators.length > 0 && (
+                        <div className="mt-1 text-xs opacity-80">
+                          {msg.scamIndicators.join(', ')}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             )}
           </div>
         ))}
+        
         {loading && (
           <div className="flex justify-start">
             <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-xl">
@@ -405,23 +475,76 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* FIXED BOTTOM INPUT */}
+      {/* FIXED BOTTOM INPUT - LOCKED POSITION */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-40">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
+          
+          {/* CONTROLS ROW */}
           <div className="flex items-center justify-between mb-3">
-            <button onClick={startListening} disabled={loading || isListening || !micSupported} className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
+            <button
+              onClick={startListening}
+              disabled={loading || isListening || !micSupported}
+              className={`
+                px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-[0.1em] transition-all
+                ${isListening 
+                  ? 'bg-red-600 text-white animate-pulse' 
+                  : micSupported 
+                    ? 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                }
+                disabled:opacity-50
+              `}
+              style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
+            >
               Mic {isListening ? 'ON' : micSupported ? 'OFF' : 'N/A'}
             </button>
-            <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
+
+            <button
+              onClick={toggleTTS}
+              className={`
+                px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-[0.1em] transition-all relative
+                ${autoTTS 
+                  ? 'bg-[#3b82f6] text-white' 
+                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                }
+              `}
+              style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
+            >
               Voice {autoTTS ? 'ON' : 'OFF'}
-              {isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+              {isSpeaking && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              )}
             </button>
           </div>
+          
+          {/* INPUT ROW */}
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isListening ? "Listening..." : `Message ${currentPersona.name}...`} disabled={loading || isListening} className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium" style={{ fontSize: `${zoomLevel / 100}rem` }} rows={1} />
+              <textarea 
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder={isListening ? "Listening..." : `Message ${currentPersona.name}...`}
+                disabled={loading || isListening}
+                className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium"
+                style={{ fontSize: `${zoomLevel / 100}rem` }}
+                rows={1}
+              />
             </div>
-            <button onClick={() => handleSend()} disabled={loading || !input.trim() || isListening} className={`px-6 py-3 rounded-lg font-bold text-sm uppercase tracking-[0.1em] transition-all ${input.trim() && !loading && !isListening ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>
+            
+            <button 
+              onClick={() => handleSend()}
+              disabled={loading || !input.trim() || isListening}
+              className={`
+                px-6 py-3 rounded-lg font-bold text-sm uppercase tracking-[0.1em] transition-all
+                ${input.trim() && !loading && !isListening
+                  ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                }
+              `}
+              style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}
+            >
               {loading ? 'Sending' : 'Send'}
             </button>
           </div>
