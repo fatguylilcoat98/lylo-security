@@ -81,7 +81,7 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-ELITE_USERS = {"stangman9898@gmail.com": "elite"}
+ELITE_USERS = {"stangman9898@gmail.com": "elite", "paintonmynails80@gamil.com": "elie"}
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
