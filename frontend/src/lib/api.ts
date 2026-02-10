@@ -1,203 +1,63 @@
-// TypeScript interfaces
+// src/lib/api.ts
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'; // Change this to your Render URL when deployed
+
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'bot';
   content: string;
-  timestamp?: number;
 }
 
 export interface ChatResponse {
   answer: string;
   confidence_score: number;
-  confidence_explanation?: string;
   scam_detected: boolean;
-  scam_indicators: string[];
-  detailed_analysis?: string;
-  tier_info?: any;
-  usage_info?: {
-    can_send: boolean;
-    is_overage: boolean;
-    messages_today: number;
-    daily_limit: number;
-    remaining_today: number;
-    overage_cost?: number;
-  };
-  legal_connect?: {
-    available: boolean;
-    message: string;
-    confidence_in_legal_need?: number;
-  };
-  upgrade_needed?: boolean;
-  available_personas?: string[];
-  personalization_active?: boolean;
-  learned_preferences?: {
-    tech_level: string;
-    communication_style: string;
-    total_conversations: number;
-  };
+  sources?: string[];
 }
 
-export interface UserStats {
-  usage: {
-    messages_today: number;
-    messages_this_month: number;
-    overages_this_month: number;
-    total_cost_this_month: number;
-    tier: string;
-  };
-  learning_profile: {
-    tech_level: string;
-    communication_style: string;
-    interests: string[];
-    total_conversations: number;
-    confidence_preferences: string;
-  };
-}
-
-export async function sendChatMessage(
+export const sendChatMessage = async (
   message: string, 
-  history: ChatMessage[] = [],
-  persona: string = "guardian",
-  userEmail: string = "",
-  sessionId: string = "demo"
-): Promise<ChatResponse> {
-  
+  history: ChatMessage[], 
+  personaId: string,
+  userEmail: string
+): Promise<ChatResponse> => {
   try {
-    const backendUrl = 'https://lylo-backend.onrender.com';
-    const tier = localStorage.getItem('lylo_user_tier') || 'free';
-    
-    // Make sure all required fields are sent
-    const formData = new FormData();
-    formData.append('msg', message);
-    formData.append('history', JSON.stringify(history));
-    formData.append('persona', persona);
-    formData.append('tier', tier);
-    formData.append('user_email', userEmail || 'demo@example.com');
-    formData.append('session_id', sessionId);
-
-    console.log('Sending to backend:', {
-      msg: message,
-      persona,
-      tier,
-      user_email: userEmail || 'demo@example.com'
-    });
-
-    const response = await fetch(`${backendUrl}/chat`, {
+    const response = await fetch(`${API_URL}/chat`, {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message,
+        history, // <--- This sends the conversation memory
+        persona_id: personaId,
+        user_email: userEmail
+      }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Backend error:', response.status, errorText);
-      throw new Error(`Backend error: ${response.status}`);
+      throw new Error('Network response was not ok');
     }
 
     const data = await response.json();
     return data;
-
   } catch (error) {
-    console.error("LYLO Backend Error:", error);
+    console.error('API Error:', error);
+    // Fallback if backend is offline so the app doesn't crash
     return {
-      answer: "I'm having trouble connecting to my backend. The server is running but there's a communication issue.",
+      answer: "I'm having trouble reaching my secure server. Please check your internet connection.",
       confidence_score: 0,
-      scam_detected: false,
-      scam_indicators: ["Connection Error"],
-      usage_info: {
-        can_send: true,
-        is_overage: false,
-        messages_today: 0,
-        daily_limit: 5,
-        remaining_today: 5
-      }
+      scam_detected: false
     };
   }
-}
+};
 
-export async function getUserStats(userEmail: string): Promise<UserStats | null> {
+export const getUserStats = async (email: string) => {
   try {
-    const backendUrl = 'https://lylo-backend.onrender.com';
-    
-    const response = await fetch(`${backendUrl}/user-stats/${encodeURIComponent(userEmail)}`);
-    
-    if (!response.ok) return null;
+    const response = await fetch(`${API_URL}/user-stats/${email}`);
+    if (!response.ok) throw new Error('Failed to fetch stats');
     return await response.json();
   } catch (error) {
-    console.error("Get Stats Error:", error);
+    console.error('Stats Error:', error);
     return null;
   }
-}
-
-export async function clearUserData(userEmail: string): Promise<boolean> {
-  try {
-    const backendUrl = 'https://lylo-backend.onrender.com';
-    
-    const formData = new FormData();
-    formData.append('user_email', userEmail);
-    
-    const response = await fetch(`${backendUrl}/clear-user-data`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    return response.ok;
-  } catch (error) {
-    console.error("Clear Data Error:", error);
-    return false;
-  }
-}
-
-export async function connectLegal(
-  userId: string,
-  caseType: string = "scam_recovery",
-  userEmail: string = "",
-  description: string = ""
-): Promise<any> {
-  try {
-    const backendUrl = 'https://lylo-backend.onrender.com';
-    const tier = localStorage.getItem('lylo_user_tier') || 'free';
-    
-    const formData = new FormData();
-    formData.append('user_id', userId);
-    formData.append('case_type', caseType);
-    formData.append('tier', tier);
-    formData.append('user_email', userEmail);
-    formData.append('description', description);
-
-    const response = await fetch(`${backendUrl}/legal-connect`, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`Legal connect error: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("Legal Connect Error:", error);
-    throw error;
-  }
-}
-
-export async function getTiers(): Promise<any> {
-  try {
-    const backendUrl = 'https://lylo-backend.onrender.com';
-    
-    const response = await fetch(`${backendUrl}/tiers`);
-    
-    if (!response.ok) {
-      throw new Error(`Tiers error: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("Get Tiers Error:", error);
-    return {
-      tiers: {
-        free: { name: "Free Tier", daily_limit: 5, price: 0 },
-        pro: { name: "Pro Tier", daily_limit: 50, price: 9.99 },
-        elite: { name: "Elite Tier", daily_limit: 99999, price: 29.99 }
-      }
-    };
-  }
-}
+};
