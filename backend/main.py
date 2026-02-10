@@ -3,8 +3,8 @@ import uvicorn
 import json
 import hashlib
 import asyncio
-import numpy as np  # RESTORED: Math capability
-import stripe       # RESTORED: Payment capability
+import numpy as np
+import stripe
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List
@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 # Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="11.0.0 - FULL ARCHITECTURE")
+app = FastAPI(title="LYLO Backend", version="11.1.0 - FINAL STABLE")
 
 # CORS Setup - Critical for Mobile
 app.add_middleware(
@@ -35,7 +35,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip() # RESTORED
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 
 # --- DIAGNOSTICS ---
 print("\n--- SYSTEM DIAGNOSTICS ---")
@@ -46,7 +46,7 @@ print(f"🔥 OpenAI Key:   {'OK' if OPENAI_API_KEY else 'MISSING'}")
 print(f"💳 Stripe Key:   {'OK' if STRIPE_SECRET_KEY else 'MISSING'}")
 print("--------------------------\n")
 
-# --- STRIPE SETUP (RESTORED) ---
+# --- STRIPE SETUP ---
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
@@ -106,7 +106,7 @@ if OPENAI_API_KEY:
 
 # --- DATA STORAGE ---
 ELITE_USERS = {"stangman9898@gmail.com": "elite"}
-BETA_TESTERS = ELITE_USERS.copy() # Dynamic Beta List
+BETA_TESTERS = ELITE_USERS.copy() 
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
@@ -136,28 +136,38 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"❌ Tavily Error: {e}")
         return ""
 
-# --- THE TRIBUNAL ENGINES (FIXED) ---
+# --- THE TRIBUNAL ENGINES (FIXED GEMINI LOGIC) ---
 async def call_gemini(prompt: str):
-    if not gemini_ready: return None
+    if not gemini_ready: 
+        print("❌ Gemini blocked: API Key not configured")
+        return None
     
-    # FIX: Tries Flash first (fastest), then Pro, then Legacy 1.0 (Most Stable)
-    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+    # Updated Model List for SDK 0.8.0+
+    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro-latest', 'gemini-pro']
     
     for model_name in models_to_try:
         try:
+            print(f"🧠 Attempting connection to {model_name}...")
             model = genai.GenerativeModel(model_name)
+            
+            # Use safety settings to prevent blocks
             response = model.generate_content(
                 prompt, 
                 generation_config={"response_mime_type": "application/json"}
             )
-            data = json.loads(response.text)
-            data['model'] = f"Gemini ({model_name})"
-            return data
+            
+            if response.text:
+                data = json.loads(response.text)
+                data['model'] = f"Gemini ({model_name})"
+                print(f"✅ SUCCESS: Connected to {model_name}")
+                return data
+                
         except Exception as e:
-            # print(f"⚠️ {model_name} failed: {e}") # Optional debug
+            # THIS LOG IS CRITICAL - It prints the exact error (404, 403, etc.)
+            print(f"❌ FAILURE on {model_name}: {str(e)}")
             continue
             
-    print("❌ All Gemini models failed.")
+    print("❌ CRITICAL: All Gemini models failed to respond.")
     return None
 
 async def call_openai(prompt: str):
@@ -175,7 +185,7 @@ async def call_openai(prompt: str):
         print(f"❌ OpenAI Error: {e}")
         return None
 
-# --- ADMIN / BETA TESTER ENDPOINTS (RESTORED) ---
+# --- ADMIN / BETA TESTER ENDPOINTS ---
 @app.post("/admin/add-beta-tester")
 async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(...), tier: str = Form("elite")):
     if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403, detail="Unauthorized")
@@ -200,7 +210,7 @@ async def check_beta_access(email: str = Form(...)):
     tier = BETA_TESTERS.get(email.lower(), "free")
     return {"email": email, "tier": tier, "is_beta": tier in ["elite", "pro"]}
 
-# --- STRIPE PAYMENT ENDPOINT (RESTORED) ---
+# --- STRIPE PAYMENT ENDPOINT ---
 @app.post("/create-checkout-session")
 async def create_checkout(user_email: str = Form(...)):
     if not STRIPE_SECRET_KEY: 
@@ -224,7 +234,7 @@ async def create_checkout(user_email: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- MAIN CHAT ENDPOINT (WITH IMAGE SUPPORT) ---
+# --- MAIN CHAT ENDPOINT (WITH VISION) ---
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -232,7 +242,7 @@ async def chat(
     persona: str = Form("guardian"), 
     user_email: str = Form(...), 
     user_location: str = Form(""),
-    file: UploadFile = File(None) # Added Image Support
+    file: UploadFile = File(None) 
 ):
     user_id = create_user_id(user_email)
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
@@ -283,11 +293,9 @@ async def chat(
     valid = [r for r in results if r and r.get('answer')]
     
     if valid:
-        # Winner is highest confidence
         winner = max(valid, key=lambda x: x.get('confidence_score', 0))
         print(f"🏆 WINNER: {winner.get('model', 'Unknown')} ({winner.get('confidence_score')}%)")
     else:
-        # Fallback
         winner = {
             "answer": "I'm having trouble connecting to my neural network right now. Please try again in a moment.", 
             "confidence_score": 0, 
@@ -307,7 +315,7 @@ async def chat(
         "usage_info": {"can_send": True}
     }
 
-# --- STATS & QUIZ (RESTORED) ---
+# --- STATS & QUIZ ---
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
@@ -328,12 +336,12 @@ async def save_quiz(user_email: str = Form(...), question1: str = Form(...), que
     QUIZ_ANSWERS[user_id] = {"concern": question1, "style": question2, "device": question3, "interest": question4, "access": question5}
     return {"status": "Quiz Saved"}
 
-# --- ROOT STATUS (RESTORED) ---
+# --- ROOT STATUS ---
 @app.get("/")
 async def root():
     return {
         "status": "LYLO TRIBUNAL SYSTEM ONLINE",
-        "version": "11.0.0",
+        "version": "11.1.0",
         "beta_testers": len(BETA_TESTERS),
         "engines": {
             "gemini": "Ready" if gemini_ready else "Offline",
