@@ -73,13 +73,30 @@ export default function ChatInterface({
     stopSpeaking();
 
     const userMsg = { id: Date.now(), content: input, sender: 'user' };
-    setMessages(prev => [...prev, userMsg]);
+    
+    // 1. Optimistically add user message
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    
     const originalInput = input;
     setInput('');
     setLoading(true);
 
     try {
-      const response = await sendChatMessage(originalInput, [], currentPersona.id, userEmail);
+      // 2. CRITICAL FIX: Format History for the AI
+      // We convert the React state 'messages' into the simple list the API needs
+      const history = messages.map(msg => ({
+        role: msg.sender, // 'user' or 'bot'
+        content: msg.content
+      }));
+
+      // 3. Send Input + HISTORY to the Backend
+      const response = await sendChatMessage(
+        originalInput, 
+        history, // <--- Now the AI has memory!
+        currentPersona.id, 
+        userEmail
+      );
       
       const botMsg = { 
         id: Date.now() + 1, 
@@ -92,7 +109,7 @@ export default function ChatInterface({
       setMessages(prev => [...prev, botMsg]);
       speakText(response.answer); 
     } catch (error) {
-      setMessages(prev => [...prev, { id: Date.now(), content: "Connection Error.", sender: 'bot' }]);
+      setMessages(prev => [...prev, { id: Date.now(), content: "I'm having trouble connecting to the mainframe. Please try again.", sender: 'bot' }]);
     } finally {
       setLoading(false);
       onUsageUpdate();
@@ -104,8 +121,7 @@ export default function ChatInterface({
 
   return (
     // MAIN LAYOUT: Flex Column that fills the Viewport Height (dvh)
-    // No 'fixed' positioning ensures elements can't fall off screen.
-    <div className="flex flex-col h-[100dvh] bg-[#050505] font-sans">
+    <div className="flex flex-col h-[100dvh] bg-[#050505] font-sans overflow-hidden">
       
       {/* 1. HEADER (Logo + User Name + Zoom) */}
       <div className="bg-black border-b border-white/10 p-3 flex-shrink-0 flex items-center justify-between z-10">
@@ -142,7 +158,7 @@ export default function ChatInterface({
          </div>
       </div>
 
-      {/* 2. MESSAGES AREA (Takes all remaining space) */}
+      {/* 2. MESSAGES AREA */}
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-4 space-y-6"
@@ -202,14 +218,11 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* 3. INPUT AREA (Structural - Not Fixed) 
-          Using flex-shrink-0 ensures this stays at the bottom of the flex container 
-          without needing 'fixed' positioning, preventing it from being pushed off-screen.
-      */}
+      {/* 3. INPUT AREA (Flexbox - Pinned to Bottom) */}
       <div className="flex-shrink-0 bg-black border-t border-white/10 p-3 pb-6 z-20 shadow-2xl">
          <div className="max-w-4xl mx-auto space-y-2">
             
-            {/* Tool Row */}
+            {/* ROW 1: TOOLS */}
             <div className="flex gap-2">
                <button className="flex-1 p-3 bg-zinc-800 rounded-xl text-gray-400 hover:text-white flex items-center justify-center gap-2">
                  <icons.Mic size={20} />
@@ -225,7 +238,7 @@ export default function ChatInterface({
                </button>
             </div>
 
-            {/* Input Row */}
+            {/* ROW 2: INPUT */}
             <div className="flex gap-2">
                <textarea 
                  ref={inputRef}
@@ -251,7 +264,6 @@ export default function ChatInterface({
             </div>
          </div>
       </div>
-
     </div>
   );
 }
