@@ -89,6 +89,7 @@ if OPENAI_API_KEY:
 ELITE_USERS = {
     "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
     "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
+    "Tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
     "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
     "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
     "Cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
