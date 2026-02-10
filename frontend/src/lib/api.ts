@@ -48,6 +48,40 @@ export interface UserStats {
   };
 }
 
+// NEW: Add access verification function
+export const verifyAccess = async (email: string): Promise<{
+  access_granted: boolean;
+  tier: string;
+  user_name: string;
+  is_beta: boolean;
+  message?: string;
+}> => {
+  try {
+    const formData = new FormData();
+    formData.append('email', email);
+    
+    const response = await fetch(`${API_URL}/verify-access`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to verify access');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Access verification error:', error);
+    return {
+      access_granted: false,
+      tier: 'none',
+      user_name: email.split('@')[0],
+      is_beta: false,
+      message: 'Access verification failed'
+    };
+  }
+};
+
 export const sendChatMessage = async (
   message: string,
   history: any[],
