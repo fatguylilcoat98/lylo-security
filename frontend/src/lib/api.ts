@@ -1,6 +1,18 @@
 // DIRECT CONNECTION TO YOUR RENDER BACKEND
 const API_URL = 'https://lylo-backend.onrender.com';
 
+// --- NEW: Added this Missing Interface to fix the Build Error ---
+export interface Message {
+  id: string;
+  content: string;
+  sender: 'user' | 'bot';
+  timestamp: Date;
+  confidenceScore?: number;
+  scamDetected?: boolean;
+  scamIndicators?: string[];
+}
+// ---------------------------------------------------------------
+
 export interface ChatMessage {
   role: 'user' | 'bot';
   content: string;
@@ -41,23 +53,19 @@ export const sendChatMessage = async (
   history: any[],
   personaId: string,
   userEmail: string,
-  imageFile?: File | null // <--- ADDED THIS (Required for images)
+  imageFile?: File | null 
 ): Promise<ChatResponse> => {
   try {
     const formData = new FormData();
-    formData.append('msg', message || "Analyze this image"); // Handle empty text if image exists
-    // Ensure history matches what backend expects
+    formData.append('msg', message || "Analyze this image"); 
     formData.append('history', JSON.stringify(history)); 
     formData.append('persona', personaId);
     formData.append('user_email', userEmail);
-    // Default location to empty if not provided
     formData.append('user_location', ''); 
 
-    // <--- ADDED THIS SECTION (Sends the image to backend)
     if (imageFile) {
         formData.append('file', imageFile);
     }
-    // ----------------------------------------------------
 
     const response = await fetch(`${API_URL}/chat`, {
       method: 'POST',
@@ -71,7 +79,6 @@ export const sendChatMessage = async (
     return await response.json();
   } catch (error) {
     console.error('API Connection Error:', error);
-    // Return a safe fallback so the app doesn't crash
     return {
       answer: "I'm having trouble connecting to the server. Please check your internet connection.",
       confidence_score: 0,
