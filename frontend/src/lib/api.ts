@@ -40,17 +40,24 @@ export const sendChatMessage = async (
   message: string,
   history: any[],
   personaId: string,
-  userEmail: string
+  userEmail: string,
+  imageFile?: File | null // <--- ADDED THIS (Required for images)
 ): Promise<ChatResponse> => {
   try {
     const formData = new FormData();
-    formData.append('msg', message);
+    formData.append('msg', message || "Analyze this image"); // Handle empty text if image exists
     // Ensure history matches what backend expects
     formData.append('history', JSON.stringify(history)); 
     formData.append('persona', personaId);
     formData.append('user_email', userEmail);
     // Default location to empty if not provided
     formData.append('user_location', ''); 
+
+    // <--- ADDED THIS SECTION (Sends the image to backend)
+    if (imageFile) {
+        formData.append('file', imageFile);
+    }
+    // ----------------------------------------------------
 
     const response = await fetch(`${API_URL}/chat`, {
       method: 'POST',
