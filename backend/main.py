@@ -92,6 +92,7 @@ ELITE_USERS = {
     "Tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
     "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
     "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
+"laura@startupsac.org": {"tier": "elite", "name": "Laura"},
     "Cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
 }
 
