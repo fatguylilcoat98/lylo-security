@@ -10,10 +10,10 @@ export default function App() {
         {/* Redirect root to Dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         
-        {/* The Dashboard handles Zoom, Layout, and Personas now */}
+        {/* The Dashboard handles all the heavy lifting now */}
         <Route path="/dashboard" element={<Dashboard />} />
         
-        {/* The Assessment Page */}
+        {/* The Onboarding Wizard */}
         <Route path="/assessment" element={<Assessment />} />
       </Routes>
     </BrowserRouter>
