@@ -99,13 +99,9 @@ export default function ChatInterface({
 
   if (!icons) return <div className="p-10 text-gray-500">Loading...</div>;
 
-  // Calculate dynamic font size based on zoomLevel (Base 16px)
-  // 100% = 1rem, 200% = 2rem. 
-  // We apply this to the chat container so layout doesn't break.
-  const dynamicFontSize = { fontSize: `${zoomLevel}%` };
-
   return (
-    <div className="flex flex-col h-full bg-[#050505] relative">
+    // FIX 1: Use h-[100dvh] to respect mobile address bars
+    <div className="flex flex-col h-[100dvh] bg-[#050505] relative overflow-hidden">
       
       {/* 1. HEADER (Persona Info + Logo) */}
       <div className="bg-black border-b border-white/10 p-3 flex-shrink-0 flex items-center justify-between z-10">
@@ -128,19 +124,22 @@ export default function ChatInterface({
       {/* 2. MESSAGES AREA (Scrollable) */}
       <div 
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
-        style={dynamicFontSize} // Zoom applies only to text size here
+        className="flex-1 overflow-y-auto p-4 space-y-4 pb-48" // FIX 2: Huge padding bottom so text isn't hidden by footer
       >
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`
-              max-w-[85%] p-4 rounded-2xl leading-relaxed whitespace-pre-wrap
-              ${msg.sender === 'user' 
-                ? 'bg-blue-600 text-white rounded-tr-sm' 
-                : 'bg-zinc-800 text-gray-100 border border-white/10 rounded-tl-sm'
-              }
-              ${msg.isScam ? 'border-2 border-red-500 bg-red-900/20' : ''}
-            `}>
+            <div 
+              className={`
+                max-w-[85%] p-4 rounded-2xl leading-relaxed whitespace-pre-wrap
+                ${msg.sender === 'user' 
+                  ? 'bg-blue-600 text-white rounded-tr-sm' 
+                  : 'bg-zinc-800 text-gray-100 border border-white/10 rounded-tl-sm'
+                }
+                ${msg.isScam ? 'border-2 border-red-500 bg-red-900/20' : ''}
+              `}
+              // FIX 3: Font Size scales here
+              style={{ fontSize: `${zoomLevel}%` }}
+            >
               {msg.content}
             </div>
           </div>
@@ -149,34 +148,35 @@ export default function ChatInterface({
       </div>
 
       {/* 3. INPUT AREA (Fixed Bottom) */}
-      <div className="flex-shrink-0 bg-black border-t border-white/10 p-3 pb-6 z-20">
+      {/* FIX 4: 'fixed bottom-0' locks this to the glass, ignoring scroll */}
+      <div className="fixed bottom-0 left-0 w-full bg-black border-t border-white/10 p-3 pb-6 z-50 shadow-2xl">
          <div className="max-w-4xl mx-auto space-y-2">
             
             {/* ROW 1: TOOLS (Mic, Camera, Zoom) */}
             <div className="flex items-center justify-between">
                <div className="flex gap-2">
-                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-700">
-                    <icons.Mic size={20} />
+                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white active:bg-zinc-700">
+                    <icons.Mic size={24} />
                   </button>
-                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-700">
-                    <icons.Camera size={20} />
+                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white active:bg-zinc-700">
+                    <icons.Camera size={24} />
                   </button>
-                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white hover:bg-zinc-700">
-                    <icons.Upload size={20} />
+                  <button className="p-2 bg-zinc-800 rounded-lg text-gray-400 hover:text-white active:bg-zinc-700">
+                    <icons.Upload size={24} />
                   </button>
                </div>
                
-               {/* Zoom Controls moved here */}
+               {/* Zoom Controls */}
                <div className="flex items-center gap-1 bg-zinc-900 rounded-lg p-1 border border-white/10">
                   {onZoomOut && (
-                    <button onClick={onZoomOut} className="p-1.5 text-gray-400 hover:text-white">
-                      <icons.Minus size={16} />
+                    <button onClick={onZoomOut} className="p-2 text-gray-400 hover:text-white">
+                      <icons.Minus size={20} />
                     </button>
                   )}
-                  <span className="text-xs font-mono text-blue-400 w-8 text-center">{zoomLevel}%</span>
+                  <span className="text-sm font-mono text-blue-400 w-10 text-center font-bold">{zoomLevel}%</span>
                   {onZoomIn && (
-                     <button onClick={onZoomIn} className="p-1.5 text-gray-400 hover:text-white">
-                      <icons.Plus size={16} />
+                     <button onClick={onZoomIn} className="p-2 text-gray-400 hover:text-white">
+                      <icons.Plus size={20} />
                     </button>
                   )}
                </div>
@@ -190,20 +190,20 @@ export default function ChatInterface({
                  onChange={(e) => setInput(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
                  placeholder="Type or speak..."
-                 className="flex-1 bg-zinc-900 border border-white/20 text-white rounded-xl px-4 py-3 text-base focus:outline-none focus:border-blue-500 resize-none h-[54px]"
+                 className="flex-1 bg-zinc-900 border border-white/20 text-white rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-blue-500 resize-none h-[60px]"
                />
                <button 
                  onClick={handleSend}
                  disabled={!input.trim() || loading}
                  className={`
-                   px-6 rounded-xl font-bold transition-all h-[54px] flex items-center justify-center
+                   px-6 rounded-xl font-bold transition-all h-[60px] flex items-center justify-center
                    ${input.trim() 
                      ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg' 
                      : 'bg-zinc-800 text-gray-500'
                    }
                  `}
                >
-                 <icons.Send size={24} />
+                 <icons.Send size={28} />
                </button>
             </div>
 
