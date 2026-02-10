@@ -40,7 +40,7 @@ export default function ChatInterface({
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
-  
+   
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -57,7 +57,6 @@ export default function ChatInterface({
 
   // FIXED MICROPHONE SETUP
   useEffect(() => {
-    // Check if speech recognition is supported
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
@@ -201,7 +200,7 @@ export default function ChatInterface({
         timestamp: new Date(),
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
-        scamIndicators: response.scam_indicators
+        scamIndicators: [] // Fixed missing property based on interface
       };
       
       setMessages(prev => [...prev, botMsg]);
@@ -239,9 +238,10 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#050505] relative overflow-hidden">
+    // FIXED: Added 'fixed inset-0 z-50' to force fullscreen and hide background headers
+    <div className="fixed inset-0 z-50 flex flex-col h-[100dvh] bg-[#050505] relative overflow-hidden font-sans">
       
-      {/* FIXED HEADER - No Overflow */}
+      {/* HEADER - No Overflow */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative">
         <div className="flex items-center justify-between">
           
