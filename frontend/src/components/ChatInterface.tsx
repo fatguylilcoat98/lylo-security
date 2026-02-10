@@ -42,21 +42,19 @@ export default function ChatInterface({
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [showCameraOptions, setShowCameraOptions] = useState(false);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [transcript, setTranscript] = useState('');
   const [speechTimeout, setSpeechTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [showScamRecovery, setShowScamRecovery] = useState(false);
+  const [isEliteUser, setIsEliteUser] = useState(false);
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     loadUserStats();
+    checkEliteStatus();
   }, [userEmail]);
 
   useEffect(() => {
@@ -67,37 +65,41 @@ export default function ChatInterface({
 
   useEffect(() => {
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
       if (speechTimeout) {
         clearTimeout(speechTimeout);
       }
     };
-  }, [stream, speechTimeout]);
+  }, [speechTimeout]);
 
-  // FIXED: NO-TIMEOUT SPEECH RECOGNITION FOR ELDERLY/DISABLED USERS
+  const checkEliteStatus = async () => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/check-beta-access`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `email=${encodeURIComponent(userEmail)}`
+      });
+      const data = await response.json();
+      setIsEliteUser(data.tier === 'elite');
+    } catch (error) {
+      console.error('Failed to check elite status:', error);
+    }
+  };
+
+  // NO-TIMEOUT SPEECH RECOGNITION
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      // ACCESSIBILITY-FRIENDLY SETTINGS
-      recognition.continuous = true;        // Keep listening
-      recognition.interimResults = true;    // Show real-time results
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = 'en-US';
       recognition.maxAlternatives = 1;
-      
-      // CRITICAL: No automatic timeout for accessibility
-      if (recognition.serviceURI) {
-        recognition.serviceURI = 'wss://www.google.com/speech-api/v2/recognize';
-      }
 
       recognition.onstart = () => {
         console.log('🎤 Continuous recording started (no timeout)');
         setIsListening(true);
         
-        // Clear any existing timeout
         if (speechTimeout) {
           clearTimeout(speechTimeout);
           setSpeechTimeout(null);
@@ -108,7 +110,6 @@ export default function ChatInterface({
         let finalTranscript = '';
         let interimTranscript = '';
 
-        // Process all results
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
@@ -118,22 +119,18 @@ export default function ChatInterface({
           }
         }
 
-        // Update transcript in real-time
         const currentText = input + finalTranscript + interimTranscript;
         setTranscript(currentText);
         setInput(input + finalTranscript);
         
         console.log('🎤 Real-time transcript:', currentText);
         
-        // RESET SILENCE TIMEOUT (give users more time)
         if (speechTimeout) {
           clearTimeout(speechTimeout);
         }
         
-        // 30 second silence timeout (much longer for elderly users)
         const timeout = setTimeout(() => {
           console.log('🎤 Extended silence detected, keeping mic open');
-          // Don't stop - just log. Let users control when to stop.
         }, 30000);
         
         setSpeechTimeout(timeout);
@@ -142,7 +139,6 @@ export default function ChatInterface({
       recognition.onend = () => {
         console.log('🎤 Recognition ended');
         
-        // AUTO-RESTART if user didn't manually stop (for continuous listening)
         if (isListening && !loading) {
           console.log('🎤 Auto-restarting for continuous listening');
           setTimeout(() => {
@@ -161,10 +157,8 @@ export default function ChatInterface({
       recognition.onerror = (event: any) => {
         console.error('🎤 Speech error:', event.error);
         
-        // Handle different error types
         if (event.error === 'no-speech') {
           console.log('🎤 No speech detected, continuing to listen...');
-          // Don't stop for no-speech - keep listening for elderly users
           return;
         }
         
@@ -176,7 +170,6 @@ export default function ChatInterface({
           setIsListening(false);
         } else if (event.error === 'network') {
           console.log('🎤 Network error, will retry...');
-          // Try to restart
           setTimeout(() => {
             if (isListening) {
               try {
@@ -187,7 +180,6 @@ export default function ChatInterface({
             }
           }, 2000);
         } else {
-          // For other errors, try to continue
           console.log('🎤 Other error, attempting to continue:', event.error);
         }
       };
@@ -233,7 +225,6 @@ export default function ChatInterface({
     }
   }, [messages, autoTTS]);
 
-  // TOGGLE CONTINUOUS RECORDING
   const toggleListening = () => {
     if (!micSupported) {
       alert('Speech recognition not supported');
@@ -241,7 +232,6 @@ export default function ChatInterface({
     }
 
     if (isListening) {
-      // MANUAL STOP
       console.log('🎤 Manual stop requested');
       setIsListening(false);
       setTranscript('');
@@ -251,7 +241,6 @@ export default function ChatInterface({
       }
       recognitionRef.current?.stop();
     } else {
-      // START CONTINUOUS RECORDING
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
@@ -280,64 +269,18 @@ export default function ChatInterface({
     else onZoomChange(85);
   };
 
-  const openCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 },
-          facingMode: 'environment'
-        }
-      });
-      
-      setStream(mediaStream);
-      setIsCameraOpen(true);
-      setShowCameraOptions(false);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (error) {
-      console.error('Camera error:', error);
-      alert('Camera access denied. Check permissions.');
-    }
-  };
-
-  const closeCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    setIsCameraOpen(false);
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      if (context) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setSelectedImage(file);
-            closeCamera();
-            console.log('📸 Photo captured');
-          }
-        }, 'image/jpeg', 0.9);
-      }
-    }
-  };
-
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedImage(e.target.files[0]);
     }
+  };
+
+  const openScamRecovery = () => {
+    if (!isEliteUser) {
+      alert('Scam Recovery Center is available for Elite members only.');
+      return;
+    }
+    setShowScamRecovery(true);
   };
 
   const handleSend = async () => {
@@ -364,7 +307,6 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      // SEND FULL CONVERSATION HISTORY FOR PINECONE MEMORY
       const conversationHistory = messages.map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.content
@@ -372,7 +314,7 @@ export default function ChatInterface({
 
       const response = await sendChatMessage(
         textToSend || "Analyze this image", 
-        conversationHistory, // Send full history for memory
+        conversationHistory,
         currentPersona.id,
         userEmail,
         selectedImage
@@ -417,7 +359,6 @@ export default function ChatInterface({
     const handleClickOutside = () => {
       setShowDropdown(false);
       setShowUserDetails(false);
-      setShowCameraOptions(false);
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
@@ -428,7 +369,6 @@ export default function ChatInterface({
     return userEmail.split('@')[0];
   };
 
-  // Display text: show real-time transcript when listening, otherwise input
   const displayText = isListening ? transcript : input;
 
   return (
@@ -448,35 +388,60 @@ export default function ChatInterface({
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
       
-      {/* CAMERA MODAL */}
-      {isCameraOpen && (
-        <div className="fixed inset-0 z-[100010] bg-black flex flex-col">
-          <div className="flex justify-between items-center p-4 bg-black/90">
-            <button
-              onClick={closeCamera}
-              className="text-white text-xl font-bold px-4 py-2 bg-red-600 rounded-lg"
-            >
-              ✕ Close
-            </button>
-            <h3 className="text-white text-lg font-bold">Take Photo</h3>
-            <button
-              onClick={capturePhoto}
-              className="text-white text-lg font-bold px-6 py-3 bg-blue-600 rounded-lg"
-            >
-              📸 Capture
-            </button>
+      {/* SCAM RECOVERY MODAL */}
+      {showScamRecovery && (
+        <div className="fixed inset-0 z-[100020] bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-black/95 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">
+                🚨 SCAM RECOVERY CENTER
+              </h2>
+              <button
+                onClick={() => setShowScamRecovery(false)}
+                className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-sm">
+              <div className="bg-red-900/20 border border-red-500/30 rounded p-3">
+                <p className="text-red-300 font-bold mb-2">IMMEDIATE ACTIONS:</p>
+                <ul className="text-gray-300 space-y-1 text-xs">
+                  <li>🛑 STOP sending any more money</li>
+                  <li>📞 Call your bank immediately</li>
+                  <li>🔒 Change all passwords</li>
+                  <li>📸 Screenshot everything</li>
+                  <li>🚔 File police report</li>
+                </ul>
+              </div>
+              
+              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-3">
+                <p className="text-yellow-300 font-bold mb-2">PHONE SCRIPT FOR BANK:</p>
+                <p className="text-gray-300 text-xs italic">
+                  "I need to report fraudulent activity. I was scammed and unauthorized transfers were made. I want to dispute these charges and secure my account immediately."
+                </p>
+              </div>
+              
+              <div className="bg-blue-900/20 border border-blue-500/30 rounded p-3">
+                <p className="text-blue-300 font-bold mb-2">REPORT FRAUD:</p>
+                <ul className="text-gray-300 space-y-1 text-xs">
+                  <li>📧 FTC: reportfraud.ftc.gov</li>
+                  <li>🌐 FBI: ic3.gov (if over $5,000)</li>
+                  <li>📞 IRS: 1-800-908-4490 (tax fraud)</li>
+                </ul>
+              </div>
+              
+              <button
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg font-bold text-sm transition-colors"
+                onClick={() => {
+                  window.open(`${process.env.REACT_APP_API_URL}/scam-recovery/${userEmail}`, '_blank');
+                }}
+              >
+                📋 GET FULL RECOVERY GUIDE
+              </button>
+            </div>
           </div>
-          
-          <div className="flex-1 flex items-center justify-center">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="max-w-full max-h-full"
-            />
-          </div>
-          
-          <canvas ref={canvasRef} className="hidden" />
         </div>
       )}
 
@@ -501,6 +466,21 @@ export default function ChatInterface({
 
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
+                
+                {/* ELITE SCAM RECOVERY */}
+                {isEliteUser && (
+                  <div className="mb-3 pb-3 border-b border-red-500/20">
+                    <button
+                      onClick={() => {
+                        openScamRecovery();
+                        setShowDropdown(false);
+                      }}
+                      className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors"
+                    >
+                      🚨 SCAM RECOVERY
+                    </button>
+                  </div>
+                )}
                 
                 <div className="mb-3">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">AI Personality</h3>
@@ -578,6 +558,7 @@ export default function ChatInterface({
             >
               <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
                 {getUserDisplayName()}
+                {isEliteUser && <span className="text-yellow-400 ml-1">★</span>}
               </div>
               <div className="flex items-center gap-1 justify-end">
                 <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -594,7 +575,10 @@ export default function ChatInterface({
                   <div className="space-y-2 text-xs text-gray-300">
                     <div className="flex justify-between">
                       <span>Tier:</span>
-                      <span className="text-[#3b82f6] font-bold">{userStats.tier.toUpperCase()}</span>
+                      <span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>
+                        {userStats.tier.toUpperCase()}
+                        {isEliteUser && ' ★'}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Today:</span>
@@ -646,6 +630,15 @@ export default function ChatInterface({
             <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium">
               Your AI Security System is Ready
             </p>
+            
+            {isEliteUser && (
+              <button
+                onClick={openScamRecovery}
+                className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors"
+              >
+                🚨 SCAM RECOVERY CENTER
+              </button>
+            )}
           </div>
         )}
         
@@ -797,53 +790,22 @@ export default function ChatInterface({
                onChange={handleImageSelect}
              />
 
-             <div className="relative">
-               <button
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   setShowCameraOptions(!showCameraOptions);
-                 }}
-                 className={`
-                   w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all
-                   ${selectedImage 
-                     ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' 
-                     : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                   }
-                 `}
-                 title="Camera Options"
-               >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-               </button>
-
-               {showCameraOptions && (
-                 <div className="absolute bottom-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[160px] z-[100005] shadow-2xl">
-                   <button
-                     onClick={() => {
-                       openCamera();
-                       setShowCameraOptions(false);
-                     }}
-                     className="w-full text-left p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors mb-1"
-                   >
-                     <div className="font-medium text-xs">📸 Take Photo</div>
-                     <div className="text-xs opacity-70">Use device camera</div>
-                   </button>
-                   
-                   <button
-                     onClick={() => {
-                       fileInputRef.current?.click();
-                       setShowCameraOptions(false);
-                     }}
-                     className="w-full text-left p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors"
-                   >
-                     <div className="font-medium text-xs">📁 Upload Photo</div>
-                     <div className="text-xs opacity-70">Choose from device</div>
-                   </button>
-                 </div>
-               )}
-             </div>
+             {/* UPLOAD ONLY (NO CAMERA CAPTURE) */}
+             <button
+               onClick={() => fileInputRef.current?.click()}
+               className={`
+                 w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all
+                 ${selectedImage 
+                   ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' 
+                   : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                 }
+               `}
+               title="Upload Image"
+             >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+             </button>
 
             <div className="flex-1">
               <textarea 
