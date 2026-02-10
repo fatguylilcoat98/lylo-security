@@ -37,16 +37,21 @@ export default function ChatInterface({
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showUserDetails, setShowUserDetails] = useState(false); // NEW: User details dropdown
+  const [showUserDetails, setShowUserDetails] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [showCameraOptions, setShowCameraOptions] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     loadUserStats();
@@ -58,7 +63,16 @@ export default function ChatInterface({
     }
   }, [messages]);
 
-  // --- FULL SPEECH RECOGNITION SETUP (RESTORED) ---
+  // Cleanup camera stream when component unmounts
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
+
+  // --- FIXED SPEECH RECOGNITION SETUP ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -74,11 +88,18 @@ export default function ChatInterface({
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
+        const transcript = event.results[0][0].transcript.trim();
         console.log('🎤 Speech result:', transcript);
-        setInput(transcript);
-        setIsListening(false);
-        setTimeout(() => handleSend(transcript), 200); // Fixed delay for smoother send
+        
+        if (transcript && transcript.length > 0) {
+          setInput(transcript);
+          setIsListening(false);
+          console.log('🎤 Sending transcript:', transcript);
+          handleSend(transcript);
+        } else {
+          console.log('🎤 Empty transcript received');
+          setIsListening(false);
+        }
       };
 
       recognition.onend = () => {
@@ -89,8 +110,13 @@ export default function ChatInterface({
       recognition.onerror = (event: any) => {
         console.error('🎤 Speech error:', event.error);
         setIsListening(false);
+        
         if (event.error === 'no-speech') {
-            setIsListening(false);
+          console.log('🎤 No speech detected');
+        } else if (event.error === 'not-allowed') {
+          alert('Microphone access denied. Please enable microphone permissions.');
+        } else {
+          console.log('🎤 Speech recognition error:', event.error);
         }
       };
       
@@ -141,13 +167,16 @@ export default function ChatInterface({
       alert('Speech recognition not supported on this device');
       return;
     }
+    
     if (recognitionRef.current && !loading && !isListening) {
       if (isSpeaking) {
         window.speechSynthesis?.cancel();
         setIsSpeaking(false);
       }
+      
       try {
         console.log('🎤 Starting speech recognition...');
+        setInput('');
         recognitionRef.current.start();
       } catch (error) {
         console.error('🎤 Failed to start recognition:', error);
@@ -170,21 +199,83 @@ export default function ChatInterface({
     else onZoomChange(85);
   };
 
+  // CAMERA FUNCTIONALITY
+  const openCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 },
+          facingMode: 'environment' // Use back camera by default
+        }
+      });
+      
+      setStream(mediaStream);
+      setIsCameraOpen(true);
+      setShowCameraOptions(false);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (error) {
+      console.error('Camera access error:', error);
+      alert('Could not access camera. Please check permissions.');
+    }
+  };
+
+  const closeCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      if (context) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setSelectedImage(file);
+            closeCamera();
+            console.log('📸 Photo captured:', file);
+          }
+        }, 'image/jpeg', 0.9);
+      }
+    }
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-        setSelectedImage(e.target.files[0]);
+      setSelectedImage(e.target.files[0]);
+      console.log('📁 Image uploaded:', e.target.files[0]);
     }
   };
 
   const handleSend = async (messageText?: string) => {
     const textToSend = messageText || input.trim();
-    if ((!textToSend && !selectedImage) || loading) return;
+    
+    if ((!textToSend && !selectedImage) || loading) {
+      console.log('❌ Send blocked - no content or loading:', { textToSend, selectedImage, loading });
+      return;
+    }
 
     console.log('📤 Sending message:', textToSend);
+    console.log('📤 Message source:', messageText ? 'voice' : 'typed');
+    console.log('📤 Has image:', !!selectedImage);
 
     let previewContent = textToSend;
     if (selectedImage) {
-        previewContent = textToSend ? `${textToSend} [Image Attached]` : "[Image Attached]";
+      previewContent = textToSend ? `${textToSend} [Image: ${selectedImage.name}]` : `[Image: ${selectedImage.name}]`;
     }
 
     const userMsg: Message = { 
@@ -199,13 +290,16 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
+      console.log('📤 Calling sendChatMessage API...');
       const response = await sendChatMessage(
-        textToSend, 
+        textToSend || "What do you see in this image?", 
         [], 
         currentPersona.id,
         userEmail,
         selectedImage
       );
+      
+      console.log('📥 Response received:', response);
       
       const botMsg: Message = { 
         id: (Date.now() + 1).toString(), 
@@ -246,20 +340,18 @@ export default function ChatInterface({
     const handleClickOutside = () => {
       setShowDropdown(false);
       setShowUserDetails(false);
+      setShowCameraOptions(false);
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // FIXED: Proper name display logic
   const getUserDisplayName = () => {
-    // Only show Christopher for stangman email, everyone else gets their email username
     if (userEmail.toLowerCase().includes('stangman')) return 'Christopher';
     return userEmail.split('@')[0];
   };
 
   return (
-    // NUCLEAR OPTION: Fixed z-index 99999 to cover mobile headers
     <div style={{
         position: 'fixed',
         top: 0,
@@ -276,6 +368,38 @@ export default function ChatInterface({
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
       
+      {/* CAMERA MODAL */}
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-[100010] bg-black flex flex-col">
+          <div className="flex justify-between items-center p-4 bg-black/90">
+            <button
+              onClick={closeCamera}
+              className="text-white text-xl font-bold px-4 py-2 bg-red-600 rounded-lg"
+            >
+              ✕ Close
+            </button>
+            <h3 className="text-white text-lg font-bold">Take Photo</h3>
+            <button
+              onClick={capturePhoto}
+              className="text-white text-lg font-bold px-6 py-3 bg-blue-600 rounded-lg"
+            >
+              📸 Capture
+            </button>
+          </div>
+          
+          <div className="flex-1 flex items-center justify-center">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="max-w-full max-h-full"
+            />
+          </div>
+          
+          <canvas ref={canvasRef} className="hidden" />
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
@@ -295,7 +419,6 @@ export default function ChatInterface({
               </div>
             </button>
 
-            {/* SIMPLIFIED DROPDOWN - ACCOUNT DETAILS REMOVED */}
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
                 
@@ -365,7 +488,6 @@ export default function ChatInterface({
             </p>
           </div>
 
-          {/* CLICKABLE USER NAME FOR ACCOUNT DETAILS */}
           <div className="flex items-center gap-2 relative">
             <div 
               className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors"
@@ -385,7 +507,6 @@ export default function ChatInterface({
               </div>
             </div>
 
-            {/* USER DETAILS DROPDOWN */}
             {showUserDetails && (
               <div className="absolute top-16 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-4 min-w-[250px] z-[100003] shadow-2xl">
                 <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Account Details</h3>
@@ -531,11 +652,10 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* FIXED BOTTOM INPUT - LOCKED POSITION */}
+      {/* FIXED BOTTOM INPUT */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
           
-          {/* TOP CONTROLS ROW: Mic - Font - Voice */}
           <div className="flex items-center justify-between mb-3">
             <button
               onClick={startListening}
@@ -555,7 +675,6 @@ export default function ChatInterface({
               Mic {isListening ? 'ON' : micSupported ? 'OFF' : 'N/A'}
             </button>
 
-            {/* NEW: FONT SIZE BUTTON */}
             <button 
                onClick={cycleFontSize} 
                className="text-xs px-3 py-1 rounded bg-zinc-800 text-blue-400 font-bold border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide"
@@ -581,9 +700,7 @@ export default function ChatInterface({
             </button>
           </div>
           
-          {/* INPUT ROW */}
           <div className="flex items-end gap-3">
-             {/* Hidden File Input */}
              <input 
                type="file" 
                ref={fileInputRef} 
@@ -592,23 +709,55 @@ export default function ChatInterface({
                onChange={handleImageSelect}
              />
 
-             {/* Camera/Upload Button */}
-             <button
-               onClick={() => fileInputRef.current?.click()}
-               className={`
-                 w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all
-                 ${selectedImage 
-                   ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' 
-                   : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                 }
-               `}
-               title="Upload Image"
-             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-             </button>
+             {/* ENHANCED CAMERA BUTTON WITH OPTIONS */}
+             <div className="relative">
+               <button
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setShowCameraOptions(!showCameraOptions);
+                 }}
+                 className={`
+                   w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all
+                   ${selectedImage 
+                     ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' 
+                     : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                   }
+                 `}
+                 title="Camera Options"
+               >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+               </button>
+
+               {/* CAMERA OPTIONS DROPDOWN */}
+               {showCameraOptions && (
+                 <div className="absolute bottom-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[160px] z-[100005] shadow-2xl">
+                   <button
+                     onClick={() => {
+                       openCamera();
+                       setShowCameraOptions(false);
+                     }}
+                     className="w-full text-left p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors mb-1"
+                   >
+                     <div className="font-medium text-xs">📸 Take Photo</div>
+                     <div className="text-xs opacity-70">Use device camera</div>
+                   </button>
+                   
+                   <button
+                     onClick={() => {
+                       fileInputRef.current?.click();
+                       setShowCameraOptions(false);
+                     }}
+                     className="w-full text-left p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-colors"
+                   >
+                     <div className="font-medium text-xs">📁 Upload Photo</div>
+                     <div className="text-xs opacity-70">Choose from device</div>
+                   </button>
+                 </div>
+               )}
+             </div>
 
             <div className="flex-1">
               <textarea 
@@ -616,7 +765,11 @@ export default function ChatInterface({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "Listening..." : selectedImage ? "Image selected. Add context..." : `Message ${currentPersona.name}...`}
+                placeholder={
+                  isListening ? "Listening..." 
+                  : selectedImage ? `Image selected: ${selectedImage.name}. Add context...` 
+                  : `Message ${currentPersona.name}...`
+                }
                 disabled={loading || isListening}
                 className="w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2"
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
