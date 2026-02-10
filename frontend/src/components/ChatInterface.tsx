@@ -37,6 +37,7 @@ export default function ChatInterface({
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showUserDetails, setShowUserDetails] = useState(false); // NEW: User details dropdown
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
@@ -242,13 +243,18 @@ export default function ChatInterface({
   };
 
   useEffect(() => {
-    const handleClickOutside = () => setShowDropdown(false);
+    const handleClickOutside = () => {
+      setShowDropdown(false);
+      setShowUserDetails(false);
+    };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  // FIXED: Proper name display logic
   const getUserDisplayName = () => {
-    if (userEmail.includes('stangman')) return 'Christopher';
+    // Only show Christopher for stangman email, everyone else gets their email username
+    if (userEmail.toLowerCase().includes('stangman')) return 'Christopher';
     return userEmail.split('@')[0];
   };
 
@@ -289,32 +295,10 @@ export default function ChatInterface({
               </div>
             </button>
 
-            {/* FULL DROPDOWN RESTORED */}
+            {/* SIMPLIFIED DROPDOWN - ACCOUNT DETAILS REMOVED */}
             {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[250px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
+              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
                 
-                <div className="mb-3 p-2 bg-white/5 rounded-lg">
-                  <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Account Status</h3>
-                  {userStats && (
-                    <div className="space-y-1 text-xs text-gray-300">
-                      <p>Tier: <span className="text-[#3b82f6] font-bold">{userStats.tier.toUpperCase()}</span></p>
-                      <p>Today: <span className="text-white">{userStats.conversations_today}</span></p>
-                      <div className="mt-1">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span>Usage:</span>
-                          <span>{userStats.usage.current}/{userStats.usage.limit}</span>
-                        </div>
-                        <div className="bg-gray-800 rounded-full h-1">
-                          <div 
-                            className="h-1 bg-[#3b82f6] rounded-full transition-all"
-                            style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 <div className="mb-3">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">AI Personality</h3>
                   <div className="space-y-1">
@@ -381,8 +365,15 @@ export default function ChatInterface({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="text-right">
+          {/* CLICKABLE USER NAME FOR ACCOUNT DETAILS */}
+          <div className="flex items-center gap-2 relative">
+            <div 
+              className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUserDetails(!showUserDetails);
+              }}
+            >
               <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
                 {getUserDisplayName()}
               </div>
@@ -393,6 +384,41 @@ export default function ChatInterface({
                 </span>
               </div>
             </div>
+
+            {/* USER DETAILS DROPDOWN */}
+            {showUserDetails && (
+              <div className="absolute top-16 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-4 min-w-[250px] z-[100003] shadow-2xl">
+                <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Account Details</h3>
+                {userStats && (
+                  <div className="space-y-2 text-xs text-gray-300">
+                    <div className="flex justify-between">
+                      <span>Tier:</span>
+                      <span className="text-[#3b82f6] font-bold">{userStats.tier.toUpperCase()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Today:</span>
+                      <span className="text-white">{userStats.conversations_today}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total:</span>
+                      <span className="text-white">{userStats.total_conversations}</span>
+                    </div>
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>Usage:</span>
+                        <span>{userStats.usage.current}/{userStats.usage.limit}</span>
+                      </div>
+                      <div className="bg-gray-800 rounded-full h-2">
+                        <div 
+                          className="h-2 bg-[#3b82f6] rounded-full transition-all"
+                          style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -578,7 +604,7 @@ export default function ChatInterface({
                `}
                title="Upload Image"
              >
-                <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
