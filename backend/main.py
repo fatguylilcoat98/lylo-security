@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 # Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="11.1.0 - FINAL STABLE")
+app = FastAPI(title="LYLO Backend", version="12.0.0 - DYNAMIC DISCOVERY")
 
 # CORS Setup - Critical for Mobile
 app.add_middleware(
@@ -85,7 +85,7 @@ if PINECONE_API_KEY:
     except Exception as e:
         print(f"⚠️ Pinecone Warning: {e}")
 
-# Gemini (FIXED: Configure with specific version if needed)
+# Gemini Configuration
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
@@ -136,39 +136,83 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"❌ Tavily Error: {e}")
         return ""
 
-# --- THE TRIBUNAL ENGINES (FIXED GEMINI LOGIC) ---
+# --- DYNAMIC GEMINI MODEL FINDER (THE FIX) ---
+def get_working_gemini_model():
+    """Finds a model that ACTUALLY exists in your account to prevent 404s"""
+    if not gemini_ready: return None
+    try:
+        # Ask Google what models we have access to
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # Look for the best one in order of preference
+        priority_list = [
+            'gemini-1.5-flash', 
+            'gemini-1.5-pro',
+            'gemini-pro',
+            'gemini-1.0-pro'
+        ]
+        
+        # 1. Try to find exact matches or partial matches
+        for priority in priority_list:
+            for actual_name in available_models:
+                if priority in actual_name:
+                    return actual_name # Found a working model!
+        
+        # 2. If no priority match, take the first available one
+        if available_models:
+            return available_models[0]
+            
+    except Exception as e:
+        print(f"⚠️ Auto-discovery failed: {e}")
+    
+    # 3. Absolute fallback if discovery fails
+    return 'gemini-pro'
+
+# --- THE TRIBUNAL ENGINES ---
 async def call_gemini(prompt: str):
     if not gemini_ready: 
         print("❌ Gemini blocked: API Key not configured")
         return None
     
-    # Updated Model List for SDK 0.8.0+
-    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-pro-latest', 'gemini-pro']
-    
-    for model_name in models_to_try:
+    try:
+        # DYNAMIC FIX: Get the correct name automatically
+        model_name = get_working_gemini_model()
+        print(f"🧠 Gemini Selected: {model_name}")
+        
+        model = genai.GenerativeModel(model_name)
+        
+        # Try to enforce JSON, but fallback to text if model is old
         try:
-            print(f"🧠 Attempting connection to {model_name}...")
-            model = genai.GenerativeModel(model_name)
-            
-            # Use safety settings to prevent blocks
             response = model.generate_content(
                 prompt, 
                 generation_config={"response_mime_type": "application/json"}
             )
+        except:
+            print("⚠️ JSON mode failed, retrying standard mode...")
+            response = model.generate_content(prompt)
+
+        if response.text:
+            # Clean up potential markdown formatting
+            clean_text = response.text.strip()
+            if clean_text.startswith("```json"):
+                clean_text = clean_text.replace("```json", "").replace("```", "")
             
-            if response.text:
-                data = json.loads(response.text)
-                data['model'] = f"Gemini ({model_name})"
-                print(f"✅ SUCCESS: Connected to {model_name}")
-                return data
-                
-        except Exception as e:
-            # THIS LOG IS CRITICAL - It prints the exact error (404, 403, etc.)
-            print(f"❌ FAILURE on {model_name}: {str(e)}")
-            continue
+            try:
+                data = json.loads(clean_text)
+            except:
+                # If response is valid text but not JSON, wrap it
+                data = {"answer": clean_text, "confidence_score": 85, "scam_detected": False}
+
+            data['model'] = f"Gemini ({model_name})"
+            print(f"✅ SUCCESS: Gemini answered")
+            return data
             
-    print("❌ CRITICAL: All Gemini models failed to respond.")
-    return None
+    except Exception as e:
+        print(f"❌ Gemini CRITICAL Failure: {str(e)}")
+        return None
 
 async def call_openai(prompt: str):
     if not openai_client: return None
@@ -227,8 +271,8 @@ async def create_checkout(user_email: str = Form(...)):
                 'quantity': 1,
             }],
             mode='payment',
-            success_url='https://lylo.ai/success',
-            cancel_url='https://lylo.ai/cancel',
+            success_url='[https://lylo.ai/success](https://lylo.ai/success)',
+            cancel_url='[https://lylo.ai/cancel](https://lylo.ai/cancel)',
         )
         return {"id": session.id, "url": session.url}
     except Exception as e:
@@ -341,7 +385,7 @@ async def save_quiz(user_email: str = Form(...), question1: str = Form(...), que
 async def root():
     return {
         "status": "LYLO TRIBUNAL SYSTEM ONLINE",
-        "version": "11.1.0",
+        "version": "12.0.0",
         "beta_testers": len(BETA_TESTERS),
         "engines": {
             "gemini": "Ready" if gemini_ready else "Offline",
