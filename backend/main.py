@@ -81,7 +81,18 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-ELITE_USERS = {"stangman9898@gmail.com": "elite", "paintonmynails80@gamil.com": "elie"}
+# BETA TESTER MANAGEMENT SYSTEM
+ELITE_USERS = {
+    "stangman9898@gmail.com": "elite",
+    # Add more beta testers here - Christopher can easily add emails
+    # "friend@example.com": "elite",
+    # "investor@example.com": "elite",
+    # "family@example.com": "elite",
+}
+
+# In-memory beta tester storage (persists during runtime)
+BETA_TESTERS = ELITE_USERS.copy()
+
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
@@ -177,6 +188,66 @@ async def call_openai(prompt: str):
         print(f"❌ OpenAI failed: {e}")
         return None
 
+# NEW BETA TESTER ENDPOINTS
+@app.post("/admin/add-beta-tester")
+async def add_beta_tester(
+    admin_email: str = Form(...),
+    new_email: str = Form(...),
+    tier: str = Form("elite")
+):
+    """Add a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    BETA_TESTERS[new_email.lower()] = tier
+    print(f"✅ Added beta tester: {new_email} -> {tier}")
+    
+    return {
+        "status": "success",
+        "message": f"Added {new_email} as {tier} beta tester",
+        "total_beta_testers": len(BETA_TESTERS)
+    }
+
+@app.get("/admin/list-beta-testers/{admin_email}")
+async def list_beta_testers(admin_email: str):
+    """List all beta testers (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    return {
+        "beta_testers": BETA_TESTERS,
+        "total": len(BETA_TESTERS)
+    }
+
+@app.delete("/admin/remove-beta-tester")
+async def remove_beta_tester(
+    admin_email: str = Form(...),
+    remove_email: str = Form(...)
+):
+    """Remove a beta tester (only Christopher can use this)"""
+    if admin_email.lower() != "stangman9898@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    if remove_email.lower() in BETA_TESTERS:
+        del BETA_TESTERS[remove_email.lower()]
+        print(f"❌ Removed beta tester: {remove_email}")
+        return {"status": "success", "message": f"Removed {remove_email}"}
+    else:
+        return {"status": "error", "message": "Beta tester not found"}
+
+@app.post("/check-beta-access")
+async def check_beta_access(email: str = Form(...)):
+    """Check if user has beta access"""
+    tier = BETA_TESTERS.get(email.lower(), "free")
+    is_beta = tier in ["elite", "pro"]
+    
+    return {
+        "email": email,
+        "tier": tier,
+        "is_beta_tester": is_beta,
+        "has_elite_access": tier == "elite"
+    }
+
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -187,7 +258,10 @@ async def chat(
 ):
     user_id = create_user_id(user_email)
     
-    print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]}")
+    # Use dynamic beta tester list
+    actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
+    
+    print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
     
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
     web_evidence = await search_web_tavily(msg, user_location) if len(msg.split()) > 2 else ""
@@ -266,14 +340,14 @@ REQUIRED OUTPUT JSON FORMAT:
         "detailed_analysis": "No threats detected in this query",
         "web_search_used": bool(web_evidence),
         "personalization_active": bool(quiz_context),
-        "tier_info": {"name": f"{ELITE_USERS.get(user_email.lower(), 'free').title()} Tier"},
-        "usage_info": {"can_send": True, "current_tier": ELITE_USERS.get(user_email.lower(), "free")}
+        "tier_info": {"name": f"{actual_tier.title()} Tier"},
+        "usage_info": {"can_send": True, "current_tier": actual_tier}
     }
 
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
-    tier = ELITE_USERS.get(user_email.lower(), "free")
+    tier = BETA_TESTERS.get(user_email.lower(), "free")  # Use dynamic beta list
     conversations = USER_CONVERSATIONS.get(user_id, [])
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     
@@ -333,9 +407,11 @@ async def root():
             "openai": "✅ Ready" if openai_client else "❌ Offline",
             "tavily": "✅ Ready" if tavily_client else "❌ Offline",
             "pinecone": "✅ Ready" if memory_index else "❌ Offline"
-        }
+        },
+        "beta_testers": len(BETA_TESTERS)
     }
 
 if __name__ == "__main__":
     print("🚀 LYLO TRIBUNAL SYSTEM STARTING")
+    print(f"👥 Beta Testers: {len(BETA_TESTERS)}")
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
