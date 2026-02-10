@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, ChatMessage, ChatResponse, UserStats } from '../lib/api';
-import { PersonaConfig } from './Layout';
+import { PersonaConfig, Message } from '../types'; // Use your existing Message type
 
 interface ChatInterfaceProps {
   currentPersona: PersonaConfig;
@@ -9,14 +9,7 @@ interface ChatInterfaceProps {
   onZoomChange: (zoom: number) => void;
   onPersonaChange: (persona: PersonaConfig) => void;
   onLogout: () => void;
-}
-
-interface Message {
-  id: number;
-  content: string;
-  sender: 'user' | 'bot';
-  confidence?: number;
-  timestamp: number;
+  onUsageUpdate?: () => void;
 }
 
 const PERSONAS: PersonaConfig[] = [
@@ -34,7 +27,8 @@ export default function ChatInterface({
   zoomLevel,
   onZoomChange,
   onPersonaChange,
-  onLogout
+  onLogout,
+  onUsageUpdate
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -85,6 +79,7 @@ export default function ChatInterface({
     try {
       const stats = await getUserStats(userEmail);
       setUserStats(stats);
+      if (onUsageUpdate) onUsageUpdate();
     } catch (error) {
       console.error('Failed to load user stats:', error);
     }
@@ -150,11 +145,12 @@ export default function ChatInterface({
     const textToSend = messageText || input.trim();
     if (!textToSend || loading) return;
 
+    // Create message using your existing Message interface
     const userMsg: Message = { 
-      id: Date.now(), 
+      id: Date.now().toString(), // string ID to match your interface
       content: textToSend, 
       sender: 'user', 
-      timestamp: Date.now() 
+      timestamp: new Date() // Date object to match your interface
     };
     
     setMessages(prev => [...prev, userMsg]);
@@ -169,12 +165,15 @@ export default function ChatInterface({
         userEmail
       );
       
+      // Create bot message using your existing Message interface
       const botMsg: Message = { 
-        id: Date.now() + 1, 
+        id: (Date.now() + 1).toString(),
         content: response.answer, 
         sender: 'bot',
-        confidence: response.confidence_score,
-        timestamp: Date.now()
+        timestamp: new Date(),
+        confidenceScore: response.confidence_score, // Use your property name
+        scamDetected: response.scam_detected,
+        scamIndicators: response.scam_indicators
       };
       
       setMessages(prev => [...prev, botMsg]);
@@ -182,10 +181,10 @@ export default function ChatInterface({
       
     } catch (error) {
       setMessages(prev => [...prev, { 
-        id: Date.now(), 
+        id: Date.now().toString(),
         content: "Connection error. Please try again.", 
         sender: 'bot',
-        timestamp: Date.now()
+        timestamp: new Date()
       }]);
     } finally {
       setLoading(false);
@@ -380,7 +379,7 @@ export default function ChatInterface({
                 <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wider ${
                   msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'
                 }`}>
-                  {new Date(msg.timestamp).toLocaleTimeString([], { 
+                  {msg.timestamp.toLocaleTimeString([], { 
                     hour: '2-digit', 
                     minute: '2-digit' 
                   })}
@@ -388,7 +387,7 @@ export default function ChatInterface({
               </div>
             </div>
 
-            {msg.sender === 'bot' && msg.confidence && (
+            {msg.sender === 'bot' && msg.confidenceScore && (
               <div className="max-w-[85%]">
                 <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -396,16 +395,27 @@ export default function ChatInterface({
                       Truth Confidence
                     </span>
                     <span className="text-[#3b82f6] font-black">
-                      {msg.confidence}%
+                      {msg.confidenceScore}%
                     </span>
                   </div>
                   
                   <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
                     <div 
                       className="h-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] transition-all duration-1000"
-                      style={{ width: `${msg.confidence}%` }}
+                      style={{ width: `${msg.confidenceScore}%` }}
                     />
                   </div>
+                  
+                  {msg.scamDetected && (
+                    <div className="mt-3 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-xs">
+                      ⚠️ SCAM DETECTED
+                      {msg.scamIndicators && msg.scamIndicators.length > 0 && (
+                        <div className="mt-1 text-xs opacity-80">
+                          {msg.scamIndicators.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
