@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 # Load Environment Variables
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="12.0.0 - DYNAMIC DISCOVERY")
+app = FastAPI(title="LYLO Backend", version="12.2.0 - FULL FAT PRIVACY")
 
 # CORS Setup - Critical for Mobile
 app.add_middleware(
@@ -30,14 +30,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- API KEYS (FIXED: Added .strip() to clean hidden spaces) ---
+# --- API KEYS ---
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 
-# --- DIAGNOSTICS ---
+# --- DIAGNOSTICS (System Status Only) ---
 print("\n--- SYSTEM DIAGNOSTICS ---")
 print(f"🔍 Tavily Key:   {'OK' if TAVILY_API_KEY else 'MISSING'}")
 print(f"🧠 Pinecone Key: {'OK' if PINECONE_API_KEY else 'MISSING'}")
@@ -67,7 +67,6 @@ if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "lylo-memory"
-        # Check index existence safely
         existing_indexes = [idx.name for idx in pc.list_indexes()] if pc else []
         if index_name not in existing_indexes:
             try:
@@ -85,7 +84,7 @@ if PINECONE_API_KEY:
     except Exception as e:
         print(f"⚠️ Pinecone Warning: {e}")
 
-# Gemini Configuration
+# Gemini Config
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
@@ -136,18 +135,17 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"❌ Tavily Error: {e}")
         return ""
 
-# --- DYNAMIC GEMINI MODEL FINDER (THE FIX) ---
+# --- DYNAMIC GEMINI MODEL FINDER (PREVENTS 404s) ---
 def get_working_gemini_model():
-    """Finds a model that ACTUALLY exists in your account to prevent 404s"""
     if not gemini_ready: return None
     try:
-        # Ask Google what models we have access to
+        # Ask Google specifically what is available
         available_models = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        # Look for the best one in order of preference
+        # Priority preferences
         priority_list = [
             'gemini-1.5-flash', 
             'gemini-1.5-pro',
@@ -155,20 +153,19 @@ def get_working_gemini_model():
             'gemini-1.0-pro'
         ]
         
-        # 1. Try to find exact matches or partial matches
+        # Match priority against available
         for priority in priority_list:
             for actual_name in available_models:
                 if priority in actual_name:
-                    return actual_name # Found a working model!
+                    return actual_name
         
-        # 2. If no priority match, take the first available one
+        # Fallback to first available
         if available_models:
             return available_models[0]
             
     except Exception as e:
         print(f"⚠️ Auto-discovery failed: {e}")
     
-    # 3. Absolute fallback if discovery fails
     return 'gemini-pro'
 
 # --- THE TRIBUNAL ENGINES ---
@@ -178,32 +175,30 @@ async def call_gemini(prompt: str):
         return None
     
     try:
-        # DYNAMIC FIX: Get the correct name automatically
         model_name = get_working_gemini_model()
         print(f"🧠 Gemini Selected: {model_name}")
         
         model = genai.GenerativeModel(model_name)
         
-        # Try to enforce JSON, but fallback to text if model is old
         try:
             response = model.generate_content(
                 prompt, 
                 generation_config={"response_mime_type": "application/json"}
             )
         except:
-            print("⚠️ JSON mode failed, retrying standard mode...")
+            # Fallback for models that don't support JSON mode
             response = model.generate_content(prompt)
 
         if response.text:
-            # Clean up potential markdown formatting
             clean_text = response.text.strip()
+            # Remove markdown code blocks if present
             if clean_text.startswith("```json"):
                 clean_text = clean_text.replace("```json", "").replace("```", "")
             
             try:
                 data = json.loads(clean_text)
             except:
-                # If response is valid text but not JSON, wrap it
+                # Wrap plain text in JSON
                 data = {"answer": clean_text, "confidence_score": 85, "scam_detected": False}
 
             data['model'] = f"Gemini ({model_name})"
@@ -266,7 +261,7 @@ async def create_checkout(user_email: str = Form(...)):
                 'price_data': {
                     'currency': 'usd',
                     'product_data': {'name': 'Elite Tier Upgrade'},
-                    'unit_amount': 2000, # $20.00
+                    'unit_amount': 2000, 
                 },
                 'quantity': 1,
             }],
@@ -278,7 +273,7 @@ async def create_checkout(user_email: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- MAIN CHAT ENDPOINT (WITH VISION) ---
+# --- MAIN CHAT ENDPOINT (PRIVACY ENFORCED) ---
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -291,16 +286,22 @@ async def chat(
     user_id = create_user_id(user_email)
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
     
-    # 1. Log Request
-    print(f"🎯 PROCESSING: {user_email} (Tier: {actual_tier})")
-    image_status = f"📸 Image: {file.filename}" if file else "No Image"
-    print(f"   Message: {msg[:50]}... | {image_status}")
+    # --- PRIVACY LOGGING ---
+    # Mask email (s*****@gmail.com)
+    masked_email = "Unknown"
+    if user_email and "@" in user_email:
+        name_part, domain_part = user_email.split("@")
+        masked_email = f"{name_part[:1]}*****@{domain_part}"
+    
+    # Log status WITHOUT content
+    image_status = "Image: YES" if file else "Image: NO"
+    print(f"🎯 PROCESSING: {masked_email} (Tier: {actual_tier})")
+    print(f"   Status: Request Received [CONTENT REDACTED] | {image_status}")
+    # -----------------------
 
-    # 2. Evidence Gathering
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
     web_data = await search_web_tavily(msg, user_location) if len(msg.split()) > 2 else ""
     
-    # 3. Prompt Construction
     p_prompts = {
         "guardian": "You are The Guardian. Protective, vigilant, serious.",
         "roast": "You are The Roast Master. Sarcastic, funny, witty.",
@@ -331,7 +332,6 @@ async def chat(
     {{ "answer": "text", "confidence_score": 90, "scam_detected": false }}
     """
 
-    # 4. The Tribunal Battle
     print("⚔️ TRIBUNAL: Launching Battle...")
     results = await asyncio.gather(call_gemini(prompt), call_openai(prompt))
     valid = [r for r in results if r and r.get('answer')]
@@ -347,7 +347,7 @@ async def chat(
         }
         print("🚨 TRIBUNAL: All Failed")
 
-    # 5. Save & Return
+    # Store memory (safe to store internally, just not log)
     store_user_memory(user_id, msg, "user")
     store_user_memory(user_id, winner.get('answer', ''), "bot")
     
@@ -385,7 +385,7 @@ async def save_quiz(user_email: str = Form(...), question1: str = Form(...), que
 async def root():
     return {
         "status": "LYLO TRIBUNAL SYSTEM ONLINE",
-        "version": "12.0.0",
+        "version": "12.2.0",
         "beta_testers": len(BETA_TESTERS),
         "engines": {
             "gemini": "Ready" if gemini_ready else "Offline",
