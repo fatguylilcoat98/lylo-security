@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="9.2.0 - VISION ENABLED")
+app = FastAPI(title="LYLO Backend", version="9.3.0 - MEMORY ENABLED")
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,7 +84,7 @@ if OPENAI_API_KEY:
     except Exception as e:
         print(f"⚠️ OpenAI Error: {e}")
 
-# BETA TESTER MANAGEMENT SYSTEM
+# BETA TESTER MANAGEMENT
 ELITE_USERS = {
     "stangman9898@gmail.com": "elite",
 }
@@ -96,17 +96,106 @@ QUIZ_ANSWERS = defaultdict(dict)
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
+# FIXED: PINECONE MEMORY FUNCTIONS
+async def store_memory_in_pinecone(user_id: str, content: str, role: str, conversation_context: str = ""):
+    """Store conversation in Pinecone for long-term memory"""
+    if not memory_index:
+        print("❌ Pinecone not available for memory storage")
+        return
+    
+    try:
+        # Create embedding using OpenAI
+        if not openai_client:
+            print("❌ OpenAI not available for embeddings")
+            return
+            
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=f"{role}: {content} | Context: {conversation_context}"
+        )
+        
+        embedding = response.data[0].embedding
+        
+        # Store in Pinecone with metadata
+        memory_id = f"{user_id}_{datetime.now().timestamp()}"
+        
+        metadata = {
+            "user_id": user_id,
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+            "context": conversation_context[:500]  # Limit context size
+        }
+        
+        memory_index.upsert([(memory_id, embedding, metadata)])
+        print(f"✅ Memory stored in Pinecone: {role} - {content[:50]}...")
+        
+    except Exception as e:
+        print(f"❌ Failed to store memory in Pinecone: {e}")
+
+async def retrieve_memories_from_pinecone(user_id: str, query: str, limit: int = 5) -> List[Dict]:
+    """Retrieve relevant memories from Pinecone"""
+    if not memory_index or not openai_client:
+        print("❌ Pinecone or OpenAI not available for memory retrieval")
+        return []
+    
+    try:
+        # Create query embedding
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query
+        )
+        
+        query_embedding = response.data[0].embedding
+        
+        # Search Pinecone
+        results = memory_index.query(
+            vector=query_embedding,
+            filter={"user_id": user_id},
+            top_k=limit,
+            include_metadata=True
+        )
+        
+        memories = []
+        for match in results.matches:
+            if match.score > 0.7:  # Only high-similarity memories
+                memories.append({
+                    "content": match.metadata["content"],
+                    "role": match.metadata["role"], 
+                    "timestamp": match.metadata["timestamp"],
+                    "similarity": match.score,
+                    "context": match.metadata.get("context", "")
+                })
+        
+        print(f"✅ Retrieved {len(memories)} memories from Pinecone")
+        return memories
+        
+    except Exception as e:
+        print(f"❌ Failed to retrieve memories from Pinecone: {e}")
+        return []
+
 def store_user_memory(user_id: str, content: str, role: str):
+    """Store in local memory + Pinecone"""
     USER_CONVERSATIONS[user_id].append({
         "role": role,
         "content": content,
         "timestamp": datetime.now().isoformat()
     })
+    
+    # Also store in Pinecone asynchronously
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(store_memory_in_pinecone(user_id, content, role))
+        else:
+            loop.run_until_complete(store_memory_in_pinecone(user_id, content, role))
+    except Exception as e:
+        print(f"⚠️ Could not store in Pinecone immediately: {e}")
 
 async def search_web_tavily(query: str, location: str = "") -> str:
     if not tavily_client: 
-        print("❌ Tavily: No client available")
-        return "EVIDENCE: Web search unavailable - client not initialized"
+        return "EVIDENCE: Web search unavailable"
     
     try:
         search_query = f"{query} {location}".strip()
@@ -116,18 +205,12 @@ async def search_web_tavily(query: str, location: str = "") -> str:
             query=search_query, 
             search_depth="advanced",
             max_results=5,
-            include_answer=True,
-            include_domains=None,
-            exclude_domains=None
+            include_answer=True
         )
         
-        print(f"🔍 Tavily: Response received")
-        
         evidence = []
-        
         if response and response.get('answer'):
             evidence.append(f"DIRECT ANSWER: {response['answer']}")
-            print(f"✅ Tavily: Direct answer found")
         
         results = response.get('results', []) if response else []
         for i, result in enumerate(results[:3]):
@@ -135,49 +218,37 @@ async def search_web_tavily(query: str, location: str = "") -> str:
                 content = result['content'][:300]
                 evidence.append(f"SOURCE {i+1}: {content}")
         
-        final_evidence = "\n".join(evidence) if evidence else "EVIDENCE: No reliable information found"
-        print(f"✅ Tavily: Returning evidence ({len(evidence)} items)")
-        return final_evidence
+        return "\n".join(evidence) if evidence else "EVIDENCE: No reliable information found"
         
     except Exception as e:
-        error_msg = f"Tavily Search Error: {str(e)}"
-        print(f"❌ {error_msg}")
         return f"EVIDENCE: Search failed - {str(e)}"
 
 def process_image_for_ai(image_file: bytes) -> str:
-    """Convert image to base64 for AI processing"""
     try:
-        # Convert to base64
-        image_b64 = base64.b64encode(image_file).decode('utf-8')
-        return image_b64
+        return base64.b64encode(image_file).decode('utf-8')
     except Exception as e:
         print(f"❌ Image processing error: {e}")
         return None
 
 async def call_gemini_vision(prompt: str, image_b64: str = None):
-    """FIXED GEMINI VISION - Actually sees and analyzes images"""
     if not gemini_ready: 
         return None
     
     models_to_try = [
         'gemini-1.5-pro-latest',
-        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash-latest', 
         'gemini-pro-vision',
         'gemini-1.5-flash'
     ]
     
     for model_name in models_to_try:
         try:
-            print(f"🤖 Trying Gemini Vision model: {model_name}")
+            print(f"🤖 Trying Gemini Vision: {model_name}")
             
             model = genai.GenerativeModel(model_name)
-            
-            # Prepare content for vision analysis
             content_parts = [prompt]
             
             if image_b64:
-                print(f"📸 Processing image with Gemini Vision")
-                # Add image to content
                 content_parts.append({
                     'mime_type': 'image/jpeg',
                     'data': image_b64
@@ -192,18 +263,11 @@ async def call_gemini_vision(prompt: str, image_b64: str = None):
             )
             
             if response and response.text:
-                # Parse response for JSON or create structured response
                 try:
                     data = json.loads(response.text)
                 except json.JSONDecodeError:
                     text = response.text.strip()
-                    
                     confidence = 90 if image_b64 else 85
-                    if "confidence" in text.lower():
-                        import re
-                        conf_match = re.search(r'(\d+)%', text)
-                        if conf_match:
-                            confidence = int(conf_match.group(1))
                     
                     data = {
                         "answer": text,
@@ -212,18 +276,16 @@ async def call_gemini_vision(prompt: str, image_b64: str = None):
                     }
                 
                 data['model'] = f"Gemini Vision ({model_name})"
-                print(f"✅ Gemini Vision {model_name} success - Image analyzed!")
+                print(f"✅ Gemini Vision success")
                 return data
                 
         except Exception as e:
             print(f"❌ Gemini Vision {model_name} failed: {e}")
             continue
     
-    print("❌ All Gemini Vision models failed")
     return None
 
 async def call_openai_vision(prompt: str, image_b64: str = None):
-    """OpenAI Vision for image analysis"""
     if not openai_client: 
         return None
         
@@ -231,7 +293,6 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
         messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
         
         if image_b64:
-            print(f"📸 Processing image with OpenAI Vision")
             messages[0]["content"].append({
                 "type": "image_url",
                 "image_url": {
@@ -241,7 +302,7 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
             })
         
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini", # Vision capable
+            model="gpt-4o-mini",
             messages=messages,
             max_tokens=1000,
             temperature=0.7
@@ -249,7 +310,6 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
         
         answer = response.choices[0].message.content
         
-        # Create structured response
         data = {
             "answer": answer,
             "confidence_score": 90 if image_b64 else 85,
@@ -257,7 +317,7 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
             "model": "OpenAI Vision (GPT-4o-mini)"
         }
         
-        print("✅ OpenAI Vision success - Image analyzed!")
+        print("✅ OpenAI Vision success")
         return data
         
     except Exception as e:
@@ -324,7 +384,6 @@ async def remove_beta_tester(
     
     if remove_email.lower() in BETA_TESTERS:
         del BETA_TESTERS[remove_email.lower()]
-        print(f"❌ Removed beta tester: {remove_email}")
         return {"status": "success", "message": f"Removed {remove_email}"}
     else:
         return {"status": "error", "message": "Beta tester not found"}
@@ -341,7 +400,7 @@ async def check_beta_access(email: str = Form(...)):
         "has_elite_access": tier == "elite"
     }
 
-# MAIN CHAT ENDPOINT WITH VISION SUPPORT
+# MAIN CHAT ENDPOINT WITH WORKING MEMORY
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -349,9 +408,9 @@ async def chat(
     persona: str = Form("guardian"), 
     user_email: str = Form(...), 
     user_location: str = Form(""),
-    file: UploadFile = File(None)  # Support image uploads
+    file: UploadFile = File(None)
 ):
-    # VERIFY ACCESS FIRST
+    # VERIFY ACCESS
     tier = BETA_TESTERS.get(user_email.lower(), None)
     if not tier:
         return {
@@ -370,7 +429,7 @@ async def chat(
     user_id = create_user_id(user_email)
     actual_tier = BETA_TESTERS.get(user_email.lower(), "free")
     
-    print(f"🎯 TRIBUNAL: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
+    print(f"🧠 MEMORY CHAT: Processing '{msg[:50]}...' for {user_email[:20]} (Tier: {actual_tier})")
     
     # PROCESS IMAGE IF PROVIDED
     image_b64 = None
@@ -379,13 +438,38 @@ async def chat(
             print(f"📸 Processing uploaded image: {file.filename}")
             image_data = await file.read()
             image_b64 = process_image_for_ai(image_data)
-            print(f"✅ Image converted to base64 for AI analysis")
+            print(f"✅ Image ready for AI analysis")
         except Exception as e:
             print(f"❌ Image processing failed: {e}")
     
-    history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in json.loads(history)[-4:]])
+    # RETRIEVE MEMORIES FROM PINECONE
+    print("🧠 Retrieving memories from Pinecone...")
+    relevant_memories = await retrieve_memories_from_pinecone(user_id, msg, limit=10)
     
-    # Enhanced web search triggers
+    # COMBINE RECENT HISTORY + RETRIEVED MEMORIES
+    try:
+        recent_history = json.loads(history)
+    except:
+        recent_history = []
+    
+    # Build memory context
+    memory_context = ""
+    if relevant_memories:
+        memory_context = "PREVIOUS CONVERSATIONS:\n"
+        for memory in relevant_memories[:5]:  # Top 5 most relevant
+            memory_context += f"- {memory['role'].upper()}: {memory['content']}\n"
+        print(f"✅ Found {len(relevant_memories)} relevant memories")
+    else:
+        print("ℹ️ No relevant memories found")
+    
+    # RECENT CONVERSATION HISTORY  
+    history_text = ""
+    if recent_history:
+        history_text = "RECENT CONVERSATION:\n"
+        for h in recent_history[-4:]:  # Last 4 exchanges
+            history_text += f"{h['role'].upper()}: {h['content']}\n"
+    
+    # WEB SEARCH
     web_search_triggers = ["weather", "temperature", "forecast", "news", "current", "today", "price", "stock", "what's", "who is", "where is", "when is"]
     should_search = len(msg.split()) > 2 and any(trigger in msg.lower() for trigger in web_search_triggers)
     web_evidence = await search_web_tavily(msg, user_location) if should_search else ""
@@ -401,28 +485,34 @@ async def chat(
     
     quiz_context = QUIZ_ANSWERS.get(user_id, {})
     
-    # ENHANCED PROMPT FOR VISION
+    # ENHANCED PROMPT WITH MEMORY
     if image_b64:
         tribunal_prompt = f"""
 {persona_prompts.get(persona, persona_prompts['guardian'])}
 
-🔍 VISION MODE: You can see and analyze the image provided. Describe what you see in detail and provide relevant insights based on the image content.
+🧠 MEMORY ACTIVE: You remember our previous conversations and can reference them naturally. You learn about the user over time.
 
-USER CONTEXT: {quiz_context}
-CONVERSATION HISTORY: {history_text}
-REAL-TIME EVIDENCE: {web_evidence}
+{memory_context}
+
+{history_text}
+
+USER PROFILE: {quiz_context}
+REAL-TIME WEB DATA: {web_evidence}
+
+🔍 VISION MODE: Analyze the image provided and describe what you see.
+
 USER MESSAGE: "{msg}"
 
 INSTRUCTIONS:
-1. Carefully analyze the image if provided
-2. Describe what you see clearly and accurately  
-3. Provide helpful insights or answer questions about the image
+1. Reference relevant memories naturally if applicable
+2. Show that you remember the user and learn from past conversations  
+3. Analyze the image carefully and provide detailed insights
 4. Maintain your persona while being informative
-5. If it's a potential scam image (fake documents, suspicious QR codes, etc.), warn the user
+5. If it's a potential scam image, warn the user
 
-REQUIRED OUTPUT JSON FORMAT:
+REQUIRED JSON OUTPUT:
 {{
-    "answer": "your detailed response including image analysis",
+    "answer": "your response including image analysis and memory references",
     "confidence_score": 60-95,
     "scam_detected": false
 }}
@@ -431,22 +521,33 @@ REQUIRED OUTPUT JSON FORMAT:
         tribunal_prompt = f"""
 {persona_prompts.get(persona, persona_prompts['guardian'])}
 
-USER CONTEXT: {quiz_context}
-CONVERSATION HISTORY: {history_text}
-REAL-TIME EVIDENCE: {web_evidence}
+🧠 MEMORY ACTIVE: You remember our previous conversations and can reference them naturally. You learn about the user over time and build on past interactions.
+
+{memory_context}
+
+{history_text}
+
+USER PROFILE: {quiz_context}
+REAL-TIME WEB DATA: {web_evidence}
+
 USER MESSAGE: "{msg}"
 
-Respond as this persona. Be helpful and natural.
+INSTRUCTIONS:
+1. Reference relevant memories naturally when appropriate
+2. Show continuity with past conversations
+3. Learn from the user's preferences and history
+4. Maintain your persona while being helpful
+5. Build on previous interactions to provide better assistance
 
-REQUIRED OUTPUT JSON FORMAT:
+REQUIRED JSON OUTPUT:
 {{
-    "answer": "your response as the persona",
+    "answer": "your response with natural memory integration",
     "confidence_score": 60-95,
     "scam_detected": false
 }}
 """
 
-    print("⚔️ TRIBUNAL: Launching AI Vision battle...")
+    print("⚔️ TRIBUNAL: Launching Memory-Enhanced AI battle...")
     
     # Use vision models if image provided
     if image_b64:
@@ -460,7 +561,7 @@ REQUIRED OUTPUT JSON FORMAT:
     
     valid_results = []
     for i, result in enumerate(results):
-        model_name = "Gemini Vision" if i == 0 else "OpenAI Vision"
+        model_name = "Gemini Memory" if i == 0 else "OpenAI Memory"
         if isinstance(result, dict) and result.get('answer'):
             valid_results.append(result)
             print(f"✅ {model_name}: Confidence {result.get('confidence_score', 0)}%")
@@ -472,25 +573,31 @@ REQUIRED OUTPUT JSON FORMAT:
         print(f"🏆 WINNER: {winner.get('model', 'Unknown')} with {winner.get('confidence_score', 0)}% confidence")
     else:
         winner = {
-            "answer": f"I'm having technical difficulties analyzing {'the image' if image_b64 else 'your message'} right now, but I'm here to help! (Emergency mode active)",
+            "answer": f"I'm having technical difficulties {'analyzing the image' if image_b64 else 'processing your message'} right now, but I'm here to help!",
             "confidence_score": 60,
             "scam_detected": False,
             "model": "Emergency Fallback"
         }
         print("🚨 TRIBUNAL: All models failed, using emergency fallback")
     
+    # STORE MEMORIES (both local and Pinecone)
     store_user_memory(user_id, msg, "user")
     store_user_memory(user_id, winner['answer'], "bot")
+    
+    # STORE IN PINECONE WITH CONTEXT
+    context_summary = f"Persona: {persona}, Topic: {msg[:100]}, Response: {winner['answer'][:100]}"
+    await store_memory_in_pinecone(user_id, msg, "user", context_summary)
+    await store_memory_in_pinecone(user_id, winner['answer'], "bot", context_summary)
     
     return {
         "answer": winner['answer'],
         "confidence_score": winner.get('confidence_score', 60),
-        "confidence_explanation": f"Based on tribunal analysis using {winner.get('model', 'AI system')}",
+        "confidence_explanation": f"Memory-enhanced analysis using {winner.get('model', 'AI system')}",
         "scam_detected": winner.get('scam_detected', False),
         "scam_indicators": [],
-        "detailed_analysis": "No threats detected in this query",
+        "detailed_analysis": "Memory system active - learning from conversations",
         "web_search_used": bool(web_evidence),
-        "personalization_active": bool(quiz_context),
+        "personalization_active": bool(quiz_context or relevant_memories),
         "tier_info": {"name": f"{actual_tier.title()} Tier"},
         "usage_info": {"can_send": True, "current_tier": actual_tier}
     }
@@ -551,22 +658,24 @@ async def save_quiz(
 @app.get("/")
 async def root():
     return {
-        "status": "LYLO VISION TRIBUNAL SYSTEM ONLINE",
-        "version": "9.2.0",
+        "status": "LYLO MEMORY SYSTEM ONLINE",
+        "version": "9.3.0",
         "engines": {
             "gemini_vision": "✅ Ready" if gemini_ready else "❌ Offline",
             "openai_vision": "✅ Ready" if openai_client else "❌ Offline",
             "tavily": "✅ Ready" if tavily_client else "❌ Offline",
-            "pinecone": "✅ Ready" if memory_index else "❌ Offline"
+            "pinecone_memory": "✅ Ready" if memory_index else "❌ Offline"
         },
         "beta_testers": len(BETA_TESTERS),
         "access_control": "✅ Active",
-        "vision_support": "✅ Enabled"
+        "vision_support": "✅ Enabled",
+        "memory_system": "✅ Enabled"
     }
 
 if __name__ == "__main__":
-    print("🚀 LYLO VISION TRIBUNAL SYSTEM STARTING")
+    print("🚀 LYLO MEMORY SYSTEM STARTING")
     print(f"👥 Beta Testers: {len(BETA_TESTERS)}")
     print("🔒 Access Control: ACTIVE")
-    print("👁️ Vision Analysis: ENABLED")
+    print("👁️ Vision Analysis: ENABLED") 
+    print("🧠 Memory System: ENABLED")
     uvicorn.run(app, host="0.0.0.0", port=10000, log_level="info")
