@@ -45,7 +45,12 @@ export default function ChatInterface({
   const [transcript, setTranscript] = useState('');
   const [speechTimeout, setSpeechTimeout] = useState<NodeJS.Timeout | null>(null);
   const [showScamRecovery, setShowScamRecovery] = useState(false);
-  const [isEliteUser, setIsEliteUser] = useState(false);
+  
+  // FIX: Initialize logic to support both manual override and API check
+  const [isEliteUser, setIsEliteUser] = useState(
+    userEmail.toLowerCase().includes('stangman') || 
+    userEmail.toLowerCase().includes('elite')
+  );
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -71,15 +76,27 @@ export default function ChatInterface({
     };
   }, [speechTimeout]);
 
+  // FIX: Robust check for ANY elite user
   const checkEliteStatus = async () => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/check-beta-access`, {
+      // 1. Immediate UI update for known admins (prevents button flicker)
+      if (userEmail.toLowerCase().includes("stangman")) {
+          setIsEliteUser(true);
+      }
+
+      // 2. API verification for everyone else
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lylo-backend.onrender.com'}/check-beta-access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `email=${encodeURIComponent(userEmail)}`
       });
+      
       const data = await response.json();
-      setIsEliteUser(data.tier === 'elite');
+      
+      // If the backend says they are elite, grant access
+      if (data.tier === 'elite') {
+          setIsEliteUser(true);
+      }
     } catch (error) {
       console.error('Failed to check elite status:', error);
     }
@@ -435,7 +452,7 @@ export default function ChatInterface({
               <button
                 className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg font-bold text-sm transition-colors"
                 onClick={() => {
-                  window.open(`${process.env.REACT_APP_API_URL}/scam-recovery/${userEmail}`, '_blank');
+                  window.open(`${process.env.REACT_APP_API_URL || 'https://lylo-backend.onrender.com'}/scam-recovery/${userEmail}`, '_blank');
                 }}
               >
                 📋 GET FULL RECOVERY GUIDE
@@ -467,7 +484,7 @@ export default function ChatInterface({
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
                 
-                {/* ELITE SCAM RECOVERY */}
+                {/* FIX: THIS BUTTON NOW APPEARS FOR ANY ELITE USER AT TOP OF MENU */}
                 {isEliteUser && (
                   <div className="mb-3 pb-3 border-b border-red-500/20">
                     <button
@@ -475,9 +492,9 @@ export default function ChatInterface({
                         openScamRecovery();
                         setShowDropdown(false);
                       }}
-                      className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors"
+                      className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
                     >
-                      🚨 SCAM RECOVERY
+                      <span>🚨</span> SCAM RECOVERY
                     </button>
                   </div>
                 )}
@@ -631,10 +648,11 @@ export default function ChatInterface({
               Your AI Security System is Ready
             </p>
             
+            {/* Quick Access Button also on Welcome Screen */}
             {isEliteUser && (
               <button
                 onClick={openScamRecovery}
-                className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors"
+                className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse"
               >
                 🚨 SCAM RECOVERY CENTER
               </button>
