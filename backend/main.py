@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="14.3.0 - FULL FAT RESTORED")
+app = FastAPI(title="LYLO Backend", version="14.4.0 - MEMORY DIMENSION FIX")
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,17 +56,19 @@ if TAVILY_API_KEY:
     except Exception as e:
         print(f"❌ Internet Search Failed: {e}")
 
-# MEMORY CLIENT  
+# MEMORY CLIENT (PINECONE)
 pc = None
 memory_index = None
 if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "lylo-memory"
+        # Check if index exists, create if not
         if index_name not in [idx.name for idx in pc.list_indexes()]:
+            print(f"⚙️ Creating Pinecone Index: {index_name} (Dimension: 1024)...")
             pc.create_index(
                 name=index_name,
-                dimension=768,
+                dimension=1024,  # FIXED: Matches your existing index and OpenAI shrink
                 metric="cosine", 
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
@@ -117,14 +119,17 @@ QUIZ_ANSWERS = defaultdict(dict)
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
-# MEMORY FUNCTIONS
+# --- MEMORY FUNCTIONS (DIMENSION FIX APPLIED) ---
 async def store_memory_in_pinecone(user_id: str, content: str, role: str, context: str = ""):
     if not memory_index or not openai_client: return
     try:
+        # FIX: Force 1024 dimensions to match your index
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
-            input=f"{role}: {content} | Context: {context}"
+            input=f"{role}: {content} | Context: {context}",
+            dimensions=1024
         )
+        
         embedding = response.data[0].embedding
         memory_id = f"{user_id}_{datetime.now().timestamp()}"
         metadata = {
@@ -141,17 +146,22 @@ async def store_memory_in_pinecone(user_id: str, content: str, role: str, contex
 async def retrieve_memories_from_pinecone(user_id: str, query: str, limit: int = 5) -> List[Dict]:
     if not memory_index or not openai_client: return []
     try:
+        # FIX: Force 1024 dimensions to match your index
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
-            input=query
+            input=query,
+            dimensions=1024
         )
+        
         query_embedding = response.data[0].embedding
+        
         results = memory_index.query(
             vector=query_embedding,
             filter={"user_id": user_id},
             top_k=limit,
             include_metadata=True
         )
+        
         memories = []
         for match in results.matches:
             if match.score > 0.7:
@@ -161,7 +171,6 @@ async def retrieve_memories_from_pinecone(user_id: str, query: str, limit: int =
                     "timestamp": match.metadata["timestamp"],
                     "similarity": match.score
                 })
-        print(f"🧠 Retrieved {len(memories)} memories")
         return memories
     except Exception as e:
         print(f"❌ Memory retrieval failed: {e}")
@@ -320,7 +329,7 @@ async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(..
     display_name = name if name else new_email.split('@')[0]
     ELITE_USERS[new_email.lower()] = {"tier": tier, "name": display_name}
     BETA_TESTERS[new_email.lower()] = tier
-    return {"status": "success"}
+    return {"status": "success", "message": f"Added {display_name}"}
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
@@ -365,7 +374,7 @@ async def create_checkout(user_email: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- SCAM RECOVERY (FULL CONTENT RESTORED) ---
+# --- SCAM RECOVERY (FULL CONTENT) ---
 @app.get("/scam-recovery/{user_email}")
 async def get_scam_recovery_info(user_email: str):
     user_data = ELITE_USERS.get(user_email.lower(), None)
@@ -479,12 +488,10 @@ async def scam_recovery_chat(
     scam_type: str = Form(""),
     time_since: str = Form("")
 ):
-    # Check if user is elite
     user_data = ELITE_USERS.get(user_email.lower(), None)
     if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
-        return {"error": "Elite access required for personalized recovery assistance"}
+        return {"error": "Elite access required"}
     
-    # Get personalized recovery advice
     user_display_name = user_data.get("name") if isinstance(user_data, dict) else "User"
     
     recovery_prompt = f"""
@@ -493,38 +500,34 @@ SITUATION: {situation}
 AMOUNT LOST: {amount_lost}
 SCAM TYPE: {scam_type}
 TIME SINCE SCAM: {time_since}
-Provide specific, actionable recovery advice based on their situation. Include:
+Provide specific, actionable recovery advice. Include:
 1. Immediate priority actions
-2. Specific recovery strategies for this scam type
-3. Realistic timeline expectations
+2. Specific recovery strategies
+3. Realistic timeline
 4. Who to contact first
 5. Documentation needed
-Be empathetic but direct. Focus on practical steps they can take TODAY.
+Be empathetic but direct.
 """
-    
-    # Use AI to generate personalized advice
     try:
         if openai_client:
             response = await openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": recovery_prompt}],
-                max_tokens=800,
-                temperature=0.3
+                max_tokens=800, temperature=0.3
             )
             advice = response.choices[0].message.content
         else:
-            advice = f"Hello {user_display_name}, I understand you've been through a difficult situation. Based on what you've shared, here are your immediate next steps: 1) Contact your financial institution within 24 hours, 2) File reports with FTC and local police, 3) Document all evidence, 4) Consider professional asset recovery if the amount is substantial."
+            advice = f"Hello {user_display_name}. Please contact your bank immediately and file a police report."
     
         return {
             "personalized_advice": advice,
             "user_name": user_display_name,
-            "priority_level": "HIGH" if any(keyword in scam_type.lower() for keyword in ["wire", "crypto", "investment"]) else "MEDIUM"
+            "priority_level": "HIGH"
         }
     except Exception as e:
         return {
-            "personalized_advice": f"I'm having technical difficulties, but {user_display_name}, your situation is important. Please immediately contact your bank and file a police report. Use the recovery guide for detailed steps.",
-            "user_name": user_display_name,
-            "priority_level": "HIGH"
+            "personalized_advice": "I'm having technical difficulties. Please contact your bank immediately.",
+            "user_name": user_display_name
         }
 
 # MAIN CHAT
@@ -628,9 +631,6 @@ async def get_user_stats(user_email: str):
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
     display_name = user_data["name"] if isinstance(user_data, dict) else user_email.split('@')[0]
     convos = USER_CONVERSATIONS.get(user_id, [])
-    quiz_data = QUIZ_ANSWERS.get(user_id, {})
-    
-    limit = 100 if tier == "elite" else 10
     
     return {
         "tier": tier,
@@ -638,8 +638,7 @@ async def get_user_stats(user_email: str):
         "conversations_today": len(convos),
         "total_conversations": len(convos),
         "has_quiz_data": user_id in QUIZ_ANSWERS,
-        "usage": {"current": len(convos), "limit": limit, "percentage": 0},
-        "learning_profile": {"interests": [], "top_concern": ""}
+        "usage": {"current": len(convos), "limit": 100 if tier == "elite" else 10, "percentage": 0}
     }
 
 @app.post("/quiz")
