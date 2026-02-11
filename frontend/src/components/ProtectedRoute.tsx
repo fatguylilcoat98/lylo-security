@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 
@@ -7,16 +6,22 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  // Logic: Check if the user is actually authorized.
-  // We check for a saved email and if they are marked as 'elite' (like Laura)
+  // 1. Get the user data from storage
   const userEmail = localStorage.getItem('userEmail');
+  
+  // 2. Check if they have a "VIP Pass" (Elite or Beta)
   const isElite = localStorage.getItem('isEliteUser') === 'true';
+  const isBeta = localStorage.getItem('isBetaTester') === 'true';
 
-  // If there is no email OR they aren't authorized, kick them back to Login
-  if (!userEmail || !isElite) {
-    console.warn("Unauthorized access attempt. Redirecting to login.");
+  // 3. The Condition: Must have an email AND be either Elite OR Beta
+  const hasAccess = userEmail && (isElite || isBeta);
+
+  if (!hasAccess) {
+    console.warn("Unauthorized access attempt by:", userEmail || "Anonymous");
+    // Send them back to the login (Dashboard)
     return <Navigate to="/dashboard" replace />; 
   }
 
+  // If they pass, show them the page
   return <>{children}</>;
 };
