@@ -111,11 +111,10 @@ export default function ChatInterface({
     }
   };
 
-  // --- NEW: FETCH GUIDE HANDLER ---
+  // --- FETCH GUIDE HANDLER ---
   const handleGetFullGuide = async () => {
     try {
       setLoading(true);
-      // Use the exact endpoint logic you had, but fetch it instead of opening window
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://lylo-backend.onrender.com'}/scam-recovery/${userEmail}`);
       const data = await response.json();
       setGuideData(data);
@@ -335,12 +334,10 @@ export default function ChatInterface({
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
       
-      {/* --- NEW: FULL RECOVERY GUIDE MODAL --- */}
+      {/* --- RECOVERY GUIDE MODAL --- */}
       {showFullGuide && guideData && (
         <div className="fixed inset-0 z-[100030] bg-black/95 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-red-500/50 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            
-            {/* Guide Header */}
             <div className="p-4 border-b border-gray-800 bg-red-900/20 flex justify-between items-start flex-shrink-0">
               <div>
                 <h2 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-wider">
@@ -355,15 +352,9 @@ export default function ChatInterface({
                 ❌
               </button>
             </div>
-
-            {/* Guide Content (Scrollable) */}
             <div className="p-4 space-y-6 overflow-y-auto flex-1">
-              
-              {/* Phase 1: Immediate Actions */}
               <section>
-                <h3 className="text-red-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-red-500/30 pb-1">
-                  Phase 1: Stop the Bleeding
-                </h3>
+                <h3 className="text-red-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-red-500/30 pb-1">Phase 1: Stop the Bleeding</h3>
                 <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
                   <ul className="space-y-2">
                     {guideData.immediate_actions.map((action, i) => (
@@ -375,42 +366,26 @@ export default function ChatInterface({
                   </ul>
                 </div>
               </section>
-
-              {/* Phase 2: Recovery Steps */}
               <section className="space-y-3">
-                <h3 className="text-blue-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-blue-500/30 pb-1">
-                  Phase 2: Recovery Protocol
-                </h3>
+                <h3 className="text-blue-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-blue-500/30 pb-1">Phase 2: Recovery Protocol</h3>
                 {guideData.recovery_steps.map((step) => (
                   <div key={step.step} className="bg-gray-800/40 rounded-lg p-3 border border-white/5">
-                    <h4 className="font-bold text-white text-sm mb-1">
-                      Step {step.step}: {step.title}
-                    </h4>
+                    <h4 className="font-bold text-white text-sm mb-1">Step {step.step}: {step.title}</h4>
                     <ul className="space-y-1 pl-4 border-l-2 border-blue-500/30">
-                      {step.actions.map((act, i) => (
-                        <li key={i} className="text-gray-400 text-xs">{act}</li>
-                      ))}
+                      {step.actions.map((act, i) => <li key={i} className="text-gray-400 text-xs">{act}</li>)}
                     </ul>
                   </div>
                 ))}
               </section>
-
-              {/* Phase 3: Prevention */}
               <section>
-                <h3 className="text-green-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-green-500/30 pb-1">
-                  Phase 3: Future Prevention
-                </h3>
+                <h3 className="text-green-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-green-500/30 pb-1">Phase 3: Future Prevention</h3>
                 <ul className="grid grid-cols-1 gap-2">
                   {guideData.prevention_tips.map((tip, i) => (
-                    <li key={i} className="bg-green-900/10 text-green-200 p-2 rounded border border-green-500/20 text-xs font-medium">
-                      🔒 {tip}
-                    </li>
+                    <li key={i} className="bg-green-900/10 text-green-200 p-2 rounded border border-green-500/20 text-xs font-medium">🔒 {tip}</li>
                   ))}
                 </ul>
               </section>
             </div>
-            
-            {/* Guide Footer */}
             <div className="p-3 border-t border-gray-800 bg-gray-900 flex-shrink-0">
               <button 
                 onClick={() => setShowFullGuide(false)}
@@ -419,27 +394,18 @@ export default function ChatInterface({
                 Close Guide
               </button>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* --- ORIGINAL SCAM RECOVERY MODAL --- */}
+      {/* --- SCAM RECOVERY MODAL --- */}
       {showScamRecovery && (
         <div className="fixed inset-0 z-[100020] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-black/95 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">
-                🚨 SCAM RECOVERY CENTER
-              </h2>
-              <button
-                onClick={() => setShowScamRecovery(false)}
-                className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg"
-              >
-                ✕
-              </button>
+              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">🚨 SCAM RECOVERY CENTER</h2>
+              <button onClick={() => setShowScamRecovery(false)} className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg">✕</button>
             </div>
-            
             <div className="space-y-4 text-sm">
               <div className="bg-red-900/20 border border-red-500/30 rounded p-3">
                 <p className="text-red-300 font-bold mb-2">IMMEDIATE ACTIONS:</p>
@@ -451,30 +417,16 @@ export default function ChatInterface({
                   <li>🚔 File police report</li>
                 </ul>
               </div>
-              
               <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-3">
                 <p className="text-yellow-300 font-bold mb-2">PHONE SCRIPT FOR BANK:</p>
-                <p className="text-gray-300 text-xs italic">
-                  "I need to report fraudulent activity. I was scammed and unauthorized transfers were made. I want to dispute these charges and secure my account immediately."
-                </p>
+                <p className="text-gray-300 text-xs italic">"I need to report fraudulent activity. I was scammed and unauthorized transfers were made..."</p>
               </div>
-              
               <button
-                className={`w-full py-3 px-4 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2
-                  ${loading 
-                    ? 'bg-gray-700 cursor-not-allowed text-gray-400' 
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                  }`}
-                onClick={handleGetFullGuide} // <--- UPDATED THIS BUTTON
+                className={`w-full py-3 px-4 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${loading ? 'bg-gray-700 cursor-not-allowed text-gray-400' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                onClick={handleGetFullGuide}
                 disabled={loading}
               >
-                {loading ? (
-                  <span>GENERATING GUIDE...</span>
-                ) : (
-                  <>
-                    <span>📋</span> GET FULL RECOVERY GUIDE
-                  </>
-                )}
+                {loading ? <span>GENERATING GUIDE...</span> : <><span>📋</span> GET FULL RECOVERY GUIDE</>}
               </button>
             </div>
           </div>
@@ -485,48 +437,31 @@ export default function ChatInterface({
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }}
-              className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setShowDropdown(!showDropdown); }} className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
               <div className="space-y-1">
                 <div className="w-4 h-0.5 bg-white"></div>
                 <div className="w-4 h-0.5 bg-white"></div>
                 <div className="w-4 h-0.5 bg-white"></div>
               </div>
             </button>
-
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
                 {isEliteUser && (
                   <div className="mb-3 pb-3 border-b border-red-500/20">
-                    <button
-                      onClick={() => { openScamRecovery(); setShowDropdown(false); }}
-                      className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
-                    >
-                      <span>🚨</span> SCAM RECOVERY
-                    </button>
+                    <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"><span>🚨</span> SCAM RECOVERY</button>
                   </div>
                 )}
-                
                 <div className="mb-3">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">AI Personality</h3>
                   <div className="space-y-1">
                     {PERSONAS.map(persona => (
-                      <button
-                        key={persona.id}
-                        onClick={() => { onPersonaChange(persona); setShowDropdown(false); }}
-                        className={`w-full text-left p-2 rounded-lg transition-colors ${
-                          currentPersona.id === persona.id ? 'bg-[#3b82f6] text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'
-                        }`}
-                      >
+                      <button key={persona.id} onClick={() => { onPersonaChange(persona); setShowDropdown(false); }} className={`w-full text-left p-2 rounded-lg transition-colors ${currentPersona.id === persona.id ? 'bg-[#3b82f6] text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>
                         <div className="font-medium text-xs">{persona.name}</div>
                         <div className="text-xs opacity-70">{persona.description}</div>
                       </button>
                     ))}
                   </div>
                 </div>
-
                 <div className="mb-3">
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Text Size</h3>
                   <div className="flex items-center gap-2">
@@ -535,44 +470,24 @@ export default function ChatInterface({
                     <button onClick={() => onZoomChange(Math.min(200, zoomLevel + 25))} className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs">+</button>
                   </div>
                 </div>
-
                 <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
               </div>
             )}
           </div>
-
           <div className="text-center flex-1 px-2">
-            <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>
-              L<span className="text-[#3b82f6]">Y</span>LO
-            </h1>
+            <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             <p className="text-gray-500 text-xs uppercase tracking-[0.3em] font-bold">Digital Bodyguard</p>
           </div>
-
           <div className="flex items-center gap-2 relative">
-            <div 
-              className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors"
-              onClick={(e) => { e.stopPropagation(); setShowUserDetails(!showUserDetails); }}
-            >
-              <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>
-                {getUserDisplayName()}
-                {isEliteUser && <span className="text-yellow-400 ml-1">★</span>}
-              </div>
-              <div className="flex items-center gap-1 justify-end">
-                <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-gray-400 text-xs uppercase font-bold">{isOnline ? 'Online' : 'Offline'}</span>
-              </div>
+            <div className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors" onClick={(e) => { e.stopPropagation(); setShowUserDetails(!showUserDetails); }}>
+              <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{getUserDisplayName()}{isEliteUser && <span className="text-yellow-400 ml-1">★</span>}</div>
+              <div className="flex items-center gap-1 justify-end"><div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div><span className="text-gray-400 text-xs uppercase font-bold">{isOnline ? 'Online' : 'Offline'}</span></div>
             </div>
-
             {showUserDetails && userStats && (
               <div className="absolute top-16 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-4 min-w-[250px] z-[100003] shadow-2xl">
                 <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Account Details</h3>
                 <div className="space-y-2 text-xs text-gray-300">
-                  <div className="flex justify-between">
-                    <span>Tier:</span>
-                    <span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>
-                      {userStats.tier.toUpperCase()} {isEliteUser && ' ★'}
-                    </span>
-                  </div>
+                  <div className="flex justify-between"><span>Tier:</span><span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>{userStats.tier.toUpperCase()} {isEliteUser && ' ★'}</span></div>
                   <div className="flex justify-between"><span>Today:</span><span className="text-white">{userStats.conversations_today}</span></div>
                   <div className="flex justify-between"><span>Total:</span><span className="text-white">{userStats.total_conversations}</span></div>
                   <div className="mt-2">
@@ -586,11 +501,11 @@ export default function ChatInterface({
         </div>
       </div>
 
-      {/* MESSAGES AREA */}
+      {/* MESSAGES AREA - UPDATED PADDING FOR SCROLL */}
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-3 relative z-[100000]"
-        style={{ paddingBottom: '160px', minHeight: 0, fontSize: `${zoomLevel / 100}rem` }}
+        style={{ paddingBottom: '240px', minHeight: 0, fontSize: `${zoomLevel / 100}rem` }}
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
@@ -676,6 +591,12 @@ export default function ChatInterface({
               />
             </div>
             <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage)} className={`px-6 py-3 rounded-lg font-bold text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Sending' : 'Send'}</button>
+          </div>
+          {/* DISCLAIMER ADDED HERE */}
+          <div className="text-center mt-3 pb-1">
+            <p className="text-[10px] text-gray-500 font-medium tracking-wide">
+              LYLO is an AI and can make mistakes. Verify important information.
+            </p>
           </div>
         </div>
       </div>
