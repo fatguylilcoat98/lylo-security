@@ -99,7 +99,7 @@ if OPENAI_API_KEY:
 ELITE_USERS = {
     "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
     "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
-    "Tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
+    "tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
     "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
     "birdznbloomz2b@gmail.com": {"tier": "elite", "name": "Sandy"},
   "plabane916@gmail.com": {"tier": "elite", "name": "Paul"},
@@ -107,7 +107,7 @@ ELITE_USERS = {
  "bearjcameron@icloud.com": {"tier": "elite", "name": "Bear"},
  "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
     "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
-    "Cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
+    "cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
 }
 
 BETA_TESTERS = {}
