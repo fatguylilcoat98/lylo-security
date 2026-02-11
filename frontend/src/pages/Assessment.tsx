@@ -39,6 +39,7 @@ export default function Assessment() {
   const [selectedTier, setSelectedTier] = useState('free');
   const [icons, setIcons] = useState<any>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false); // NEW LEGAL STATE
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,28 +47,22 @@ export default function Assessment() {
   }, []);
 
   const completeAssessment = async () => {
-    setIsCompleting(true);
-    
-    if (!userEmail || !userEmail.includes('@')) {
-      alert('Please enter a valid email address');
-      setIsCompleting(false);
+    // SECURITY CHECK: Must agree to terms
+    if (!agreedToTerms) {
+      alert("Please review and agree to the Terms of Service and Privacy Policy to activate LYLO.");
       return;
     }
-    
-    const cleanEmail = userEmail.toLowerCase().trim();
 
-    // 1. CHECK THE VIP LIST
+    setIsCompleting(true);
+    const cleanEmail = userEmail.toLowerCase().trim();
     const vipData = ELITE_USERS[cleanEmail];
 
-    // 2. SAVE CORE DATA
     localStorage.setItem('lylo_tech_level', techLevel);
     localStorage.setItem('lylo_selected_persona', selectedPersona);
     localStorage.setItem('lylo_user_email', cleanEmail);
     localStorage.setItem('lylo_assessment_complete', 'true');
 
-    // 3. APPLY SECURITY STAMPS
     if (vipData || selectedTier === 'elite') {
-      // ELITE ACCESS
       localStorage.setItem('isEliteUser', 'true');
       localStorage.setItem('isBetaTester', 'true');
       localStorage.setItem('lylo_user_tier', 'elite');
@@ -75,7 +70,6 @@ export default function Assessment() {
         localStorage.setItem('lylo_user_name', vipData.name);
       }
     } else {
-      // STANDARD ACCESS (Pro/Free)
       localStorage.setItem('isEliteUser', 'false');
       localStorage.setItem('isBetaTester', 'true'); 
       localStorage.setItem('lylo_user_tier', selectedTier);
@@ -91,7 +85,7 @@ export default function Assessment() {
       case 1: return userEmail.includes('@');
       case 2: return techLevel !== '';
       case 3: return selectedPersona !== '';
-      case 4: return selectedTier !== '';
+      case 4: return selectedTier !== '' && agreedToTerms; // Must check box to finish
       default: return false;
     }
   };
@@ -116,12 +110,12 @@ export default function Assessment() {
 
   if (isCompleting) {
     return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-center p-6">
         <div className="w-24 h-24 mb-6 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center animate-pulse shadow-2xl">
           {icons?.Shield && <icons.Shield className="w-12 h-12 text-white" />}
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2">Activating LYLO</h2>
-        <p className="text-gray-400">Syncing security profile for {userEmail}...</p>
+        <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tighter italic">Activating LYLO</h2>
+        <p className="text-gray-400 uppercase tracking-widest text-[10px]">Syncing security profile for {userEmail}...</p>
       </div>
     );
   }
@@ -129,18 +123,14 @@ export default function Assessment() {
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-4xl bg-black/40 p-8 md:p-12 rounded-[2rem] border border-white/10 backdrop-blur-3xl shadow-2xl">
-        
-        {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-black bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">LYLO PROTOCOL</h1>
+          <h1 className="text-4xl font-black bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2 italic uppercase">LYLO Protocol</h1>
           <p className="text-gray-500 uppercase tracking-widest text-sm">Step {step} of 4</p>
         </div>
 
-        {/* Step 1: Email */}
         {step === 1 && (
           <div className="text-center space-y-6">
             <h3 className="text-2xl font-bold">Identity Verification</h3>
-            <p className="text-gray-400">Enter your email to activate your bodyguard.</p>
             <input
               type="email"
               value={userEmail}
@@ -151,10 +141,9 @@ export default function Assessment() {
           </div>
         )}
 
-        {/* Step 2: Tech Level */}
         {step === 2 && (
           <div className="grid gap-4 max-w-md mx-auto">
-            <h3 className="text-xl font-bold text-center mb-4">Tech Experience</h3>
+            <h3 className="text-xl font-bold text-center mb-4 uppercase tracking-widest text-xs opacity-50">Tech Experience</h3>
             {['beginner', 'intermediate', 'advanced'].map(lvl => (
               <button key={lvl} onClick={() => setTechLevel(lvl)} className={`p-5 rounded-2xl border text-lg font-semibold transition-all ${techLevel === lvl ? 'border-cyan-400 bg-cyan-400/10 text-cyan-400' : 'border-white/10 text-gray-400 hover:bg-white/5'}`}>
                 {lvl.toUpperCase()}
@@ -163,7 +152,6 @@ export default function Assessment() {
           </div>
         )}
 
-        {/* Step 3: Persona Selection */}
         {step === 3 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              {personas.map(p => (
@@ -180,35 +168,46 @@ export default function Assessment() {
           </div>
         )}
 
-        {/* Step 4: Tier Selection */}
         {step === 4 && (
-          <div className="grid gap-6 md:grid-cols-3">
-             {['free', 'pro', 'elite'].map(t => (
-               <button key={t} onClick={() => setSelectedTier(t)} className={`p-8 rounded-3xl border text-center transition-all ${selectedTier === t ? 'border-green-400 bg-green-400/10' : 'border-white/10 hover:bg-white/5'}`}>
-                 <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">{t}</div>
-                 <div className="text-3xl font-black mb-2">{t === 'free' ? '$0' : t === 'pro' ? '$9.99' : '$29.99'}</div>
-                 <div className="text-[10px] leading-tight text-gray-400">Secure this tier to proceed</div>
-               </button>
-             ))}
+          <div className="space-y-8">
+            <div className="grid gap-6 md:grid-cols-3">
+               {['free', 'pro', 'elite'].map(t => (
+                 <button key={t} onClick={() => setSelectedTier(t)} className={`p-8 rounded-3xl border text-center transition-all ${selectedTier === t ? 'border-green-400 bg-green-400/10' : 'border-white/10 hover:bg-white/5'}`}>
+                   <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">{t}</div>
+                   <div className="text-3xl font-black mb-2">{t === 'free' ? '$0' : t === 'pro' ? '$9.99' : '$29.99'}</div>
+                   <div className="text-[10px] leading-tight text-gray-400 uppercase tracking-widest font-bold">Select Tier</div>
+                 </button>
+               ))}
+            </div>
+
+            {/* LEGAL CHECKBOX - SURGICAL ADDITION */}
+            <div className="max-w-md mx-auto flex items-start gap-4 p-4 bg-white/5 rounded-2xl border border-white/10">
+              <input 
+                type="checkbox" 
+                id="legal-agree" 
+                className="w-6 h-6 mt-1 rounded border-white/20 bg-black text-blue-500 focus:ring-blue-500" 
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+              />
+              <label htmlFor="legal-agree" className="text-[10px] text-gray-400 uppercase tracking-widest leading-relaxed">
+                I agree to the <a href="https://mylylo.pro/terms.html" target="_blank" className="text-blue-500 underline">Terms of Service</a> and <a href="https://mylylo.pro/privacy.html" target="_blank" className="text-blue-500 underline">Privacy Policy</a>. I understand LYLO is an AI assistant and not a licensed legal professional.
+              </label>
+            </div>
           </div>
         )}
 
-        {/* Navigation */}
         <div className="flex gap-4 mt-12">
           {step > 1 && (
-            <button onClick={() => setStep(step - 1)} className="flex-1 p-5 bg-white/5 border border-white/10 rounded-2xl font-bold hover:bg-white/10 transition-all">
-              BACK
-            </button>
+            <button onClick={() => setStep(step - 1)} className="flex-1 p-5 bg-white/5 border border-white/10 rounded-2xl font-bold hover:bg-white/10 transition-all uppercase tracking-widest text-xs">BACK</button>
           )}
           <button 
             onClick={step < 4 ? () => setStep(step + 1) : completeAssessment} 
             disabled={!canProceed()}
-            className="flex-1 p-5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-black shadow-lg shadow-cyan-500/20 disabled:opacity-30 disabled:grayscale transition-all"
+            className="flex-1 p-5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-black shadow-lg shadow-cyan-500/20 disabled:opacity-30 disabled:grayscale transition-all uppercase tracking-widest"
           >
             {step < 4 ? 'CONTINUE' : 'ACTIVATE LYLO'}
           </button>
         </div>
-
       </div>
     </div>
   );
