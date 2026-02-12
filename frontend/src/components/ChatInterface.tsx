@@ -57,6 +57,10 @@ export default function ChatInterface({
   const [transcript, setTranscript] = useState('');
   const [speechTimeout, setSpeechTimeout] = useState<NodeJS.Timeout | null>(null);
   
+  // New Features State
+  const [language, setLanguage] = useState<'en' | 'es'>('en'); // Default to English
+  const [showLimitModal, setShowLimitModal] = useState(false); // Pop up when limit hit
+  
   // Scam Recovery State
   const [showScamRecovery, setShowScamRecovery] = useState(false);
   const [showFullGuide, setShowFullGuide] = useState(false); // Toggle for the new guide
@@ -134,7 +138,8 @@ export default function ChatInterface({
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      // Switch speech language based on toggle
+      recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
@@ -183,7 +188,7 @@ export default function ChatInterface({
     } else {
       setMicSupported(false);
     }
-  }, [input, isListening, loading, speechTimeout]);
+  }, [input, isListening, loading, speechTimeout, language]); // Added language dep
 
   const loadUserStats = async () => {
     try {
@@ -200,6 +205,8 @@ export default function ChatInterface({
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.rate = 0.9;
+      // Set TTS language
+      utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
       utterance.onend = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
       setIsSpeaking(true);
@@ -251,6 +258,13 @@ export default function ChatInterface({
     const textToSend = input.trim();
     if ((!textToSend && !selectedImage) || loading) return;
 
+    // --- USAGE CAP ENFORCEMENT ---
+    // If they hit the limit (e.g. 50/50 or 500/500), BLOCK them.
+    if (userStats && userStats.usage.current >= userStats.usage.limit) {
+      setShowLimitModal(true); // Show the upgrade popup
+      return; // STOP here. Do not send message.
+    }
+
     let previewContent = textToSend;
     if (selectedImage) previewContent = textToSend ? `${textToSend} [Image: ${selectedImage.name}]` : `[Image: ${selectedImage.name}]`;
 
@@ -276,7 +290,8 @@ export default function ChatInterface({
         conversationHistory,
         currentPersona.id,
         userEmail,
-        selectedImage
+        selectedImage,
+        language // Pass the language to the API (You need to update api.ts next!)
       );
       
       const botMsg: Message = { 
@@ -297,7 +312,7 @@ export default function ChatInterface({
     } catch (error) {
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
-        content: "Connection error. Please try again.", 
+        content: language === 'es' ? "Error de conexión. Por favor intente de nuevo." : "Connection error. Please try again.", 
         sender: 'bot', 
         timestamp: new Date() 
       }]);
@@ -334,6 +349,31 @@ export default function ChatInterface({
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
       
+      {/* --- LIMIT REACHED MODAL (NEW) --- */}
+      {showLimitModal && (
+        <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
+             <div className="text-4xl mb-3">🛑</div>
+             <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Daily Limit Reached</h2>
+             <p className="text-gray-300 text-sm mb-6">
+               You have used all {userStats?.usage.limit} messages for your current plan. Upgrade to <b>Elite</b> for 500 messages/day or <b>Max</b> for Unlimited.
+             </p>
+             <button 
+               onClick={() => { setShowLimitModal(false); onLogout(); }} // Logs them out so they see Pricing page
+               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-all"
+             >
+               Upgrade Now
+             </button>
+             <button 
+               onClick={() => setShowLimitModal(false)}
+               className="mt-3 text-gray-500 text-xs font-bold hover:text-gray-300"
+             >
+               Close & Read History
+             </button>
+          </div>
+        </div>
+      )}
+
       {/* --- RECOVERY GUIDE MODAL --- */}
       {showFullGuide && guideData && (
         <div className="fixed inset-0 z-[100030] bg-black/95 flex items-center justify-center p-4">
@@ -445,7 +485,20 @@ export default function ChatInterface({
               </div>
             </button>
             {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[80vh] overflow-y-auto shadow-2xl">
+              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[200px] z-[100003] max-h-[60vh] overflow-y-auto shadow-2xl">
+                {/* LANGUAGE TOGGLE - NEW */}
+                <div className="mb-3 pb-3 border-b border-white/10">
+                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Language / Idioma</h3>
+                   <div className="flex gap-2">
+                     <button onClick={() => setLanguage('en')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>
+                       🇺🇸 ENG
+                     </button>
+                     <button onClick={() => setLanguage('es')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>
+                       🇲🇽 ESP
+                     </button>
+                   </div>
+                </div>
+
                 {isEliteUser && (
                   <div className="mb-3 pb-3 border-b border-red-500/20">
                     <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"><span>🚨</span> SCAM RECOVERY</button>
