@@ -1,6 +1,7 @@
 // DIRECT CONNECTION TO YOUR RENDER BACKEND
 const API_URL = 'https://lylo-backend.onrender.com';
 
+
 // --- NEW: Added this Missing Interface to fix the Build Error ---
 export interface Message {
   id: string;
@@ -13,10 +14,12 @@ export interface Message {
 }
 // ---------------------------------------------------------------
 
+
 export interface ChatMessage {
   role: 'user' | 'bot';
   content: string;
 }
+
 
 export interface ChatResponse {
   answer: string;
@@ -30,6 +33,7 @@ export interface ChatResponse {
   tier_info?: { name: string };
   usage_info?: { can_send: boolean; current_tier: string };
 }
+
 
 export interface UserStats {
   tier: string;
@@ -47,6 +51,7 @@ export interface UserStats {
     top_concern: string;
   };
 }
+
 
 // NEW: Add access verification function
 export const verifyAccess = async (email: string): Promise<{
@@ -82,12 +87,14 @@ export const verifyAccess = async (email: string): Promise<{
   }
 };
 
+
 export const sendChatMessage = async (
   message: string,
   history: any[],
   personaId: string,
   userEmail: string,
-  imageFile?: File | null 
+  imageFile?: File | null,
+  language: string = 'en' // <--- NEW: Defaults to English if not provided
 ): Promise<ChatResponse> => {
   try {
     const formData = new FormData();
@@ -96,6 +103,7 @@ export const sendChatMessage = async (
     formData.append('persona', personaId);
     formData.append('user_email', userEmail);
     formData.append('user_location', ''); 
+    formData.append('language', language); // <--- NEW: Sends language to backend
 
     if (imageFile) {
         formData.append('file', imageFile);
@@ -114,13 +122,14 @@ export const sendChatMessage = async (
   } catch (error) {
     console.error('API Connection Error:', error);
     return {
-      answer: "I'm having trouble connecting to the server. Please check your internet connection.",
+      answer: language === 'es' ? "Tengo problemas conectando con el servidor. Por favor verifica tu internet." : "I'm having trouble connecting to the server. Please check your internet connection.",
       confidence_score: 0,
       scam_detected: false,
       confidence_explanation: "Connection Failed"
     };
   }
 };
+
 
 export const getUserStats = async (email: string): Promise<UserStats | null> => {
   try {
@@ -132,6 +141,7 @@ export const getUserStats = async (email: string): Promise<UserStats | null> => 
     return null;
   }
 };
+
 
 export const saveQuiz = async (
   userEmail: string,
