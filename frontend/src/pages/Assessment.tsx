@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+// --- VIP BYPASS LIST (DO NOT REMOVE) ---
 const ELITE_USERS: Record<string, { tier: string; name: string }> = {
     "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
     "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
     "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"}
 };
 
-// STRIPE LINKS - REPLACE THESE WITH YOUR ACTUAL STRIPE LINKS
+// --- STRIPE LINKS (UPDATED FOR 3-TIER MODEL) ---
+// REPLACE THESE PLACEHOLDERS WITH YOUR NEW STRIPE LINKS LATER
 const STRIPE_LINKS = {
   pro: "https://buy.stripe.com/PLACEHOLDER_FOR_PRO_299",
   elite: "https://buy.stripe.com/PLACEHOLDER_FOR_ELITE_1499",
@@ -87,7 +89,7 @@ export default function Assessment() {
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-xl bg-black/40 p-8 rounded-3xl border border-white/10 backdrop-blur-3xl shadow-2xl">
-        <h2 className="text-3xl font-black mb-8 text-center uppercase italic tracking-tighter">LYLO <span className="text-blue-500">GATED ACCESS</span></h2>
+        <h2 className="text-3xl font-black mb-8 text-center uppercase italic tracking-tighter">LYLO <span className="text-blue-500">ACCESS</span></h2>
         
         {step === 1 && (
           <div className="space-y-6 text-center">
