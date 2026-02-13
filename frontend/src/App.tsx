@@ -22,10 +22,15 @@ const LandingPage = () => {
       const data = await response.json();
 
       if (data.access) {
+        // Save User Data
         localStorage.setItem('userEmail', email.toLowerCase().trim());
         localStorage.setItem('userTier', data.tier);
         localStorage.setItem('userName', data.name);
+        
         alert("Access Granted! Welcome " + data.name);
+        
+        // --- THE FIX ---
+        // Using React Router's navigate prevents the 404 error on Render
         navigate('/dashboard'); 
       } else {
         alert("Access Denied: " + data.message);
@@ -135,7 +140,7 @@ const LandingPage = () => {
             <button onClick={runBetaLogin} className="w-full py-4 border border-white/10 rounded font-bold uppercase text-xs tracking-widest hover:bg-white hover:text-black transition">Join Free</button>
           </div>
 
-          <div className="price-card card-pro">
+          <div className="price-card card-pro" onClick={runBetaLogin}>
             <img src="/protier.png" className="h-32 mb-6" alt="Pro" />
             <h3 className="text-blue-400 font-black uppercase tracking-[0.2em] mb-2">Pro Guardian</h3>
             <div className="text-4xl font-black mb-6">$1.99</div>
@@ -146,7 +151,7 @@ const LandingPage = () => {
             <a href="https://buy.stripe.com/YOUR_PRO_LINK" className="w-full py-4 border border-blue-500 text-blue-400 rounded font-bold uppercase text-xs tracking-widest text-center">Get Pro</a>
           </div>
 
-          <div className="price-card card-elite">
+          <div className="price-card card-elite" onClick={runBetaLogin}>
             <img src="/elitetier.png" className="h-32 mb-6" alt="Elite" />
             <h3 className="text-amber-500 font-black uppercase tracking-[0.2em] mb-2">Elite Justice</h3>
             <div className="text-4xl font-black mb-6">$4.99</div>
@@ -157,7 +162,7 @@ const LandingPage = () => {
             <a href="https://buy.stripe.com/YOUR_ELITE_LINK" className="w-full py-4 border border-amber-500 text-amber-500 rounded font-black uppercase text-xs tracking-widest text-center">Start Elite</a>
           </div>
 
-          <div className="price-card card-max">
+          <div className="price-card card-max" onClick={runBetaLogin}>
             <img src="/maxtier.png" className="h-32 mb-6" alt="Max" />
             <h3 className="text-purple-500 font-black uppercase tracking-[0.2em] mb-2">Max Unlimited</h3>
             <div className="text-4xl font-black mb-6">$9.99</div>
