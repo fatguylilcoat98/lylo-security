@@ -1,39 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-// --- VIP BYPASS LIST (Synchronized with Backend) ---
+// --- VIP BYPASS LIST (Every user now upgraded to MAX) ---
 const ELITE_USERS: Record<string, { tier: string; name: string }> = {
-    "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
-    "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
-    "tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
-    "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
-    "birdznbloomz2b@gmail.com": {"tier": "elite", "name": "Sandy"},
-    "plabane916@gmail.com": {"tier": "elite", "name": "Paul"},
-    "nemeses1298@gmail.com": {"tier": "elite", "name": "Eric"},
-    "bearjcameron@icloud.com": {"tier": "elite", "name": "Bear"},
-    "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
-    "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
-    "cmlabane@gmail.com": {"tier": "elite", "name": "Corie"},
-    "chris.betatester1@gmail.com": {"tier": "elite", "name": "James"},
-    "chris.betatester2@gmail.com": {"tier": "elite", "name": "Beta 2"},
-    "chris.betatester3@gmail.com": {"tier": "elite", "name": "Beta 3"},
-    "chris.betatester4@gmail.com": {"tier": "elite", "name": "Beta 4"},
-    "chris.betatester5@gmail.com": {"tier": "elite", "name": "Beta 5"},
-    "chris.betatester6@gmail.com": {"tier": "elite", "name": "Beta 6"},
-    "chris.betatester7@gmail.com": {"tier": "elite", "name": "Beta 7"},
-    "chris.betatester8@gmail.com": {"tier": "elite", "name": "Beta 8"},
-    "chris.betatester9@gmail.com": {"tier": "elite", "name": "Beta 9"},
-    "chris.betatester10@gmail.com": {"tier": "elite", "name": "Beta 10"},
-    "chris.betatester11@gmail.com": {"tier": "elite", "name": "Beta 11"},
-    "chris.betatester12@gmail.com": {"tier": "elite", "name": "Beta 12"},
-    "chris.betatester13@gmail.com": {"tier": "elite", "name": "Beta 13"},
-    "chris.betatester14@gmail.com": {"tier": "elite", "name": "Beta 14"},
-    "chris.betatester15@gmail.com": {"tier": "elite", "name": "Beta 15"},
-    "chris.betatester16@gmail.com": {"tier": "elite", "name": "Beta 16"},
-    "chris.betatester17@gmail.com": {"tier": "elite", "name": "Beta 17"},
-    "chris.betatester18@gmail.com": {"tier": "elite", "name": "Beta 18"},
-    "chris.betatester19@gmail.com": {"tier": "elite", "name": "Beta 19"},
-    "chris.betatester20@gmail.com": {"tier": "elite", "name": "Beta 20"}
+    "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
+    "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey"},
+    "tiffani.hughes@yahoo.com": {"tier": "max", "name": "Tiffani"},
+    "jcdabearman@gmail.com": {"tier": "max", "name": "Jeff"},
+    "birdznbloomz2b@gmail.com": {"tier": "max", "name": "Sandy"},
+    "plabane916@gmail.com": {"tier": "max", "name": "Paul"},
+    "nemeses1298@gmail.com": {"tier": "max", "name": "Eric"},
+    "bearjcameron@icloud.com": {"tier": "max", "name": "Bear"},
+    "jcgcbear@gmail.com": {"tier": "max", "name": "Gloria"},
+    "laura@startupsac.org": {"tier": "max", "name": "Laura"},
+    "cmlabane@gmail.com": {"tier": "max", "name": "Corie"},
+    "chris.betatester1@gmail.com": {"tier": "max", "name": "James"},
+    "chris.betatester2@gmail.com": {"tier": "max", "name": "Beta 2"},
+    "chris.betatester3@gmail.com": {"tier": "max", "name": "Beta 3"},
+    "chris.betatester4@gmail.com": {"tier": "max", "name": "Beta 4"},
+    "chris.betatester5@gmail.com": {"tier": "max", "name": "Beta 5"},
+    "chris.betatester6@gmail.com": {"tier": "max", "name": "Beta 6"},
+    "chris.betatester7@gmail.com": {"tier": "max", "name": "Beta 7"},
+    "chris.betatester8@gmail.com": {"tier": "max", "name": "Beta 8"},
+    "chris.betatester9@gmail.com": {"tier": "max", "name": "Beta 9"},
+    "chris.betatester10@gmail.com": {"tier": "max", "name": "Beta 10"},
+    "chris.betatester11@gmail.com": {"tier": "max", "name": "Beta 11"},
+    "chris.betatester12@gmail.com": {"tier": "max", "name": "Beta 12"},
+    "chris.betatester13@gmail.com": {"tier": "max", "name": "Beta 13"},
+    "chris.betatester14@gmail.com": {"tier": "max", "name": "Beta 14"},
+    "chris.betatester15@gmail.com": {"tier": "max", "name": "Beta 15"},
+    "chris.betatester16@gmail.com": {"tier": "max", "name": "Beta 16"},
+    "chris.betatester17@gmail.com": {"tier": "max", "name": "Beta 17"},
+    "chris.betatester18@gmail.com": {"tier": "max", "name": "Beta 18"},
+    "chris.betatester19@gmail.com": {"tier": "max", "name": "Beta 19"},
+    "chris.betatester20@gmail.com": {"tier": "max", "name": "Beta 20"}
 };
 
 // --- STRIPE LINKS ---
@@ -63,28 +63,37 @@ export default function Assessment() {
   }, [searchParams, navigate]);
 
   const completeAssessment = async () => {
-    if (!agreedToTerms) {
-      alert("Please agree to the terms to proceed.");
-      return;
-    }
-
     const cleanEmail = userEmail.toLowerCase().trim();
     const vipData = ELITE_USERS[cleanEmail];
     
     localStorage.setItem('userEmail', cleanEmail);
 
-    // 1. VIP BYPASS
+    // 1. IMMEDIATE VIP BYPASS (Straight to MAX)
     if (vipData) {
       setIsCompleting(true);
-      localStorage.setItem('userTier', vipData.tier);
+      localStorage.setItem('userTier', 'max'); 
       localStorage.setItem('userName', vipData.name);
       localStorage.setItem('isEliteUser', 'true');
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      localStorage.setItem('isBetaTester', 'true');
+      
+      // Short delay for "Initializing" feel
+      await new Promise(resolve => setTimeout(resolve, 1200));
       navigate('/dashboard');
       return;
     }
 
-    // 2. PAID TIERS
+    // If not a VIP, proceed to terms and tier selection
+    if (step === 1) {
+        setStep(2);
+        return;
+    }
+
+    if (!agreedToTerms) {
+      alert("Please agree to the terms to proceed.");
+      return;
+    }
+
+    // 2. PAID TIERS (For non-VIPs)
     if (selectedTier === 'pro' || selectedTier === 'elite' || selectedTier === 'max') {
       localStorage.setItem('userTier', selectedTier);
       let stripeUrl = STRIPE_LINKS.pro;
@@ -104,7 +113,12 @@ export default function Assessment() {
     navigate('/dashboard');
   };
 
-  if (isCompleting) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white italic uppercase font-black">Activating Protocol...</div>;
+  if (isCompleting) return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center text-white italic uppercase font-black tracking-tighter">
+        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        Initializing MAX Protocol...
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6">
@@ -113,20 +127,20 @@ export default function Assessment() {
         
         {step === 1 && (
           <div className="space-y-6 text-center">
-            <h3 className="text-xl font-bold">IDENTITY VERIFICATION</h3>
+            <h3 className="text-xl font-bold uppercase tracking-widest opacity-70">Identity Verification</h3>
             <input
               type="email"
               value={userEmail}
               onChange={(e) => setUserEmail(e.target.value)}
-              className="w-full p-5 bg-white/5 border border-white/20 rounded-2xl text-center text-xl focus:border-blue-500 outline-none"
-              placeholder="YOUR EMAIL"
+              className="w-full p-5 bg-white/5 border border-white/20 rounded-2xl text-center text-xl focus:border-blue-500 outline-none transition-all"
+              placeholder="ENTER EMAIL"
             />
             <button 
-              onClick={() => setStep(2)} 
+              onClick={completeAssessment} 
               disabled={!userEmail.includes('@')} 
-              className="w-full p-6 bg-blue-600 rounded-2xl font-black uppercase tracking-widest disabled:opacity-30"
+              className="w-full p-6 bg-blue-600 rounded-2xl font-black uppercase tracking-widest disabled:opacity-30 hover:bg-blue-500 transition-all shadow-xl"
             >
-              CONTINUE
+              AUTHENTICATE
             </button>
           </div>
         )}
