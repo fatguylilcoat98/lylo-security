@@ -7,7 +7,10 @@ export interface Message {
   scamDetected?: boolean;
   confidenceScore?: number;
   scamIndicators?: string[];
+  // Added to ensure compatibility with your ChatInterface state
+  role?: 'user' | 'assistant'; 
 }
+
 export interface UserProfile {
   name: string;
   access_code: string;
@@ -17,17 +20,21 @@ export interface UserProfile {
   is_elite: boolean;
   fontsize: number;
 }
+
 export interface PersonaConfig {
   id: string;
   name: string;
   description: string;
-  color: string;
+  // Changed from string to a specific list to support 'gold' and your Glow Logic
+  color: 'blue' | 'orange' | 'green' | 'red' | 'purple' | 'yellow' | 'gold' | string;
 }
+
 export interface ScamAlert {
   isActive: boolean;
   confidence: number;
   indicators: string[];
 }
+
 export const QUICK_ACTIONS = [
   { id: 'safe', label: 'Check Safety', icon: 'Shield' },
   { id: 'weather', label: 'Weather', icon: 'Cloud' },
