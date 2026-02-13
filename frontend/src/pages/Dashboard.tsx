@@ -15,11 +15,18 @@ export default function Dashboard() {
   
   useEffect(() => {
     const savedPersona = localStorage.getItem('lylo_selected_persona');
-    const savedEmail = localStorage.getItem('lylo_user_email') || '';
-    const eliteStatus = localStorage.getItem('isEliteUser') === 'true';
-    const betaStatus = localStorage.getItem('isBetaTester') === 'true';
-    const name = localStorage.getItem('lylo_user_name') || 'User';
     
+    // --- LOGIN FIX STARTS HERE ---
+    // We now check for the keys set by your new index.html script
+    const savedEmail = localStorage.getItem('userEmail') || localStorage.getItem('lylo_user_email') || '';
+    const savedTier = localStorage.getItem('userTier') || 'free';
+    const savedName = localStorage.getItem('userName') || localStorage.getItem('lylo_user_name') || 'User';
+    
+    // Calculate status based on the new "tier" variable
+    const eliteStatus = savedTier === 'elite' || localStorage.getItem('isEliteUser') === 'true';
+    const betaStatus = savedTier === 'pro' || savedTier === 'elite' || localStorage.getItem('isBetaTester') === 'true';
+    // --- LOGIN FIX ENDS HERE ---
+
     // Check if saved persona exists in our current list
     if (savedPersona && personas.find(p => p.id === savedPersona)) {
       setCurrentPersona(savedPersona);
@@ -27,11 +34,12 @@ export default function Dashboard() {
     
     setUserEmail(savedEmail);
     setIsElite(eliteStatus);
-    setUserName(name);
+    setUserName(savedName);
 
     // GATEKEEPER
-    if (!savedEmail || (!eliteStatus && !betaStatus)) {
-      window.location.href = '/assessment';
+    // If no email is found, kick them back to home
+    if (!savedEmail) {
+      window.location.href = '/';
     }
   }, []);
   
@@ -46,12 +54,16 @@ export default function Dashboard() {
   };
 
   // Fixed Handler: This ensures the state update is captured correctly
-  const handlePersonaChange = (persona: any) => {
+  const handlePersonaChange = (persona) => {
     console.log("Dashboard switching to:", persona.id);
     setCurrentPersona(persona.id);
   };
 
   const handleLogout = () => {
+    // Clear ALL keys (both old and new) to ensure clean logout
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userTier');
+    localStorage.removeItem('userName');
     localStorage.removeItem('lylo_user_email');
     localStorage.removeItem('lylo_selected_persona');
     localStorage.removeItem('isEliteUser');
