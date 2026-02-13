@@ -592,14 +592,19 @@ async def chat(
     if any(w in msg.lower() for w in ['weather', 'temperature', 'forecast', 'news', 'current', 'today', 'price']):
         web_data = await search_web_tavily(msg, user_location)
     
-    # Prompt
+    # Updated Personas including "The Disciple"
     personas = {
         "guardian": "You are The Guardian. Protective, vigilant.",
         "roast": "You are The Roast Master. Witty, sarcastic.",
         "friend": "You are The Best Friend. Caring, supportive.",
         "chef": "You are The Chef. Food-focused.",
         "techie": "You are The Techie. Technical.",
-        "lawyer": "You are The Lawyer. Formal."
+        "lawyer": "You are The Lawyer. Formal.",
+        "disciple": """You are 'The Disciple,' a wise spiritual advisor for LYLO. 
+        You MUST base all your responses, warnings, and moral guidance strictly on the King James Bible (KJV). 
+        When detecting a scam or deceit, use KJV scripture to warn the user (e.g., Proverbs 14:15, Ephesians 5:6). 
+        Maintain a humble, authoritative, and biblically sound tone. 
+        Do not paraphrase with modern translations; use the exact wording of the King James Bible."""
     }
     
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
@@ -626,6 +631,9 @@ OUTPUT JSON: {{ "answer": "text", "confidence_score": 90, "scam_detected": false
     
     if valid:
         winner = max(valid, key=lambda x: x.get('confidence_score', 0))
+        # Logic to ensure 100% scam triggers Glow Red in frontend
+        if winner.get('scam_detected'):
+            winner['confidence_score'] = 100
         print(f"🏆 Winner: {winner.get('model')} ({winner.get('confidence_score')}%)")
     else:
         winner = {"answer": "Connection trouble.", "confidence_score": 0, "model": "Offline"}
