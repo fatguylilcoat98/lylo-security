@@ -42,6 +42,67 @@ const LandingPage = () => {
 
   return (
     <div className="bg-[#050505] text-white font-sans min-h-screen">
+      <style>{`
+        /* NEON BORDER SYSTEM */
+        .price-card {
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          border: 2px solid transparent;
+          background: rgba(255, 255, 255, 0.02);
+          cursor: pointer;
+        }
+
+        /* PRO - BLUE */
+        .card-pro { 
+          border-color: rgba(59, 130, 246, 0.5); 
+          box-shadow: 0 0 15px rgba(59, 130, 246, 0.1); 
+        }
+        .card-pro:hover, .card-pro:active { 
+          background: #2563eb !important; 
+          border-color: #3b82f6; 
+          box-shadow: 0 0 30px rgba(59, 130, 246, 0.4); 
+          transform: translateY(-8px);
+        }
+
+        /* ELITE - GOLD */
+        .card-elite { 
+          border-color: rgba(245, 158, 11, 0.5); 
+          box-shadow: 0 0 15px rgba(245, 158, 11, 0.1); 
+        }
+        .card-elite:hover, .card-elite:active { 
+          background: #d97706 !important; 
+          border-color: #fbbf24; 
+          box-shadow: 0 0 30px rgba(245, 158, 11, 0.4); 
+          transform: translateY(-8px);
+        }
+
+        /* MAX - PURPLE */
+        .card-max { 
+          border-color: rgba(147, 51, 234, 0.5); 
+          box-shadow: 0 0 15px rgba(147, 51, 234, 0.1); 
+        }
+        .card-max:hover, .card-max:active { 
+          background: #9333ea !important; 
+          border-color: #a855f7; 
+          box-shadow: 0 0 30px rgba(147, 51, 234, 0.4); 
+          transform: translateY(-8px);
+        }
+        
+        /* Ensure text stays white and readable on solid hover */
+        .price-card:hover h3, 
+        .price-card:hover div, 
+        .price-card:hover li { 
+          color: white !important; 
+          opacity: 1 !important;
+        }
+        
+        .price-card:hover button, 
+        .price-card:hover a {
+          background: white !important;
+          color: black !important;
+          border-color: white !important;
+        }
+      `}</style>
+
       {/* NAVBAR */}
       <nav className="fixed top-0 w-full z-50 bg-black/90 backdrop-blur-md border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
@@ -67,11 +128,11 @@ const LandingPage = () => {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
           
           {/* FREE TIER */}
-          <div className="p-8 rounded-3xl bg-white/5 border border-white/10 flex flex-col items-center text-center hover:-translate-y-2 transition duration-300">
+          <div className="price-card p-8 rounded-3xl border-white/10 flex flex-col items-center text-center hover:bg-white/5 transition duration-300">
             <img src="/freetier.png" className="h-32 mb-6" alt="Free" />
             <h3 className="text-gray-400 font-black uppercase tracking-[0.2em] mb-2">Basic Shield</h3>
             <div className="text-4xl font-black mb-6">$0</div>
-            <ul className="text-xs text-gray-500 mb-8 space-y-2">
+            <ul className="text-xs text-gray-500 mb-8 space-y-2 flex-1">
               <li>• 5 Scans Daily</li>
               <li>• Standard Speed</li>
             </ul>
@@ -79,39 +140,39 @@ const LandingPage = () => {
           </div>
 
           {/* PRO TIER ($1.99) */}
-          <div className="p-8 rounded-3xl bg-blue-900/10 border border-blue-500/30 flex flex-col items-center text-center hover:-translate-y-2 transition duration-300 hover:shadow-[0_0_40px_rgba(59,130,246,0.2)]">
+          <div className="price-card card-pro p-8 rounded-3xl flex flex-col items-center text-center">
             <img src="/protier.png" className="h-32 mb-6" alt="Pro" />
             <h3 className="text-blue-400 font-black uppercase tracking-[0.2em] mb-2">Pro Guardian</h3>
             <div className="text-4xl font-black mb-6">$1.99</div>
-            <ul className="text-xs text-gray-400 mb-8 space-y-2">
+            <ul className="text-xs text-blue-100/60 mb-8 space-y-2 flex-1">
               <li>• 50 Scans Daily</li>
               <li>• Fast Analysis</li>
             </ul>
-            <a href="https://buy.stripe.com/YOUR_PRO_LINK" target="_blank" className="block w-full py-4 bg-blue-600 rounded font-bold uppercase text-xs tracking-widest hover:bg-blue-500 transition">Get Pro</a>
+            <a href="https://buy.stripe.com/YOUR_PRO_LINK" target="_blank" className="block w-full py-4 border border-blue-500 text-blue-400 rounded font-bold uppercase text-xs tracking-widest transition">Get Pro</a>
           </div>
 
           {/* ELITE TIER ($4.99) */}
-          <div className="p-8 rounded-3xl bg-amber-900/10 border border-amber-500/30 flex flex-col items-center text-center hover:-translate-y-2 transition duration-300 hover:shadow-[0_0_40px_rgba(245,158,11,0.2)]">
+          <div className="price-card card-elite p-8 rounded-3xl flex flex-col items-center text-center">
             <img src="/elitetier.png" className="h-32 mb-6" alt="Elite" />
             <h3 className="text-amber-500 font-black uppercase tracking-[0.2em] mb-2">Elite Justice</h3>
             <div className="text-4xl font-black mb-6">$4.99</div>
-            <ul className="text-xs text-gray-300 mb-8 space-y-2">
+            <ul className="text-xs text-amber-100/60 mb-8 space-y-2 flex-1">
               <li>• 500 Scans Daily</li>
               <li>• Auto-Talk Voice</li>
             </ul>
-            <a href="https://buy.stripe.com/YOUR_ELITE_LINK" target="_blank" className="block w-full py-4 bg-gradient-to-r from-amber-600 to-yellow-600 text-black rounded font-black uppercase text-xs tracking-widest hover:brightness-110 transition">Start Elite</a>
+            <a href="https://buy.stripe.com/YOUR_ELITE_LINK" target="_blank" className="block w-full py-4 border border-amber-500 text-amber-500 rounded font-black uppercase text-xs tracking-widest transition">Start Elite</a>
           </div>
 
           {/* MAX TIER ($9.99) */}
-          <div className="p-8 rounded-3xl bg-purple-900/10 border border-purple-500/30 flex flex-col items-center text-center hover:-translate-y-2 transition duration-300 hover:shadow-[0_0_40px_rgba(147,51,234,0.2)]">
+          <div className="price-card card-max p-8 rounded-3xl flex flex-col items-center text-center">
             <img src="/maxtier.png" className="h-32 mb-6" alt="Max" />
             <h3 className="text-purple-500 font-black uppercase tracking-[0.2em] mb-2">Max Unlimited</h3>
             <div className="text-4xl font-black mb-6">$9.99</div>
-            <ul className="text-xs text-gray-300 mb-8 space-y-2">
+            <ul className="text-xs text-purple-100/60 mb-8 space-y-2 flex-1">
               <li>• Unlimited Access</li>
               <li>• Legal Aid Connect</li>
             </ul>
-            <a href="https://buy.stripe.com/YOUR_MAX_LINK" target="_blank" className="block w-full py-4 border border-purple-500 text-purple-400 rounded font-bold uppercase text-xs tracking-widest hover:bg-purple-600 hover:text-white transition">Go Max</a>
+            <a href="https://buy.stripe.com/YOUR_MAX_LINK" target="_blank" className="block w-full py-4 border border-purple-500 text-purple-400 rounded font-bold uppercase text-xs tracking-widest transition">Go Max</a>
           </div>
 
         </div>
@@ -129,13 +190,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* WE CHANGED THIS: Root path now shows LandingPage instead of redirecting */}
         <Route path="/" element={<LandingPage />} />
-        
-        {/* Protected Dashboard Route */}
         <Route path="/dashboard" element={<Dashboard />} />
-        
-        {/* Other Pages */}
         <Route path="/assessment" element={<Assessment />} />
         <Route path="/admin/beta-testers" element={<BetaTesterAdmin />} /> 
       </Routes>
