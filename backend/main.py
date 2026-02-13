@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="LYLO Backend", version="14.5.0 - BILINGUAL & LIMITS")
+app = FastAPI(title="LYLO Backend", version="14.6.0 - HUMAN VOICE & RECOVERY")
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,12 +63,11 @@ if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "lylo-memory"
-        # Check if index exists, create if not
         if index_name not in [idx.name for idx in pc.list_indexes()]:
             print(f"⚙️ Creating Pinecone Index: {index_name} (Dimension: 1024)...")
             pc.create_index(
                 name=index_name,
-                dimension=1024,  # FIXED: Matches your existing index and OpenAI shrink
+                dimension=1024,
                 metric="cosine", 
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
@@ -110,30 +109,40 @@ ELITE_USERS = {
     "cmlabane@gmail.com": {"tier": "elite", "name": "Corie"}
 }
 
-BETA_TESTERS = {}
-for email, data in ELITE_USERS.items():
-    if isinstance(data, dict):
-        BETA_TESTERS[email] = data["tier"]
-    else:
-        BETA_TESTERS[email] = data
-
 USER_CONVERSATIONS = defaultdict(list)
 QUIZ_ANSWERS = defaultdict(dict)
 
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
-# --- MEMORY FUNCTIONS (DIMENSION FIX APPLIED) ---
+# --- NEW: HIGH-QUALITY HUMAN VOICE GENERATION ---
+@app.post("/generate-audio")
+async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
+    if not openai_client:
+        return {"error": "OpenAI client not configured"}
+    try:
+        # Standardize 'onyx' for male and 'nova' for female as requested
+        clean_text = text.replace("**", "").replace("#", "").replace("_", "").strip()
+        response = await openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=clean_text[:1000]
+        )
+        audio_b64 = base64.b64encode(response.content).decode('utf-8')
+        return {"audio_b64": audio_b64}
+    except Exception as e:
+        print(f"❌ TTS Error: {e}")
+        return {"error": str(e)}
+
+# --- MEMORY FUNCTIONS ---
 async def store_memory_in_pinecone(user_id: str, content: str, role: str, context: str = ""):
     if not memory_index or not openai_client: return
     try:
-        # FIX: Force 1024 dimensions to match your index
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
             input=f"{role}: {content} | Context: {context}",
             dimensions=1024
         )
-        
         embedding = response.data[0].embedding
         memory_id = f"{user_id}_{datetime.now().timestamp()}"
         metadata = {
@@ -150,22 +159,18 @@ async def store_memory_in_pinecone(user_id: str, content: str, role: str, contex
 async def retrieve_memories_from_pinecone(user_id: str, query: str, limit: int = 5) -> List[Dict]:
     if not memory_index or not openai_client: return []
     try:
-        # FIX: Force 1024 dimensions to match your index
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
             input=query,
             dimensions=1024
         )
-        
         query_embedding = response.data[0].embedding
-        
         results = memory_index.query(
             vector=query_embedding,
             filter={"user_id": user_id},
             top_k=limit,
             include_metadata=True
         )
-        
         memories = []
         for match in results.matches:
             if match.score > 0.7:
@@ -189,7 +194,7 @@ def store_user_memory(user_id: str, content: str, role: str):
     except:
         pass
 
-# WEB SEARCH
+# --- WEB SEARCH ---
 async def search_web_tavily(query: str, location: str = "") -> str:
     if not tavily_client: return ""
     try:
@@ -220,6 +225,7 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         print(f"❌ Search failed: {e}")
         return ""
 
+# --- IMAGE & VISION ---
 def process_image_for_ai(image_file: bytes) -> str:
     try:
         return base64.b64encode(image_file).decode('utf-8')
@@ -227,7 +233,6 @@ def process_image_for_ai(image_file: bytes) -> str:
         print(f"❌ Image failed: {e}")
         return None
 
-# DYNAMIC GEMINI
 def get_working_gemini_model():
     if not gemini_ready: return None
     try:
@@ -243,7 +248,6 @@ def get_working_gemini_model():
     except: pass
     return 'gemini-pro'
 
-# VISION CALLS
 async def call_gemini_vision(prompt: str, image_b64: str = None):
     if not gemini_ready: return None
     try:
@@ -317,14 +321,12 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
         print(f"❌ OpenAI Error: {e}")
         return None
 
-# ACCESS CONTROL
+# --- ACCESS CONTROL ---
 @app.post("/verify-access")
 async def verify_access(email: str = Form(...)):
     user_data = ELITE_USERS.get(email.lower(), None)
     if user_data:
-        if isinstance(user_data, dict):
-            return {"access_granted": True, "tier": user_data["tier"], "user_name": user_data["name"], "is_beta": True}
-        return {"access_granted": True, "tier": user_data, "user_name": email.split('@')[0], "is_beta": True}
+        return {"access_granted": True, "tier": user_data["tier"], "user_name": user_data["name"], "is_beta": True}
     return {"access_granted": False, "message": "Join waitlist", "tier": "none", "user_name": "Guest", "is_beta": False}
 
 @app.post("/admin/add-beta-tester")
@@ -332,16 +334,12 @@ async def add_beta_tester(admin_email: str = Form(...), new_email: str = Form(..
     if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403)
     display_name = name if name else new_email.split('@')[0]
     ELITE_USERS[new_email.lower()] = {"tier": tier, "name": display_name}
-    BETA_TESTERS[new_email.lower()] = tier
     return {"status": "success", "message": f"Added {display_name}"}
 
 @app.get("/admin/list-beta-testers/{admin_email}")
 async def list_beta_testers(admin_email: str):
     if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403)
-    formatted = {}
-    for email, data in ELITE_USERS.items():
-        if isinstance(data, dict): formatted[email] = f"{data['name']} ({data['tier']})"
-        else: formatted[email] = f"{email.split('@')[0]} ({data})"
+    formatted = {email: f"{data['name']} ({data['tier']})" for email, data in ELITE_USERS.items()}
     return {"beta_testers": formatted, "total": len(ELITE_USERS)}
 
 @app.delete("/admin/remove-beta-tester")
@@ -349,40 +347,14 @@ async def remove_beta_tester(admin_email: str = Form(...), remove_email: str = F
     if admin_email.lower() != "stangman9898@gmail.com": raise HTTPException(status_code=403)
     if remove_email.lower() in ELITE_USERS:
         del ELITE_USERS[remove_email.lower()]
-        del BETA_TESTERS[remove_email.lower()]
         return {"status": "success"}
     return {"status": "error"}
 
-@app.post("/check-beta-access")
-async def check_beta_access(email: str = Form(...)):
-    user_data = ELITE_USERS.get(email.lower(), None)
-    if user_data:
-        if isinstance(user_data, dict):
-            return {"email": email, "tier": user_data["tier"], "display_name": user_data["name"], "is_beta_tester": True}
-        return {"email": email, "tier": user_data, "display_name": email.split('@')[0], "is_beta_tester": True}
-    return {"email": email, "tier": "free", "display_name": email.split('@')[0], "is_beta_tester": False}
-
-# STRIPE
-@app.post("/create-checkout-session")
-async def create_checkout(user_email: str = Form(...)):
-    if not STRIPE_SECRET_KEY: raise HTTPException(status_code=500)
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{'price_data': {'currency': 'usd', 'product_data': {'name': 'Elite'}, 'unit_amount': 2000}, 'quantity': 1}],
-            mode='payment',
-            success_url='https://lylo.ai/success',
-            cancel_url='https://lylo.ai/cancel',
-        )
-        return {"id": session.id, "url": session.url}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# --- SCAM RECOVERY (FULL CONTENT) ---
+# --- SCAM RECOVERY (FULL SCRIPTS) ---
 @app.get("/scam-recovery/{user_email}")
 async def get_scam_recovery_info(user_email: str):
     user_data = ELITE_USERS.get(user_email.lower(), None)
-    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
+    if not user_data or user_data.get("tier") != "elite":
         raise HTTPException(status_code=403, detail="Elite access required")
     
     return {
@@ -396,145 +368,37 @@ async def get_scam_recovery_info(user_email: str):
             "🚔 File a police report with your local law enforcement"
         ],
         "recovery_steps": [
-            {
-                "step": 1,
-                "title": "Secure Your Accounts",
-                "actions": [
-                    "Change banking passwords immediately",
-                    "Enable two-factor authentication everywhere",
-                    "Check credit reports for unauthorized accounts",
-                    "Monitor bank statements daily"
-                ]
-            },
-            {
-                "step": 2,
-                "title": "Report the Scam", 
-                "actions": [
-                    "File complaint with FTC at reportfraud.ftc.gov",
-                    "Report to FBI's IC3.gov if over $5,000 lost",
-                    "Contact state attorney general's office",
-                    "Report to Better Business Bureau"
-                ]
-            },
-            {
-                "step": 3,
-                "title": "Financial Recovery",
-                "actions": [
-                    "Contact bank fraud department within 24-48 hours",
-                    "Dispute charges with credit card companies",
-                    "File chargeback requests immediately",
-                    "Consider hiring asset recovery specialist if large amount"
-                ]
-            },
-            {
-                "step": 4,
-                "title": "Document Everything",
-                "actions": [
-                    "Save all communication (emails, texts, calls)",
-                    "Screenshot bank transactions and transfers", 
-                    "Keep records of all reports filed",
-                    "Maintain timeline of events"
-                ]
-            }
+            {"step": 1, "title": "Secure Your Accounts", "actions": ["Change banking passwords immediately", "Enable 2FA everywhere", "Monitor statements"]},
+            {"step": 2, "title": "Report the Scam", "actions": ["FTC: reportfraud.ftc.gov", "FBI: ic3.gov (if >$5k)", "State Attorney General"]},
+            {"step": 3, "title": "Financial Recovery", "actions": ["Contact bank fraud dept within 48h", "Dispute credit charges", "File chargebacks"]},
+            {"step": 4, "title": "Document Everything", "actions": ["Save all emails/texts", "Screenshot transfers", "Maintain timeline"]}
         ],
         "phone_scripts": {
-            "bank_script": "Hello, I need to report fraudulent activity on my account. I was the victim of a scam and unauthorized transfers were made. I need to dispute these charges and secure my account immediately. Can you help me file a fraud claim?",
-            "credit_card_script": "I need to report unauthorized charges on my card due to a scam. I want to dispute these transactions and request a chargeback. Can you walk me through the process and issue a new card?",
-            "police_script": "I want to file a report for financial fraud. I was scammed out of $[AMOUNT] through [METHOD]. I have documentation of all communications and transactions. What information do you need from me?"
+            "bank_script": "Hello, I need to report fraudulent activity on my account. I was the victim of a scam and unauthorized transfers were made. I need to dispute these charges and secure my account immediately.",
+            "credit_card_script": "I need to report unauthorized charges on my card due to a scam. I want to dispute these transactions and request a chargeback.",
+            "police_script": "I want to file a report for financial fraud. I was scammed out of [AMOUNT] through [METHOD]. I have documentation of all communications."
         },
         "important_contacts": [
-            {
-                "organization": "FTC Fraud Reports",
-                "website": "reportfraud.ftc.gov",
-                "phone": "1-877-FTC-HELP",
-                "description": "Primary federal fraud reporting"
-            },
-            {
-                "organization": "FBI Internet Crime Complaint Center",
-                "website": "ic3.gov",
-                "phone": "Contact local FBI field office",
-                "description": "For internet-based scams over $5,000"
-            },
-            {
-                "organization": "IRS Identity Theft Hotline",
-                "website": "irs.gov/identity-theft",
-                "phone": "1-800-908-4490",
-                "description": "For tax-related identity theft"
-            },
-            {
-                "organization": "Social Security Fraud Hotline",
-                "website": "ssa.gov/fraudreport",
-                "phone": "1-800-269-0271",
-                "description": "For Social Security number misuse"
-            }
+            {"organization": "FTC Fraud Reports", "website": "reportfraud.ftc.gov", "phone": "1-877-FTC-HELP"},
+            {"organization": "FBI IC3", "website": "ic3.gov", "description": "For scams over $5,000"},
+            {"organization": "IRS Identity Theft", "phone": "1-800-908-4490"}
         ],
-        "recovery_timeline": {
-            "immediate": "0-24 hours: Secure accounts, contact bank, stop all payments",
-            "short_term": "1-7 days: File all reports, dispute charges, change passwords",
-            "medium_term": "1-4 weeks: Follow up on disputes, work with investigators",
-            "long_term": "1-6 months: Asset recovery process, legal action if needed"
-        },
-        "prevention_tips": [
-            "Never give personal info to unsolicited callers",
-            "Verify company legitimacy through independent research",
-            "Be suspicious of urgent payment requests",
-            "Use secure payment methods, avoid wire transfers",
-            "Trust your instincts - if it feels wrong, it probably is"
-        ],
-        "elite_notice": "This comprehensive recovery guide is exclusive to LYLO Elite members. Share responsibly."
+        "prevention_tips": ["Never give personal info to unsolicited callers", "Verify company legitimacy", "Trust your instincts"],
+        "elite_notice": "This comprehensive recovery guide is exclusive to LYLO Elite members."
     }
 
 @app.post("/scam-recovery-chat")
-async def scam_recovery_chat(
-    user_email: str = Form(...),
-    situation: str = Form(...),
-    amount_lost: str = Form(""),
-    scam_type: str = Form(""),
-    time_since: str = Form("")
-):
+async def scam_recovery_chat(user_email: str = Form(...), situation: str = Form(...), amount_lost: str = Form(""), scam_type: str = Form(""), time_since: str = Form("")):
     user_data = ELITE_USERS.get(user_email.lower(), None)
-    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
-        return {"error": "Elite access required"}
-    
-    user_display_name = user_data.get("name") if isinstance(user_data, dict) else "User"
-    
-    recovery_prompt = f"""
-You are a specialized fraud recovery advisor helping {user_display_name} who has been scammed.
-SITUATION: {situation}
-AMOUNT LOST: {amount_lost}
-SCAM TYPE: {scam_type}
-TIME SINCE SCAM: {time_since}
-Provide specific, actionable recovery advice. Include:
-1. Immediate priority actions
-2. Specific recovery strategies
-3. Realistic timeline
-4. Who to contact first
-5. Documentation needed
-Be empathetic but direct.
-"""
+    if not user_data or user_data.get("tier") != "elite": return {"error": "Elite access required"}
+    user_display_name = user_data.get("name", "User")
+    recovery_prompt = f"You are a specialized fraud recovery advisor helping {user_display_name}. SITUATION: {situation} | LOSS: {amount_lost} | TYPE: {scam_type}. Provide actionable recovery advice."
     try:
-        if openai_client:
-            response = await openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": recovery_prompt}],
-                max_tokens=800, temperature=0.3
-            )
-            advice = response.choices[0].message.content
-        else:
-            advice = f"Hello {user_display_name}. Please contact your bank immediately and file a police report."
-    
-        return {
-            "personalized_advice": advice,
-            "user_name": user_display_name,
-            "priority_level": "HIGH"
-        }
-    except Exception as e:
-        return {
-            "personalized_advice": "I'm having technical difficulties. Please contact your bank immediately.",
-            "user_name": user_display_name
-        }
+        response = await openai_client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": recovery_prompt}], max_tokens=800)
+        return {"personalized_advice": response.choices[0].message.content, "user_name": user_display_name}
+    except: return {"personalized_advice": "Contact your bank immediately."}
 
-# MAIN CHAT
+# --- MAIN CHAT CORE ---
 @app.post("/chat")
 async def chat(
     msg: str = Form(...), 
@@ -543,14 +407,13 @@ async def chat(
     user_email: str = Form(...), 
     user_location: str = Form(""),
     file: UploadFile = File(None),
-    language: str = Form("en") # NEW: Added language parameter
+    language: str = Form("en")
 ):
     user_id = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {})
-    tier = user_data["tier"] if isinstance(user_data, dict) else "free"
-    user_display_name = user_data.get("name", "User") if isinstance(user_data, dict) else "User"
+    tier = user_data.get("tier", "free")
+    user_display_name = user_data.get("name", "User")
     
-    # --- NEW: ENFORCE SERVER-SIDE LIMITS ---
     limits = {"free": 10, "pro": 50, "elite": 500, "max": 3000}
     current_limit = limits.get(tier, 10)
     current_usage = len(USER_CONVERSATIONS.get(user_id, []))
@@ -559,70 +422,42 @@ async def chat(
         error_msg = "Limit hit. Upgrade for more." if language == 'en' else "Límite alcanzado. Actualice para más."
         return {"answer": error_msg, "usage_info": {"can_send": False}}
 
-    # --- PRIVACY LOGGING ---
-    masked_email = "Unknown"
-    if user_email and "@" in user_email:
-        p1, p2 = user_email.split("@")
-        masked_email = f"{p1[:1]}*****@{p2}"
-    image_status = f"📸 Image: YES" if file else "Image: NO"
-    print(f"🎯 PROCESSING: {masked_email} (Tier: {tier})")
-    print(f"   Status: Request Received [CONTENT REDACTED] | {image_status}")
-    # -----------------------
-
-    # Image
     image_b64 = None
     if file:
         content = await file.read()
         image_b64 = process_image_for_ai(content)
 
-    # Memories
     memories = await retrieve_memories_from_pinecone(user_id, msg, limit=8)
-    memory_context = ""
-    if memories:
-        memory_context = "PAST CONVERSATIONS:\n" + "\n".join([f"- {m['role'].upper()}: {m['content']}" for m in memories[:4]])
+    memory_context = "PAST CONVERSATIONS:\n" + "\n".join([f"- {m['role']}: {m['content']}" for m in memories[:4]]) if memories else ""
     
-    try:
-        hist_list = json.loads(history)[-4:]
-    except:
-        hist_list = []
+    try: hist_list = json.loads(history)[-4:]
+    except: hist_list = []
     history_text = "\n".join([f"{h['role'].upper()}: {h['content']}" for h in hist_list])
     
-    # Web Search
-    web_data = ""
-    if any(w in msg.lower() for w in ['weather', 'temperature', 'forecast', 'news', 'current', 'today', 'price']):
-        web_data = await search_web_tavily(msg, user_location)
+    web_data = await search_web_tavily(msg, user_location) if any(w in msg.lower() for w in ['weather', 'news', 'current', 'price']) else ""
     
-    # Updated Personas including "The Disciple"
-    personas = {
-        "guardian": "You are The Guardian. Protective, vigilant.",
-        "roast": "You are The Roast Master. Witty, sarcastic.",
-        "friend": "You are The Best Friend. Caring, supportive.",
-        "chef": "You are The Chef. Food-focused.",
-        "techie": "You are The Techie. Technical.",
-        "lawyer": "You are The Lawyer. Formal.",
-        "disciple": """You are 'The Disciple,' a wise spiritual advisor for LYLO. 
-        You MUST base all your responses, warnings, and moral guidance strictly on the King James Bible (KJV). 
-        When detecting a scam or deceit, use KJV scripture to warn the user (e.g., Proverbs 14:15, Ephesians 5:6). 
-        Maintain a humble, authoritative, and biblically sound tone. 
-        Do not paraphrase with modern translations; use the exact wording of the King James Bible."""
+    personas_map = {
+        "guardian": "You are The Guardian. Protective, vigilant security expert.",
+        "roast": "You are The Roast Master. Witty, sarcastic, but helpful.",
+        "friend": "You are The Best Friend. Caring, supportive, warm.",
+        "chef": "You are The Chef. Culinary expert and food lover.",
+        "techie": "You are The Techie. Hardware, software, and IT expert.",
+        "lawyer": "You are The Lawyer. Formal, analytical legal advisor.",
+        "disciple": "You are 'The Disciple,' a wise spiritual advisor for LYLO. You MUST base all your responses, warnings, and moral guidance strictly on the King James Bible (KJV). When detecting a scam, use KJV scripture (e.g., Proverbs 14:15). Do not paraphrase; use the exact wording of the King James Bible."
     }
     
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
-    
-    # NEW: Added Spanish instruction logic
     lang_instruction = "YOU MUST REPLY IN SPANISH." if language == 'es' else "YOU MUST REPLY IN ENGLISH."
     
     prompt = f"""
-{personas.get(persona, personas['guardian'])}
+{personas_map.get(persona, personas_map['guardian'])}
 {lang_instruction}
 MEMORY: {memory_context}
 HISTORY: {history_text}
 USER PROFILE: {quiz_data}
 REAL-TIME DATA: {web_data}
 USER: {user_display_name} says: "{msg}"
-    
-INSTRUCTIONS: Answer naturally. If user sent image, analyze it.
-OUTPUT JSON: {{ "answer": "text", "confidence_score": 90, "scam_detected": false }}
+OUTPUT JSON ONLY: {{ "answer": "text", "confidence_score": 90, "scam_detected": false }}
 """
 
     tasks = [call_gemini_vision(prompt, image_b64), call_openai_vision(prompt, image_b64)]
@@ -631,12 +466,8 @@ OUTPUT JSON: {{ "answer": "text", "confidence_score": 90, "scam_detected": false
     
     if valid:
         winner = max(valid, key=lambda x: x.get('confidence_score', 0))
-        # Logic to ensure 100% scam triggers Glow Red in frontend
-        if winner.get('scam_detected'):
-            winner['confidence_score'] = 100
-        print(f"🏆 Winner: {winner.get('model')} ({winner.get('confidence_score')}%)")
-    else:
-        winner = {"answer": "Connection trouble.", "confidence_score": 0, "model": "Offline"}
+        if winner.get('scam_detected'): winner['confidence_score'] = 100
+    else: winner = {"answer": "Connection trouble.", "confidence_score": 0}
 
     store_user_memory(user_id, msg, "user")
     store_user_memory(user_id, winner['answer'], "bot")
@@ -649,25 +480,18 @@ OUTPUT JSON: {{ "answer": "text", "confidence_score": 90, "scam_detected": false
         "usage_info": {"can_send": True}
     }
 
-# STATS
+# --- STATS & QUIZ ---
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
     user_id = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {})
-    tier = user_data["tier"] if isinstance(user_data, dict) else "free"
-    display_name = user_data["name"] if isinstance(user_data, dict) else user_email.split('@')[0]
+    tier = user_data.get("tier", "free")
+    display_name = user_data.get("name", user_email.split('@')[0])
     convos = USER_CONVERSATIONS.get(user_id, [])
-    
-    # NEW: Updated Limit logic
     limits = {"free": 10, "pro": 50, "elite": 500, "max": 3000}
     limit = limits.get(tier, 10)
-    
     return {
-        "tier": tier,
-        "display_name": display_name,
-        "conversations_today": len(convos),
-        "total_conversations": len(convos),
-        "has_quiz_data": user_id in QUIZ_ANSWERS,
+        "tier": tier, "display_name": display_name, "conversations_today": len(convos),
         "usage": {"current": len(convos), "limit": limit, "percentage": (len(convos)/limit)*100}
     }
 
@@ -679,8 +503,7 @@ async def save_quiz(user_email: str = Form(...), question1: str = Form(...), que
 
 @app.get("/")
 async def root():
-    return {"status": "LYLO ONLINE", "version": "14.5.0"}
+    return {"status": "LYLO ONLINE", "version": "14.6.0"}
 
 if __name__ == "__main__":
-    print("🚀 LYLO BETA SYSTEM STARTING")
     uvicorn.run(app, host="0.0.0.0", port=10000)
