@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// DIRECT LINK TO YOUR LOGO
-const LYLO_LOGO_URL = "https://raw.githubusercontent.com/fatguylilcoat98/lylo-website/main/lylologo.png";
+// DIRECT LINK TO YOUR LOCAL LOGO
+const LYLO_LOGO_URL = "/logo.png";
 
 // Dynamic import of Lucide icons
 const importIcons = async () => {
