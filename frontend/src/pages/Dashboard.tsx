@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [isElite, setIsElite] = useState(false); // Elite Tracking
   const [userName, setUserName] = useState('');
   
+  // This is the "Brain" that finds the full persona data (color, name, etc.)
   const currentPersonaConfig = personas.find(p => p.id === currentPersona) || personas[0];
   
   useEffect(() => {
@@ -19,6 +20,7 @@ export default function Dashboard() {
     const betaStatus = localStorage.getItem('isBetaTester') === 'true';
     const name = localStorage.getItem('lylo_user_name') || 'User';
     
+    // Check if saved persona exists in our current list
     if (savedPersona && personas.find(p => p.id === savedPersona)) {
       setCurrentPersona(savedPersona);
     }
@@ -43,7 +45,9 @@ export default function Dashboard() {
     setUsageUpdateTrigger(prev => prev + 1);
   };
 
+  // Fixed Handler: This ensures the state update is captured correctly
   const handlePersonaChange = (persona: any) => {
+    console.log("Dashboard switching to:", persona.id);
     setCurrentPersona(persona.id);
   };
 
@@ -60,14 +64,14 @@ export default function Dashboard() {
 
   return (
     <Layout 
-      currentPersona={currentPersona}
-      onPersonaChange={setCurrentPersona}
+      currentPersona={currentPersonaConfig} // SENDS THE FULL CONFIG (Fixes Glow)
+      onPersonaChange={handlePersonaChange} // USES THE HANDLER (Fixes Selection)
       userEmail={userEmail}
       onUsageUpdate={handleUsageUpdate}
     >
       <div className="flex-1 relative h-full flex flex-col" style={{ fontSize: `${zoomLevel}%` }}>
         
-        {/* ELITE RECOVERY BAR - SURGICAL ADDITION */}
+        {/* ELITE RECOVERY BAR */}
         {isElite && (
           <div className="p-4 bg-blue-600/10 border-b border-blue-600/30 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-3">
