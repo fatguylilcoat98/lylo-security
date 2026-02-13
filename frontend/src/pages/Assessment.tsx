@@ -1,16 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-// --- VIP BYPASS LIST ---
+// --- VIP BYPASS LIST (Synchronized with Backend) ---
 const ELITE_USERS: Record<string, { tier: string; name: string }> = {
     "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
-    "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
     "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
-    "birdznbloomz2b@gmail.com": {"tier": "elite", "name": "Sandy"}
+    "tiffani.hughes@yahoo.com": {"tier": "elite", "name": "Tiffani"},
+    "jcdabearman@gmail.com": {"tier": "elite", "name": "Jeff"},
+    "birdznbloomz2b@gmail.com": {"tier": "elite", "name": "Sandy"},
+    "plabane916@gmail.com": {"tier": "elite", "name": "Paul"},
+    "nemeses1298@gmail.com": {"tier": "elite", "name": "Eric"},
+    "bearjcameron@icloud.com": {"tier": "elite", "name": "Bear"},
+    "jcgcbear@gmail.com": {"tier": "elite", "name": "Gloria"},
+    "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
+    "cmlabane@gmail.com": {"tier": "elite", "name": "Corie"},
+    "chris.betatester1@gmail.com": {"tier": "elite", "name": "James"},
+    "chris.betatester2@gmail.com": {"tier": "elite", "name": "Beta 2"},
+    "chris.betatester3@gmail.com": {"tier": "elite", "name": "Beta 3"},
+    "chris.betatester4@gmail.com": {"tier": "elite", "name": "Beta 4"},
+    "chris.betatester5@gmail.com": {"tier": "elite", "name": "Beta 5"},
+    "chris.betatester6@gmail.com": {"tier": "elite", "name": "Beta 6"},
+    "chris.betatester7@gmail.com": {"tier": "elite", "name": "Beta 7"},
+    "chris.betatester8@gmail.com": {"tier": "elite", "name": "Beta 8"},
+    "chris.betatester9@gmail.com": {"tier": "elite", "name": "Beta 9"},
+    "chris.betatester10@gmail.com": {"tier": "elite", "name": "Beta 10"},
+    "chris.betatester11@gmail.com": {"tier": "elite", "name": "Beta 11"},
+    "chris.betatester12@gmail.com": {"tier": "elite", "name": "Beta 12"},
+    "chris.betatester13@gmail.com": {"tier": "elite", "name": "Beta 13"},
+    "chris.betatester14@gmail.com": {"tier": "elite", "name": "Beta 14"},
+    "chris.betatester15@gmail.com": {"tier": "elite", "name": "Beta 15"},
+    "chris.betatester16@gmail.com": {"tier": "elite", "name": "Beta 16"},
+    "chris.betatester17@gmail.com": {"tier": "elite", "name": "Beta 17"},
+    "chris.betatester18@gmail.com": {"tier": "elite", "name": "Beta 18"},
+    "chris.betatester19@gmail.com": {"tier": "elite", "name": "Beta 19"},
+    "chris.betatester20@gmail.com": {"tier": "elite", "name": "Beta 20"}
 };
 
 // --- STRIPE LINKS ---
-// Replace these placeholders with your actual Stripe Payment Links
 const STRIPE_LINKS = {
   pro: "https://buy.stripe.com/YOUR_PRO_199_LINK",
   elite: "https://buy.stripe.com/YOUR_ELITE_499_LINK",
@@ -26,7 +52,6 @@ export default function Assessment() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Check if they just returned from a successful Stripe payment
   useEffect(() => {
     const paymentStatus = searchParams.get('payment');
     const savedEmail = localStorage.getItem('userEmail');
@@ -46,9 +71,7 @@ export default function Assessment() {
     const cleanEmail = userEmail.toLowerCase().trim();
     const vipData = ELITE_USERS[cleanEmail];
     
-    // Save identifying info
     localStorage.setItem('userEmail', cleanEmail);
-    localStorage.setItem('userTier', selectedTier);
 
     // 1. VIP BYPASS
     if (vipData) {
@@ -63,6 +86,7 @@ export default function Assessment() {
 
     // 2. PAID TIERS
     if (selectedTier === 'pro' || selectedTier === 'elite' || selectedTier === 'max') {
+      localStorage.setItem('userTier', selectedTier);
       let stripeUrl = STRIPE_LINKS.pro;
       if (selectedTier === 'elite') stripeUrl = STRIPE_LINKS.elite;
       if (selectedTier === 'max') stripeUrl = STRIPE_LINKS.max;
@@ -73,6 +97,7 @@ export default function Assessment() {
 
     // 3. FREE TIER
     setIsCompleting(true);
+    localStorage.setItem('userTier', 'free');
     localStorage.setItem('userName', cleanEmail.split('@')[0]);
     localStorage.setItem('isEliteUser', 'false');
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -111,7 +136,6 @@ export default function Assessment() {
             <h3 className="text-center font-bold uppercase tracking-widest text-xs opacity-50">Select Tier</h3>
             <div className="grid gap-4">
               
-              {/* FREE TIER */}
               <button onClick={() => setSelectedTier('free')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'free' ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'border-white/10'}`}>
                 <div>
                   <div className="font-black">BASIC</div>
@@ -123,7 +147,6 @@ export default function Assessment() {
                 </div>
               </button>
 
-              {/* PRO TIER */}
               <button onClick={() => setSelectedTier('pro')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'pro' ? 'border-blue-400 bg-blue-400/10 shadow-[0_0_20px_rgba(96,165,250,0.2)]' : 'border-white/10'}`}>
                 <div>
                   <div className="font-black text-blue-400">PRO</div>
@@ -135,7 +158,6 @@ export default function Assessment() {
                 </div>
               </button>
 
-              {/* ELITE TIER */}
               <button onClick={() => setSelectedTier('elite')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'elite' ? 'border-amber-500 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'border-white/10'}`}>
                  <div>
                   <div className="font-black text-amber-500 uppercase italic">Elite</div>
@@ -147,7 +169,6 @@ export default function Assessment() {
                 </div>
               </button>
 
-              {/* MAX TIER */}
               <button onClick={() => setSelectedTier('max')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'max' ? 'border-purple-500 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.2)]' : 'border-white/10'}`}>
                  <div>
                   <div className="font-black text-purple-400">MAX</div>
