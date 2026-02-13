@@ -18,7 +18,7 @@ window.onerror = function(message, source, lineno, colno, error) {
       <strong>Stack Trace:</strong><br/>
       <pre style="white-space: pre-wrap;">${error ? error.stack : 'No stack trace available.'}</pre>
     </div>
-    <h2 style="margin-top: 40px; color: #4ade80;">👉 SCREENSHOT THIS FOR CLAUDE</h2>
+    <h2 style="margin-top: 40px; color: #4ade80;">👉 SCREENSHOT THIS FOR GEMINI</h2>
   `;
   
   document.body.appendChild(container);
