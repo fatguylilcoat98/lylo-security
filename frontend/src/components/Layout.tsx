@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// DIRECT LINK TO YOUR LOGO
+const LYLO_LOGO_URL = "https://raw.githubusercontent.com/fatguylilcoat98/lylo-website/main/lylologo.png";
+
 // Dynamic import of Lucide icons
 const importIcons = async () => {
   try {
@@ -19,7 +22,7 @@ export interface PersonaConfig {
   systemInstruction: string;
 }
 
-// Updated with The Disciple and standardized colors
+// Standardized list including The Disciple
 export const personas: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective, serious', systemInstruction: 'You are The Guardian.' },
   { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Wise Advisor (KJV)', systemInstruction: 'You are The Disciple. Use King James Bible scripture.' },
@@ -32,8 +35,8 @@ export const personas: PersonaConfig[] = [
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPersona: any; // Changed to any to handle both object and string during transition
-  onPersonaChange: (persona: PersonaConfig) => void; // FIX: Now sends back the FULL object
+  currentPersona: any; 
+  onPersonaChange: (persona: PersonaConfig) => void; 
   userEmail: string;
   onUsageUpdate?: () => void;
 }
@@ -50,7 +53,7 @@ export default function Layout({
     importIcons().then(setIcons);
   }, []);
 
-  // Helper to safely get the active ID whether currentPersona is string or object
+  // Safely determine which persona is active
   const activePersonaId = typeof currentPersona === 'string' ? currentPersona : currentPersona?.id;
 
   const getPersonaIcon = (iconName: string) => {
@@ -80,7 +83,6 @@ export default function Layout({
         
         {/* Sidebar Header */}
         <div className="p-4 flex items-center gap-4 border-b border-white/10 h-16">
-           {/* Mobile Close Button */}
            <button 
              onClick={() => setSidebarOpen(false)}
              className="md:hidden p-2 text-gray-400 hover:text-white"
@@ -88,9 +90,8 @@ export default function Layout({
              {icons?.X && <icons.X className="w-6 h-6" />}
            </button>
 
-           {/* Logo - Standardized to lylologo.png */}
            <div className="flex items-center gap-3 overflow-hidden">
-             <img src="/lylologo.png" alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
+             <img src={LYLO_LOGO_URL} alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
              <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap italic">
                LYLO<span className="text-blue-500">.</span>PRO
              </span>
@@ -103,7 +104,7 @@ export default function Layout({
             <button
               key={persona.id}
               onClick={() => {
-                onPersonaChange(persona); // FIX: Sends the whole object to Dashboard
+                onPersonaChange(persona); 
                 setSidebarOpen(false);
               }}
               className={`
@@ -117,7 +118,7 @@ export default function Layout({
               <div className={`flex-shrink-0 ${activePersonaId === persona.id ? 'text-blue-500' : ''}`}>
                 {getPersonaIcon(persona.iconName)}
               </div>
-              <div className={`text-left whitespace-nowrap md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200`}>
+              <div className="text-left whitespace-nowrap md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
                 <div className="font-bold text-sm uppercase tracking-widest">{persona.name}</div>
               </div>
             </button>
@@ -136,12 +137,12 @@ export default function Layout({
             {icons?.Menu && <icons.Menu className="w-6 h-6" />}
           </button>
           <div className="flex items-center gap-2">
-            <img src="/lylologo.png" alt="Logo" className="w-8 h-8 object-contain" />
+            <img src={LYLO_LOGO_URL} alt="Logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg tracking-tighter italic uppercase">LYLO<span className="text-blue-500">.</span>PRO</span>
           </div>
         </div>
 
-        {/* Child Content (Chat Interface) */}
+        {/* Child Content */}
         <div className="flex-1 relative overflow-hidden">
           {children}
         </div>
