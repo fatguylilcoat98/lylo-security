@@ -132,8 +132,8 @@ ELITE_USERS = {
     "jcdabearman@gmail.com": {
         "tier": "elite", 
         "name": "Jeff"
-         },
-    "birdznbloomz2b@gmail.com: {
+    },
+    "birdznbloomz2b@gmail.com": {
         "tier": "elite", 
         "name": "Sandy"
     },
@@ -141,6 +141,25 @@ ELITE_USERS = {
         "tier": "elite", 
         "name": "James"
     },
+    "chris.betatester2@gmail.com": {"tier": "elite", "name": "Beta 2"},
+    "chris.betatester3@gmail.com": {"tier": "elite", "name": "Beta 3"},
+    "chris.betatester4@gmail.com": {"tier": "elite", "name": "Beta 4"},
+    "chris.betatester5@gmail.com": {"tier": "elite", "name": "Beta 5"},
+    "chris.betatester6@gmail.com": {"tier": "elite", "name": "Beta 6"},
+    "chris.betatester7@gmail.com": {"tier": "elite", "name": "Beta 7"},
+    "chris.betatester8@gmail.com": {"tier": "elite", "name": "Beta 8"},
+    "chris.betatester9@gmail.com": {"tier": "elite", "name": "Beta 9"},
+    "chris.betatester10@gmail.com": {"tier": "elite", "name": "Beta 10"},
+    "chris.betatester11@gmail.com": {"tier": "elite", "name": "Beta 11"},
+    "chris.betatester12@gmail.com": {"tier": "elite", "name": "Beta 12"},
+    "chris.betatester13@gmail.com": {"tier": "elite", "name": "Beta 13"},
+    "chris.betatester14@gmail.com": {"tier": "elite", "name": "Beta 14"},
+    "chris.betatester15@gmail.com": {"tier": "elite", "name": "Beta 15"},
+    "chris.betatester16@gmail.com": {"tier": "elite", "name": "Beta 16"},
+    "chris.betatester17@gmail.com": {"tier": "elite", "name": "Beta 17"},
+    "chris.betatester18@gmail.com": {"tier": "elite", "name": "Beta 18"},
+    "chris.betatester19@gmail.com": {"tier": "elite", "name": "Beta 19"},
+    "chris.betatester20@gmail.com": {"tier": "elite", "name": "Beta 20"},
     "plabane916@gmail.com": {
         "tier": "elite", 
         "name": "Paul"
