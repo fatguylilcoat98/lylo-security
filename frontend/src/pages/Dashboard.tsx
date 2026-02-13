@@ -7,42 +7,42 @@ export default function Dashboard() {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [userEmail, setUserEmail] = useState('');
   const [usageUpdateTrigger, setUsageUpdateTrigger] = useState(0);
-  const [isElite, setIsElite] = useState(false); // Elite Tracking
+  const [isElite, setIsElite] = useState(false); 
   const [userName, setUserName] = useState('');
   
-  // This is the "Brain" that finds the full persona data (color, name, etc.)
+  // This finds the full persona configuration (colors, logic, etc.)
   const currentPersonaConfig = personas.find(p => p.id === currentPersona) || personas[0];
   
   useEffect(() => {
-    const savedPersona = localStorage.getItem('lylo_selected_persona');
-    
-    // --- LOGIN FIX STARTS HERE ---
-    // We now check for the keys set by your new index.html script
-    const savedEmail = localStorage.getItem('userEmail') || localStorage.getItem('lylo_user_email') || '';
+    // 1. Retrieve the data saved by App.tsx
+    // We check both new keys and old keys just to be safe
+    const savedEmail = localStorage.getItem('userEmail') || localStorage.getItem('lylo_user_email');
     const savedTier = localStorage.getItem('userTier') || 'free';
     const savedName = localStorage.getItem('userName') || localStorage.getItem('lylo_user_name') || 'User';
-    
-    // Calculate status based on the new "tier" variable
-    const eliteStatus = savedTier === 'elite' || localStorage.getItem('isEliteUser') === 'true';
-    const betaStatus = savedTier === 'pro' || savedTier === 'elite' || localStorage.getItem('isBetaTester') === 'true';
-    // --- LOGIN FIX ENDS HERE ---
+    const savedPersona = localStorage.getItem('lylo_selected_persona');
 
-    // Check if saved persona exists in our current list
+    // 2. Gatekeeper: If they aren't logged in, kick them back to the Home Page
+    if (!savedEmail) {
+      window.location.href = '/'; 
+      return;
+    }
+
+    // 3. Set State
+    setUserEmail(savedEmail);
+    setUserName(savedName);
+    
+    // Determine Elite Status based on the Tier
+    // Elite AND Max users get the recovery bar
+    const eliteStatus = savedTier === 'elite' || savedTier === 'max' || localStorage.getItem('isEliteUser') === 'true';
+    setIsElite(eliteStatus);
+
+    // Restore Persona if they had one selected
     if (savedPersona && personas.find(p => p.id === savedPersona)) {
       setCurrentPersona(savedPersona);
     }
-    
-    setUserEmail(savedEmail);
-    setIsElite(eliteStatus);
-    setUserName(savedName);
-
-    // GATEKEEPER
-    // If no email is found, kick them back to home
-    if (!savedEmail) {
-      window.location.href = '/';
-    }
   }, []);
   
+  // Save persona whenever it changes
   useEffect(() => {
     if (currentPersona) {
       localStorage.setItem('lylo_selected_persona', currentPersona);
@@ -53,37 +53,29 @@ export default function Dashboard() {
     setUsageUpdateTrigger(prev => prev + 1);
   };
 
-  // Fixed Handler: This ensures the state update is captured correctly
-  const handlePersonaChange = (persona) => {
-    console.log("Dashboard switching to:", persona.id);
+  const handlePersonaChange = (persona: any) => {
     setCurrentPersona(persona.id);
   };
 
   const handleLogout = () => {
-    // Clear ALL keys (both old and new) to ensure clean logout
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userTier');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('lylo_user_email');
-    localStorage.removeItem('lylo_selected_persona');
-    localStorage.removeItem('isEliteUser');
-    localStorage.removeItem('isBetaTester');
-    localStorage.removeItem('lylo_user_name');
+    // Clear all data to ensure a clean logout
+    localStorage.clear();
+    // Send them back to the landing page
     window.location.href = '/';
   };
 
-  if (!userEmail) return null;
+  if (!userEmail) return null; // Wait for load
 
   return (
     <Layout 
-      currentPersona={currentPersonaConfig} // SENDS THE FULL CONFIG (Fixes Glow)
-      onPersonaChange={handlePersonaChange} // USES THE HANDLER (Fixes Selection)
+      currentPersona={currentPersonaConfig} 
+      onPersonaChange={handlePersonaChange} 
       userEmail={userEmail}
       onUsageUpdate={handleUsageUpdate}
     >
       <div className="flex-1 relative h-full flex flex-col" style={{ fontSize: `${zoomLevel}%` }}>
         
-        {/* ELITE RECOVERY BAR */}
+        {/* ELITE/MAX RECOVERY BAR */}
         {isElite && (
           <div className="p-4 bg-blue-600/10 border-b border-blue-600/30 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-3">
