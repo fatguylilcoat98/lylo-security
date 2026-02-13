@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-// We define the types locally if they aren't exported from types.ts to ensure this file is self-contained
+
+// DIRECT CONNECTION TO YOUR BACKEND
+const API_URL = 'https://lylo-backend.onrender.com';
+
+// --- INTERFACES ---
 export interface PersonaConfig {
   id: string;
   name: string;
@@ -9,10 +13,6 @@ export interface PersonaConfig {
   voice?: string;
 }
 
-// DIRECT CONNECTION TO YOUR BACKEND
-const API_URL = 'https://lylo-backend.onrender.com';
-
-// --- INTERFACES ---
 interface ChatInterfaceProps {
   currentPersona: PersonaConfig;
   userEmail: string;
@@ -23,7 +23,7 @@ interface ChatInterfaceProps {
   onUsageUpdate?: () => void;
 }
 
-// New Interface for the Recovery Guide Data
+// Recovery Guide Data Interface
 interface RecoveryGuideData {
   title: string;
   subtitle: string;
@@ -52,16 +52,18 @@ export default function ChatInterface({
   onLogout,
   onUsageUpdate
 }: ChatInterfaceProps) {
+  
   // --- STATE ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   
   // VOICE STATE
+  const [isListening, setIsListening] = useState(false); // User's INTENT to listen
+  const [micActive, setMicActive] = useState(false);     // Actual Hardware Status
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male'); // NEW: Gender State
+  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
@@ -69,17 +71,15 @@ export default function ChatInterface({
   const [isOnline, setIsOnline] = useState(true);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [transcript, setTranscript] = useState('');
-  const [speechTimeout, setSpeechTimeout] = useState<NodeJS.Timeout | null>(null);
   
   // New Features State
-  const [language, setLanguage] = useState<'en' | 'es'>('en'); // Default to English
-  const [showLimitModal, setShowLimitModal] = useState(false); // Pop up when limit hit
+  const [language, setLanguage] = useState<'en' | 'es'>('en'); 
+  const [showLimitModal, setShowLimitModal] = useState(false);
   
   // Scam Recovery State
   const [showScamRecovery, setShowScamRecovery] = useState(false);
-  const [showFullGuide, setShowFullGuide] = useState(false); // Toggle for the new guide
-  const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null); // Store the fetched data
+  const [showFullGuide, setShowFullGuide] = useState(false); 
+  const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
   
   const [isEliteUser, setIsEliteUser] = useState(
     userEmail.toLowerCase().includes('stangman') || 
@@ -112,8 +112,6 @@ export default function ChatInterface({
   useEffect(() => {
     loadUserStats();
     checkEliteStatus();
-    
-    // Load saved voice preference
     const savedVoice = localStorage.getItem('lylo_voice_gender');
     if (savedVoice === 'female') setVoiceGender('female');
   }, [userEmail]);
@@ -123,14 +121,6 @@ export default function ChatInterface({
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages]);
-
-  useEffect(() => {
-    return () => {
-      if (speechTimeout) {
-        clearTimeout(speechTimeout);
-      }
-    };
-  }, [speechTimeout]);
 
   // --- HANDLERS ---
   const checkEliteStatus = async () => {
@@ -144,79 +134,92 @@ export default function ChatInterface({
         body: `email=${encodeURIComponent(userEmail)}`
       });
       const data = await response.json();
-      if (data.tier === 'elite') {
-          setIsEliteUser(true);
-      }
+      if (data.tier === 'elite') setIsEliteUser(true);
     } catch (error) {
       console.error('Failed to check elite status:', error);
     }
   };
 
-  // --- FETCH GUIDE HANDLER ---
   const handleGetFullGuide = async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
       const data = await response.json();
       setGuideData(data);
-      setShowFullGuide(true); // Open the pretty modal
+      setShowFullGuide(true); 
     } catch (error) {
-      console.error("Failed to load guide", error);
       alert("Could not load the guide. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- SPEECH LOGIC (INPUT) ---
+  // --- NEW: "FOREVER MIC" LOGIC ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      // Switch speech language based on toggle
+      
+      recognition.continuous = true;     // Keep listening even after user stops speaking
+      recognition.interimResults = true; // Show words as they are spoken
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
 
+      // START EVENT
       recognition.onstart = () => {
-        setIsListening(true);
-        if (speechTimeout) {
-          clearTimeout(speechTimeout);
-          setSpeechTimeout(null);
-        }
+        setMicActive(true);
       };
 
+      // RESULT EVENT
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
         let interimTranscript = '';
+
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
-          if (result.isFinal) finalTranscript += result[0].transcript + ' ';
-          else interimTranscript += result[0].transcript;
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript + ' ';
+          } else {
+            interimTranscript += result[0].transcript;
+          }
         }
-        const currentText = input + finalTranscript + interimTranscript;
-        setTranscript(currentText);
-        setInput(input + finalTranscript);
-        
-        if (speechTimeout) clearTimeout(speechTimeout);
-        setSpeechTimeout(setTimeout(() => console.log('Mic open...'), 30000));
-      };
 
-      recognition.onend = () => {
-        if (isListening && !loading) {
-          setTimeout(() => { try { recognition.start(); } catch (e) {} }, 100);
-        } else {
-          setIsListening(false);
-          setTranscript('');
+        // Update input state with what was said
+        if (finalTranscript || interimTranscript) {
+             setInput((prev) => {
+                 // Prevent duplicating the final text if it was just added
+                 if (prev.endsWith(finalTranscript.trim())) return prev;
+                 return prev + finalTranscript;
+             });
         }
       };
 
+      // ERROR EVENT
       recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech') return;
-        if (event.error === 'audio-capture' || event.error === 'not-allowed') {
-          alert('Microphone error/permission denied.');
+        if (event.error === 'no-speech') {
+            // Ignore silence errors, just keep going
+            return;
+        }
+        if (event.error === 'not-allowed') {
+          alert('Microphone blocked. Please allow access.');
           setIsListening(false);
+          setMicActive(false);
+        }
+      };
+
+      // END EVENT (THE CRITICAL FIX)
+      recognition.onend = () => {
+        setMicActive(false);
+        // IF the user still wants to listen, RESTART IMMEDIATELY
+        if (isListening) {
+          try {
+             recognition.start();
+          } catch (e) {
+             // If start fails (e.g. already started), wait 100ms and try again
+             setTimeout(() => {
+                 if(isListening) recognition.start();
+             }, 100);
+          }
         }
       };
       
@@ -225,7 +228,20 @@ export default function ChatInterface({
     } else {
       setMicSupported(false);
     }
-  }, [input, isListening, loading, speechTimeout, language]); 
+  }, [language, isListening]); // Re-run if language changes
+
+  // Trigger Start/Stop based on isListening state
+  useEffect(() => {
+      const recognition = recognitionRef.current;
+      if (!recognition) return;
+
+      if (isListening && !micActive) {
+          try { recognition.start(); } catch(e) {}
+      } else if (!isListening && micActive) {
+          recognition.stop();
+      }
+  }, [isListening, micActive]);
+
 
   const loadUserStats = async () => {
     try {
@@ -235,30 +251,22 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
-  // --- NEW: BACKEND VOICE GENERATION LOGIC ---
   const speakText = async (text: string, forceGender?: string) => {
-    // If user clicked "Voice OFF" (autoTTS is false) AND this wasn't a forced preview click, don't speak.
-    // But if forceGender is present (user clicked toggle), we speak regardless of autoTTS.
     if ((!autoTTS && !forceGender) || !text) return;
-    
-    // Stop any current audio
     if (isSpeaking) {
-      window.speechSynthesis.cancel(); // Cancel browser fallback
+      window.speechSynthesis.cancel(); 
       setIsSpeaking(false);
-      // Note: HTML Audio elements handle their own stopping usually, but setting state helps UI
     }
 
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
     if (!cleanText) return;
 
-    // Determine Voice ID: 'onyx' = Male, 'nova' = Female
     const genderToUse = forceGender || voiceGender;
     const voiceId = genderToUse === 'male' ? 'onyx' : 'nova';
 
     setIsSpeaking(true);
 
     try {
-      // 1. Try Backend High-Quality Voice
       const formData = new FormData();
       formData.append('text', cleanText);
       formData.append('voice', voiceId);
@@ -273,30 +281,17 @@ export default function ChatInterface({
       if (data.audio_b64) {
         const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
         audio.onended = () => setIsSpeaking(false);
-        audio.play().catch(e => {
-            console.error("Audio play error", e);
-            setIsSpeaking(false);
-        });
+        audio.play().catch(e => setIsSpeaking(false));
       } else {
         throw new Error("No audio returned");
       }
 
     } catch (error) {
-      console.warn("Backend TTS failed, using browser fallback", error);
-      // 2. Fallback to Browser Voice
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = 0.9;
         utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
-        
-        // Try to find a matching browser voice gender if possible (imperfect)
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-            // Simple heuristic: 'Google US English' is often female-ish, 'Google UK English Male' etc.
-            // We just let default happen for fallback to keep it robust
-        }
-        
         utterance.onend = () => setIsSpeaking(false);
         window.speechSynthesis.speak(utterance);
       } else {
@@ -307,29 +302,27 @@ export default function ChatInterface({
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    // Only auto-speak if it's a bot message AND not already speaking
     if (lastMessage?.sender === 'bot' && autoTTS && !isSpeaking) {
-      // Small delay to ensure state settles
       setTimeout(() => speakText(lastMessage.content), 500);
     }
   }, [messages, autoTTS]);
 
   const toggleListening = () => {
     if (!micSupported) return alert('Not supported');
-    if (isListening) {
-      setIsListening(false);
-      recognitionRef.current?.stop();
-    } else {
-      if (isSpeaking) {
-        window.speechSynthesis?.cancel();
-        setIsSpeaking(false);
-      }
-      try { recognitionRef.current?.start(); setIsListening(true); } catch (e) {}
+    
+    // Toggle the INTENT to listen
+    setIsListening(prev => !prev);
+    
+    if (!isListening) {
+        // If we are starting to listen, stop speaking
+        if (isSpeaking) {
+            window.speechSynthesis?.cancel();
+            setIsSpeaking(false);
+        }
     }
   };
 
   const toggleTTS = () => {
-    // If turning OFF, silence immediately
     if (autoTTS) { 
         window.speechSynthesis?.cancel(); 
         setIsSpeaking(false); 
@@ -337,16 +330,12 @@ export default function ChatInterface({
     setAutoTTS(!autoTTS);
   };
 
-  // --- NEW: VOICE TOGGLE HANDLER ---
   const handleVoiceToggle = (gender: 'male' | 'female') => {
     setVoiceGender(gender);
     localStorage.setItem('lylo_voice_gender', gender);
-    
-    // Play instant preview
     const previewText = gender === 'male' 
       ? (language === 'es' ? "Voz configurada a Masculino." : "Voice set to Male.") 
       : (language === 'es' ? "Voz configurada a Femenino." : "Voice set to Female.");
-      
     speakText(previewText, gender);
   };
 
@@ -369,9 +358,8 @@ export default function ChatInterface({
     const textToSend = input.trim();
     if ((!textToSend && !selectedImage) || loading) return;
 
-    // --- USAGE CAP ENFORCEMENT ---
     if (userStats && userStats.usage.current >= userStats.usage.limit) {
-      setShowLimitModal(true); // Show the upgrade popup
+      setShowLimitModal(true); 
       return; 
     }
 
@@ -449,7 +437,9 @@ export default function ChatInterface({
     return userEmail.split('@')[0];
   };
 
-  const displayText = isListening ? transcript : input;
+  // Only show transcript in input if it's new, otherwise show what user typed
+  // We actually updated Input directly in the speech handler, so just use Input here
+  const displayText = input;
 
   return (
     <div style={{
@@ -583,7 +573,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER WITH DYNAMIC SECURITY GLOW */}
+      {/* HEADER */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -686,7 +676,7 @@ export default function ChatInterface({
         </div>
       </div>
 
-      {/* MESSAGES AREA */}
+      {/* MESSAGES */}
       <div 
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative z-[100000]"
@@ -753,7 +743,8 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 LISTENING - WISE WORDS ACTIVE</div>}
+          {/* New "Forever Mic" Indicator */}
+          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
             <button onClick={cycleFontSize} className="text-[10px] px-3 py-1 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
@@ -770,7 +761,7 @@ export default function ChatInterface({
                 value={displayText} 
                 onChange={(e) => !isListening && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "🎤 Listening..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
+                placeholder={isListening ? "🎤 Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
                 disabled={loading}
                 className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
