@@ -10,7 +10,7 @@ const importIcons = async () => {
   }
 };
 
-interface PersonaConfig {
+export interface PersonaConfig {
   id: string;
   name: string;
   color: string;
@@ -19,19 +19,21 @@ interface PersonaConfig {
   systemInstruction: string;
 }
 
+// Updated with The Disciple and standardized colors
 export const personas: PersonaConfig[] = [
-  { id: 'guardian', name: 'The Guardian', color: 'cyan', iconName: 'Shield', description: 'Protective, serious', systemInstruction: 'You are The Guardian.' },
-  { id: 'chef', name: 'The Chef', color: 'orange', iconName: 'ChefHat', description: 'Culinary expert', systemInstruction: 'You are The Chef.' },
+  { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective, serious', systemInstruction: 'You are The Guardian.' },
+  { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Wise Advisor (KJV)', systemInstruction: 'You are The Disciple. Use King James Bible scripture.' },
+  { id: 'chef', name: 'The Chef', color: 'red', iconName: 'ChefHat', description: 'Culinary expert', systemInstruction: 'You are The Chef.' },
   { id: 'techie', name: 'The Techie', color: 'purple', iconName: 'Cpu', description: 'Tech expert', systemInstruction: 'You are The Techie.' },
   { id: 'lawyer', name: 'The Lawyer', color: 'yellow', iconName: 'Scale', description: 'Legal advisor', systemInstruction: 'You are The Lawyer.' },
-  { id: 'roast', name: 'The Roast Master', color: 'red', iconName: 'Flame', description: 'Witty & sarcastic', systemInstruction: 'You are The Roast Master.' },
+  { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty & sarcastic', systemInstruction: 'You are The Roast Master.' },
   { id: 'friend', name: 'The Best Friend', color: 'green', iconName: 'Heart', description: 'Supportive friend', systemInstruction: 'You are The Best Friend.' }
 ];
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPersona: string;
-  onPersonaChange: (persona: string) => void;
+  currentPersona: any; // Changed to any to handle both object and string during transition
+  onPersonaChange: (persona: PersonaConfig) => void; // FIX: Now sends back the FULL object
   userEmail: string;
   onUsageUpdate?: () => void;
 }
@@ -47,6 +49,9 @@ export default function Layout({
   useEffect(() => {
     importIcons().then(setIcons);
   }, []);
+
+  // Helper to safely get the active ID whether currentPersona is string or object
+  const activePersonaId = typeof currentPersona === 'string' ? currentPersona : currentPersona?.id;
 
   const getPersonaIcon = (iconName: string) => {
     if (!icons) return null;
@@ -83,11 +88,11 @@ export default function Layout({
              {icons?.X && <icons.X className="w-6 h-6" />}
            </button>
 
-           {/* Logo */}
+           {/* Logo - Standardized to lylologo.png */}
            <div className="flex items-center gap-3 overflow-hidden">
-             <img src="/logo.png" alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
-             <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap">
-               LYLO
+             <img src="/lylologo.png" alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
+             <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap italic">
+               LYLO<span className="text-blue-500">.</span>PRO
              </span>
            </div>
         </div>
@@ -98,22 +103,22 @@ export default function Layout({
             <button
               key={persona.id}
               onClick={() => {
-                onPersonaChange(persona.id);
+                onPersonaChange(persona); // FIX: Sends the whole object to Dashboard
                 setSidebarOpen(false);
               }}
               className={`
-                w-full p-3 rounded-xl flex items-center gap-4 transition-all
-                ${currentPersona === persona.id 
-                  ? `bg-${persona.color}-500/20 text-${persona.color}-400 border border-${persona.color}-500/30` 
-                  : 'hover:bg-white/5 text-gray-400'
+                w-full p-3 rounded-xl flex items-center gap-4 transition-all border
+                ${activePersonaId === persona.id 
+                  ? `bg-white/10 border-white/20 text-white shadow-lg` 
+                  : 'bg-transparent border-transparent text-gray-500 hover:bg-white/5 hover:text-gray-300'
                 }
               `}
             >
-              <div className="flex-shrink-0">
+              <div className={`flex-shrink-0 ${activePersonaId === persona.id ? 'text-blue-500' : ''}`}>
                 {getPersonaIcon(persona.iconName)}
               </div>
               <div className={`text-left whitespace-nowrap md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200`}>
-                <div className="font-bold text-sm">{persona.name}</div>
+                <div className="font-bold text-sm uppercase tracking-widest">{persona.name}</div>
               </div>
             </button>
           ))}
@@ -126,13 +131,13 @@ export default function Layout({
         <div className="md:hidden h-16 bg-black border-b border-white/10 flex items-center px-4 gap-4 flex-shrink-0 z-30">
           <button 
             onClick={() => setSidebarOpen(true)}
-            className="p-2 -ml-2 text-white bg-white/5 rounded-lg border border-white/10 active:bg-white/10"
+            className="p-2 -ml-2 text-white bg-white/5 rounded-lg border border-white/10"
           >
             {icons?.Menu && <icons.Menu className="w-6 h-6" />}
           </button>
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-lg">LYLO</span>
+            <img src="/lylologo.png" alt="Logo" className="w-8 h-8 object-contain" />
+            <span className="font-bold text-lg tracking-tighter italic uppercase">LYLO<span className="text-blue-500">.</span>PRO</span>
           </div>
         </div>
 
