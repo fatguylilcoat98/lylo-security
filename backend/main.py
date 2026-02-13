@@ -133,7 +133,7 @@ ELITE_USERS = {
         "tier": "elite", 
         "name": "Jeff"
     },
-    "birdznbloomz2b@gmail.com": {
+    "chris.betatester1@gmail.com": {
         "tier": "elite", 
         "name": "Sandy"
     },
