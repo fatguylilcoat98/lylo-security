@@ -648,4 +648,145 @@ export default function ChatInterface({
                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">Text Size</h3>
                   <div className="flex items-center gap-2">
                     <button onClick={() => onZoomChange(Math.max(50, zoomLevel - 25))} className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs">-</button>
-                    <span className="text-white
+                    <span className="text-white font-bold text-xs min-w-[40px] text-center">{zoomLevel}%</span>
+                    <button onClick={() => onZoomChange(Math.min(200, zoomLevel + 25))} className="w-6 h-6 bg-white/10 hover:bg-white/20 rounded text-white font-bold text-xs">+</button>
+                  </div>
+                </div>
+                <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
+              </div>
+            )}
+          </div>
+          <div className="text-center flex-1 px-2">
+            <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
+              <img src="lylologo.png" alt="LYLO" className="w-5 h-5 object-contain" />
+              <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
+            </div>
+            <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
+          </div>
+          <div className="flex items-center gap-2 relative">
+            <div className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors" onClick={(e) => { e.stopPropagation(); setShowUserDetails(!showUserDetails); }}>
+              <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{getUserDisplayName()}{isEliteUser && <span className="text-yellow-400 ml-1">★</span>}</div>
+              <div className="flex items-center gap-1 justify-end"><div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div><span className="text-gray-400 text-[10px] uppercase font-black">{isOnline ? 'Online' : 'Offline'}</span></div>
+            </div>
+            {showUserDetails && userStats && (
+              <div className="absolute top-16 right-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-4 min-w-[250px] z-[100003] shadow-2xl">
+                <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Account Details</h3>
+                <div className="space-y-2 text-xs text-gray-300">
+                  <div className="flex justify-between"><span>Tier:</span><span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>{userStats.tier.toUpperCase()} {isEliteUser && ' ★'}</span></div>
+                  <div className="flex justify-between"><span>Today:</span><span className="text-white">{userStats.conversations_today}</span></div>
+                  <div className="flex justify-between"><span>Total:</span><span className="text-white">{userStats.total_conversations}</span></div>
+                  <div className="mt-2">
+                    <div className="flex justify-between text-xs mb-1"><span>Usage:</span><span>{userStats.usage.current}/{userStats.usage.limit}</span></div>
+                    <div className="bg-gray-800 rounded-full h-2"><div className="h-2 bg-[#3b82f6] rounded-full transition-all" style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }} /></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* MESSAGES AREA */}
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative z-[100000]"
+        style={{ paddingBottom: '240px', minHeight: 0, fontSize: `${zoomLevel / 100}rem` }}
+      >
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center py-10">
+            <div className="w-16 h-16 bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
+              <span className="text-white font-black text-xl">L</span>
+            </div>
+            <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
+            <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium italic">Security & Wisdom Systems Ready</p>
+            {isEliteUser && (
+              <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
+                🚨 SCAM RECOVERY CENTER
+              </button>
+            )}
+          </div>
+        )}
+        
+        {messages.map((msg) => (
+          <div key={msg.id} className="space-y-2">
+            <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all ${msg.sender === 'user' ? 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] border-[#3b82f6]/30 text-white shadow-lg shadow-blue-500/10' : 'bg-black/60 border-white/10 text-gray-100'}`}>
+                <div className="leading-relaxed font-medium">{msg.content}</div>
+                <div className={`text-[10px] mt-2 opacity-70 font-black uppercase tracking-wider ${msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'}`}>
+                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+            {msg.sender === 'bot' && msg.confidenceScore && (
+              <div className="max-w-[85%]">
+                <div className={`bg-black/40 backdrop-blur-xl border rounded-xl p-3 shadow-lg transition-all duration-1000 ${msg.scamDetected && msg.confidenceScore === 100 ? 'border-red-500' : 'border-white/10'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-white font-black uppercase text-[10px] tracking-[0.1em]">Truth Confidence</span>
+                    <span className={`font-black text-sm ${msg.scamDetected && msg.confidenceScore === 100 ? 'text-red-500' : 'text-[#3b82f6]'}`}>{msg.confidenceScore}%</span>
+                  </div>
+                  <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
+                    <div className={`h-full transition-all duration-1000 ${msg.scamDetected && msg.confidenceScore === 100 ? 'bg-red-500' : 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8]'}`} style={{ width: `${msg.confidenceScore}%` }} />
+                  </div>
+                  {msg.scamDetected && (
+                    <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-[10px] font-black uppercase">
+                      ⚠️ SCAM DETECTED
+                      {msg.scamIndicators && msg.scamIndicators.length > 0 && <div className="mt-1 text-[9px] opacity-80 font-normal normal-case">{msg.scamIndicators.join(', ')}</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-xl">
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">{[0, 1, 2].map(i => <div key={i} className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />)}</div>
+                <span className="text-gray-300 font-black uppercase tracking-widest text-[10px] italic">{currentPersona.name} searching the web...</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* INPUT AREA */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
+        <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
+          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 LISTENING - WISE WORDS ACTIVE</div>}
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
+            <button onClick={cycleFontSize} className="text-[10px] px-3 py-1 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
+          </div>
+          <div className="flex items-end gap-3">
+             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
+             <button onClick={() => fileInputRef.current?.click()} className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all ${selectedImage ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`} title="Upload Image">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+             </button>
+            <div className="flex-1">
+              <textarea 
+                ref={inputRef}
+                value={displayText} 
+                onChange={(e) => !isListening && setInput(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder={isListening ? "🎤 Listening..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
+                disabled={loading}
+                className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
+                style={{ fontSize: `${zoomLevel / 100}rem` }}
+                rows={1}
+              />
+            </div>
+            <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage)} className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Sending' : 'Send'}</button>
+          </div>
+          {/* DISCLAIMER */}
+          <div className="text-center mt-3 pb-1">
+            <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.2em] italic">
+              LYLO SECURITY SYSTEMS: VERIFY ALL CRITICAL FINANCIAL OR LEGAL ACTIONS.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
