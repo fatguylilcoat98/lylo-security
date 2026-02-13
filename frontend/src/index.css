@@ -2,7 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #020617; /* Slate 950 */
-  color: white;
+@layer base {
+  body {
+    @apply bg-[#050505] text-white antialiased;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv02";
+  }
+}
+
+@layer components {
+  /* GLOW EFFECTS FOR PRICING & LOGO */
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+  }
+
+  /* SCAM ALERT ANIMATION */
+  .scam-bounce {
+    animation: scam-alert 0.5s infinite;
+  }
+
+  @keyframes scam-alert {
+    0%, 100% { transform: scale(1); border-color: #ef4444; box-shadow: 0 0 15px #ef4444; }
+    50% { transform: scale(1.02); border-color: #b91c1c; box-shadow: 0 0 30px #b91c1c; }
+  }
+
+  /* CUSTOM SCROLLBAR */
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 10px;
+  }
+  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+  }
 }
