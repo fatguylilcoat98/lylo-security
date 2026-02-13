@@ -6,7 +6,7 @@ import asyncio
 import base64
 import stripe
 from io import BytesIO
-from fastapi import FastAPI, Form, HTTPException, File, UploadFile
+from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -473,6 +473,42 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
 # ---------------------------------------------------------
 # ACCESS CONTROL & ADMIN ROUTES
 # ---------------------------------------------------------
+
+# --- NEW: CRITICAL FIX FOR BETA LOGIN ---
+@app.post("/check-beta-access")
+async def check_beta_access(request: Request):
+    """
+    Verifies beta access using the ELITE_USERS dictionary.
+    Handles both JSON and Form data to support all frontend variations.
+    """
+    try:
+        # Attempt to get email from JSON body first
+        try:
+            data = await request.json()
+            email = data.get("email", "")
+        except:
+            # Fallback to Form data
+            form_data = await request.form()
+            email = form_data.get("email", "")
+            
+        email = email.lower().strip()
+        user_data = ELITE_USERS.get(email)
+        
+        if user_data:
+            return {
+                "access": True,
+                "tier": user_data.get("tier", "elite"),
+                "name": user_data.get("name", "Beta User"),
+                "message": "Access Granted"
+            }
+            
+        return {"access": False, "tier": "free", "message": "Not found in beta list"}
+        
+    except Exception as e:
+        print(f"❌ Beta Check Error: {e}")
+        return {"access": False, "error": str(e)}
+# ----------------------------------------
+
 @app.post("/verify-access")
 async def verify_access(email: str = Form(...)):
     """Verifies if a user is allowed to access the system."""
