@@ -1,172 +1,94 @@
 import React, { useState, useEffect } from 'react';
-
 import { useNavigate, useSearchParams } from 'react-router-dom';
-
 
 // --- VIP BYPASS LIST ---
 const ELITE_USERS: Record<string, { tier: string; name: string }> = {
-
     "stangman9898@gmail.com": {"tier": "elite", "name": "Christopher"},
-
     "laura@startupsac.org": {"tier": "elite", "name": "Laura"},
-
-    "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"}
-
+    "paintonmynails80@gmail.com": {"tier": "elite", "name": "Aubrey"},
+    "birdznbloomz2b@gmail.com": {"tier": "elite", "name": "Sandy"}
 };
-
 
 // --- STRIPE LINKS ---
-// Paste your new links here when you have them
+// Replace these placeholders with your actual Stripe Payment Links
 const STRIPE_LINKS = {
-
-  pro: "https://buy.stripe.com/PLACEHOLDER_FOR_PRO_299",
-
-  elite: "https://buy.stripe.com/PLACEHOLDER_FOR_ELITE_1499",
-
-  max: "https://buy.stripe.com/PLACEHOLDER_FOR_MAX_2999"
-
+  pro: "https://buy.stripe.com/YOUR_PRO_199_LINK",
+  elite: "https://buy.stripe.com/YOUR_ELITE_499_LINK",
+  max: "https://buy.stripe.com/YOUR_MAX_999_LINK"
 };
 
-
 export default function Assessment() {
-
   const [step, setStep] = useState(1);
-
   const [userEmail, setUserEmail] = useState('');
-
   const [selectedTier, setSelectedTier] = useState('free');
-
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-
   const [isCompleting, setIsCompleting] = useState(false);
-
   const [searchParams] = useSearchParams();
-
   const navigate = useNavigate();
-
 
   // Check if they just returned from a successful Stripe payment
   useEffect(() => {
-
     const paymentStatus = searchParams.get('payment');
-
-    const savedEmail = localStorage.getItem('lylo_user_email');
-
+    const savedEmail = localStorage.getItem('userEmail');
     
     if (paymentStatus === 'success' && savedEmail) {
-
-      // Payment verified (via redirect) - Grant access
-      localStorage.setItem('isBetaTester', 'true');
-
       localStorage.setItem('lylo_assessment_complete', 'true');
-
       navigate('/dashboard');
-
     }
-
   }, [searchParams, navigate]);
 
-
   const completeAssessment = async () => {
-
     if (!agreedToTerms) {
-
       alert("Please agree to the terms to proceed.");
-
       return;
-
     }
-
 
     const cleanEmail = userEmail.toLowerCase().trim();
-
     const vipData = ELITE_USERS[cleanEmail];
-
     
-    // Save email immediately so it's there when they return from Stripe
-    localStorage.setItem('lylo_user_email', cleanEmail);
+    // Save identifying info
+    localStorage.setItem('userEmail', cleanEmail);
+    localStorage.setItem('userTier', selectedTier);
 
-    localStorage.setItem('lylo_user_tier', selectedTier);
-
-
-    // 1. VIP BYPASS: If they are on the list, let them in for free
+    // 1. VIP BYPASS
     if (vipData) {
-
       setIsCompleting(true);
-
+      localStorage.setItem('userTier', vipData.tier);
+      localStorage.setItem('userName', vipData.name);
       localStorage.setItem('isEliteUser', 'true');
-
-      localStorage.setItem('isBetaTester', 'true');
-
-      localStorage.setItem('lylo_user_name', vipData.name);
-
       await new Promise(resolve => setTimeout(resolve, 1500));
-
       navigate('/dashboard');
-
       return;
-
     }
 
-
-    // 2. PAID TIERS: If they picked Pro, Elite, or Max, send to Stripe
+    // 2. PAID TIERS
     if (selectedTier === 'pro' || selectedTier === 'elite' || selectedTier === 'max') {
-
       let stripeUrl = STRIPE_LINKS.pro;
-
       if (selectedTier === 'elite') stripeUrl = STRIPE_LINKS.elite;
       if (selectedTier === 'max') stripeUrl = STRIPE_LINKS.max;
 
       window.location.href = stripeUrl;
-
       return;
-
     }
 
-
-    // 3. FREE TIER: Let them in
+    // 3. FREE TIER
     setIsCompleting(true);
-
+    localStorage.setItem('userName', cleanEmail.split('@')[0]);
     localStorage.setItem('isEliteUser', 'false');
-
-    localStorage.setItem('isBetaTester', 'true');
-
     await new Promise(resolve => setTimeout(resolve, 1500));
-
     navigate('/dashboard');
-
   };
-
-
-  const canProceed = () => {
-
-    if (step === 1) return userEmail.includes('@');
-
-    if (step === 2) return selectedTier !== '' && agreedToTerms;
-
-    return false;
-
-  };
-
 
   if (isCompleting) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white italic uppercase font-black">Activating Protocol...</div>;
 
-
   return (
-
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6">
-
       <div className="w-full max-w-xl bg-black/40 p-8 rounded-3xl border border-white/10 backdrop-blur-3xl shadow-2xl">
-
         <h2 className="text-3xl font-black mb-8 text-center uppercase italic tracking-tighter">LYLO <span className="text-blue-500">GATED ACCESS</span></h2>
-
         
         {step === 1 && (
-
           <div className="space-y-6 text-center">
-
             <h3 className="text-xl font-bold">IDENTITY VERIFICATION</h3>
-
             <input
               type="email"
               value={userEmail}
@@ -174,103 +96,93 @@ export default function Assessment() {
               className="w-full p-5 bg-white/5 border border-white/20 rounded-2xl text-center text-xl focus:border-blue-500 outline-none"
               placeholder="YOUR EMAIL"
             />
-
-            <button onClick={() => setStep(2)} disabled={!userEmail.includes('@')} className="w-full p-6 bg-blue-600 rounded-2xl font-black uppercase tracking-widest disabled:opacity-30">CONTINUE</button>
-
+            <button 
+              onClick={() => setStep(2)} 
+              disabled={!userEmail.includes('@')} 
+              className="w-full p-6 bg-blue-600 rounded-2xl font-black uppercase tracking-widest disabled:opacity-30"
+            >
+              CONTINUE
+            </button>
           </div>
-
         )}
 
-
         {step === 2 && (
-
           <div className="space-y-6">
-
-            <h3 className="text-xl text-center font-bold uppercase tracking-widest text-xs opacity-50">Select Tier</h3>
-
+            <h3 className="text-center font-bold uppercase tracking-widest text-xs opacity-50">Select Tier</h3>
             <div className="grid gap-4">
-
-               {/* FREE TIER */}
-              <button onClick={() => setSelectedTier('free')} className={`p-4 rounded-xl border text-left flex justify-between items-center ${selectedTier === 'free' ? 'border-blue-500 bg-blue-500/10' : 'border-white/10'}`}>
+              
+              {/* FREE TIER */}
+              <button onClick={() => setSelectedTier('free')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'free' ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'border-white/10'}`}>
                 <div>
-                  <div className="font-black">FREE</div>
-                  <div className="text-[10px] opacity-70">Standard Access</div>
+                  <div className="font-black">BASIC</div>
+                  <div className="text-[10px] opacity-70">5 Scans Daily</div>
                 </div>
                 <div className="text-right">
                   <div className="font-bold">$0</div>
-                  <div className="text-[10px] text-gray-400">Trial Mode</div>
+                  <div className="text-[10px] text-gray-400 italic">Limited</div>
                 </div>
               </button>
-
 
               {/* PRO TIER */}
-              <button onClick={() => setSelectedTier('pro')} className={`p-4 rounded-xl border text-left flex justify-between items-center ${selectedTier === 'pro' ? 'border-blue-500 bg-blue-500/10' : 'border-white/10'}`}>
+              <button onClick={() => setSelectedTier('pro')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'pro' ? 'border-blue-400 bg-blue-400/10 shadow-[0_0_20px_rgba(96,165,250,0.2)]' : 'border-white/10'}`}>
                 <div>
-                  <div className="font-black">PRO</div>
-                  <div className="text-[10px] opacity-70">Casual Protection</div>
+                  <div className="font-black text-blue-400">PRO</div>
+                  <div className="text-[10px] opacity-70">50 Scans Daily</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold">$2.99</div>
-                  <div className="text-[10px] text-blue-400">50 Msgs/mo</div>
+                  <div className="font-bold">$1.99</div>
+                  <div className="text-[10px] text-blue-400">Impulse Buy</div>
                 </div>
               </button>
-
 
               {/* ELITE TIER */}
-              <button onClick={() => setSelectedTier('elite')} className={`p-4 rounded-xl border text-left flex justify-between items-center ${selectedTier === 'elite' ? 'border-blue-500 bg-blue-500/10' : 'border-white/10'}`}>
+              <button onClick={() => setSelectedTier('elite')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'elite' ? 'border-amber-500 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.2)]' : 'border-white/10'}`}>
                  <div>
-                  <div className="font-black">ELITE</div>
-                  <div className="text-[10px] opacity-70">Full Security</div>
+                  <div className="font-black text-amber-500 uppercase italic">Elite</div>
+                  <div className="text-[10px] opacity-70">500 Scans Daily</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold">$14.99</div>
-                  <div className="text-[10px] text-blue-400">500 Msgs/mo</div>
+                  <div className="font-bold text-amber-500">$4.99</div>
+                  <div className="text-[10px] text-amber-600">Power User</div>
                 </div>
               </button>
-
 
               {/* MAX TIER */}
-              <button onClick={() => setSelectedTier('max')} className={`p-4 rounded-xl border text-left flex justify-between items-center ${selectedTier === 'max' ? 'border-blue-500 bg-blue-500/10' : 'border-white/10'}`}>
+              <button onClick={() => setSelectedTier('max')} className={`p-4 rounded-xl border text-left flex justify-between items-center transition-all ${selectedTier === 'max' ? 'border-purple-500 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.2)]' : 'border-white/10'}`}>
                  <div>
-                  <div className="font-black text-yellow-400">MAX</div>
-                  <div className="text-[10px] opacity-70">Unlimited Access</div>
+                  <div className="font-black text-purple-400">MAX</div>
+                  <div className="text-[10px] opacity-70">Unlimited* Experience</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold">$29.99</div>
-                  <div className="text-[10px] text-yellow-400">Legal Bridge</div>
+                  <div className="font-bold text-purple-400">$9.99</div>
+                  <div className="text-[10px] text-purple-500 italic">No Limits</div>
                 </div>
               </button>
 
             </div>
 
-            
             <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
-
-              <input type="checkbox" id="legal" className="w-6 h-6" onChange={(e) => setAgreedToTerms(e.target.checked)} />
-
+              <input 
+                type="checkbox" 
+                id="legal" 
+                className="w-6 h-6 rounded border-white/20 bg-transparent text-blue-600 focus:ring-blue-500" 
+                onChange={(e) => setAgreedToTerms(e.target.checked)} 
+              />
               <label htmlFor="legal" className="text-[10px] text-gray-500 uppercase leading-tight">
-
-                I agree to the <a href="https://mylylo.pro/terms.html" target="_blank" className="text-blue-400">Terms</a> and <a href="https://mylylo.pro/privacy.html" target="_blank" className="text-blue-400">Privacy Policy</a>.
-
+                I agree to the <a href="https://mylylo.pro/terms.html" target="_blank" rel="noreferrer" className="text-blue-400">Terms</a> and <a href="https://mylylo.pro/privacy.html" target="_blank" rel="noreferrer" className="text-blue-400">Privacy Policy</a>.
               </label>
-
             </div>
 
-
-            <button onClick={completeAssessment} disabled={!agreedToTerms} className="w-full p-6 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl font-black uppercase">
-
-              {selectedTier === 'free' ? 'ACTIVATE' : `PURCHASE ${selectedTier.toUpperCase()}`}
-
+            <button 
+              onClick={completeAssessment} 
+              disabled={!agreedToTerms} 
+              className="w-full p-6 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 transition-all rounded-2xl font-black uppercase tracking-widest disabled:opacity-30 shadow-xl"
+            >
+              {selectedTier === 'free' ? 'ACTIVATE SHIELD' : `SECURE ${selectedTier.toUpperCase()} PROTECTION`}
             </button>
-
           </div>
-
         )}
-
       </div>
-
     </div>
-
   );
-
 }
