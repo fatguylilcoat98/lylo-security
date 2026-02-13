@@ -24,7 +24,7 @@ load_dotenv()
 app = FastAPI(
     title="LYLO Backend System",
     description="The central intelligence API for LYLO.PRO - Featuring Elite Recovery, King James Wisdom, and Human Voice Synthesis.",
-    version="14.7.0 - ULTIMATE EDITION"
+    version="15.0.0 - ULTIMATE SAFETY EDITION"
 )
 
 # Configure CORS for Frontend Access
@@ -44,6 +44,18 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+
+# --- SAFETY SHIELD LIMITS (The "Butt-Saver" Logic) ---
+# Limits are total searches allowed per month/cycle
+TIER_LIMITS = {
+    "free": 5,
+    "pro": 50,      # $1.99 Plan
+    "elite": 500,   # $4.99 Plan
+    "max": 5000     # $9.99 Plan (Safety cap)
+}
+
+# Persistent usage tracker (In-Memory for now)
+USAGE_TRACKER = defaultdict(int)
 
 print("--- SYSTEM DIAGNOSTICS ---")
 print(f"🔍 Tavily (Internet Search): {'✅ Active' if TAVILY_API_KEY else '❌ Inactive'}")
@@ -115,7 +127,7 @@ if OPENAI_API_KEY:
 # USER DATABASE & MANAGEMENT
 # ---------------------------------------------------------
 
-# Elite Users Database - Full List
+# Elite Users Database - FULL EXPLICIT LIST
 ELITE_USERS = {
     "stangman9898@gmail.com": {
         "tier": "elite", 
@@ -204,12 +216,6 @@ async def generate_audio(
 ):
     """
     Generates high-quality human speech from text.
-    
-    VOICE OPTIONS:
-    - 'onyx': Deep, authoritative male (Best for Disciple, Guardian)
-    - 'nova': Professional, warm female (Best for Friend, Lawyer)
-    - 'echo': Gravelly male (Alternative for Disciple)
-    - 'fable': British/Expressive (Best for Roast Master)
     """
     if not openai_client:
         return {"error": "OpenAI client not configured"}
@@ -808,13 +814,12 @@ async def chat(
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
     user_display_name = user_data.get("name", "User") if isinstance(user_data, dict) else "User"
     
-    limits = {"free": 10, "pro": 50, "elite": 500, "max": 3000}
-    current_limit = limits.get(tier, 10)
-    current_usage = len(USER_CONVERSATIONS.get(user_id, []))
+    # --- SAFETY SHIELD CHECK (UPDATED LIMITS) ---
+    limit = TIER_LIMITS.get(tier, 5)
+    current_usage = USAGE_TRACKER[user_id]
     
-    # Enforce Limits
-    if current_usage >= current_limit:
-        error_msg = "Limit hit. Upgrade for more." if language == 'en' else "Límite alcanzado. Actualice para más."
+    if current_usage >= limit:
+        error_msg = "Usage limit reached. Upgrade to continue." if language == 'en' else "Límite alcanzado. Actualice para más."
         return {"answer": error_msg, "usage_info": {"can_send": False}}
 
     # Logging (Privacy Safe)
@@ -919,6 +924,9 @@ OUTPUT JSON FORMAT ONLY:
             winner['confidence_score'] = 100
             
         print(f"🏆 Winner: {winner.get('model')} ({winner.get('confidence_score')}%)")
+        
+        # --- INCREMENT USAGE ---
+        USAGE_TRACKER[user_id] += 1
     else:
         winner = {
             "answer": "I'm having trouble connecting to the network. Please try again.", 
@@ -952,9 +960,9 @@ async def get_user_stats(user_email: str):
     
     convos = USER_CONVERSATIONS.get(user_id, [])
     
-    # Limit Logic
-    limits = {"free": 10, "pro": 50, "elite": 500, "max": 3000}
-    limit = limits.get(tier, 10)
+    # Limit Logic (Updated)
+    limit = TIER_LIMITS.get(tier, 5)
+    current_usage = USAGE_TRACKER[user_id]
     
     return {
         "tier": tier,
@@ -963,9 +971,9 @@ async def get_user_stats(user_email: str):
         "total_conversations": len(convos),
         "has_quiz_data": user_id in QUIZ_ANSWERS,
         "usage": {
-            "current": len(convos), 
+            "current": current_usage, 
             "limit": limit, 
-            "percentage": (len(convos)/limit)*100
+            "percentage": (current_usage/limit)*100
         }
     }
 
@@ -994,7 +1002,7 @@ async def save_quiz(
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "LYLO ONLINE", "version": "14.7.0", "message": "System Operational"}
+    return {"status": "LYLO ONLINE", "version": "15.0.0", "message": "System Operational"}
 
 if __name__ == "__main__":
     print("🚀 LYLO SYSTEM INITIALIZING...")
