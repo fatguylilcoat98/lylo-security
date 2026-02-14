@@ -69,12 +69,13 @@ export default function ChatInterface({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // VOICE STATE
+  // VOICE STATE - Enhanced for better control
   const [isListening, setIsListening] = useState(false);
   const [micActive, setMicActive] = useState(false);
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null); // Track current audio
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
@@ -173,6 +174,124 @@ export default function ChatInterface({
     }
   }, [messages]);
 
+  // --- AUDIO CLEANUP FUNCTION ---
+  const forceStopAllAudio = () => {
+    // Stop TTS
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    
+    // Stop current audio element
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setCurrentAudio(null);
+    }
+  };
+
+  // --- MICROPHONE CONTROL FUNCTIONS ---
+  const forceStopRecognition = () => {
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      recognition._manuallyStopped = true;
+      recognition._forceStop = true;
+      try {
+        recognition.stop();
+      } catch (e) {
+        console.log('Recognition stop failed:', e);
+      }
+    }
+    setIsListening(false);
+    setMicActive(false);
+  };
+
+  // FIXED SPEECH RECOGNITION LOGIC
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false; // CHANGED: Don't use continuous mode
+      recognition.interimResults = true;
+      recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
+      recognition.maxAlternatives = 1;
+
+      // Custom properties for control
+      recognition._manuallyStopped = false;
+      recognition._forceStop = false;
+
+      recognition.onstart = () => { 
+        if (!recognition._forceStop) {
+          setMicActive(true); 
+        }
+      };
+
+      recognition.onresult = (event: any) => {
+        if (recognition._manuallyStopped || recognition._forceStop) return;
+
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            finalTranscript += result[0].transcript + ' ';
+          }
+        }
+
+        if (finalTranscript) {
+          setInput((prev) => prev + finalTranscript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.log('Recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          alert('Microphone blocked. Please allow access.');
+        }
+        setIsListening(false);
+        setMicActive(false);
+      };
+
+      // FIXED: Better onend handling
+      recognition.onend = () => {
+        setMicActive(false);
+        // Only restart if user still wants to listen AND we haven't been manually stopped
+        if (isListening && !recognition._manuallyStopped && !recognition._forceStop) {
+          setTimeout(() => {
+            if (isListening && !recognition._manuallyStopped && !recognition._forceStop) {
+              try {
+                recognition.start();
+              } catch (e) {
+                console.log('Recognition restart failed:', e);
+                setIsListening(false);
+              }
+            }
+          }, 100);
+        }
+      };
+      
+      recognitionRef.current = recognition;
+      setMicSupported(true);
+    } else {
+      setMicSupported(false);
+    }
+  }, [language]);
+
+  // MICROPHONE STATE CONTROLLER
+  useEffect(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+
+    if (isListening && !micActive && !recognition._manuallyStopped) {
+      recognition._manuallyStopped = false;
+      recognition._forceStop = false;
+      try { 
+        recognition.start(); 
+      } catch(e) {
+        console.log('Recognition start failed:', e);
+        setIsListening(false);
+      }
+    }
+  }, [isListening]);
+
   // --- HANDLERS ---
   const checkEliteStatus = async () => {
     try {
@@ -220,19 +339,15 @@ export default function ChatInterface({
 
   // Bible Version Toggle Handler (FIXED - with voice cleanup)
   const handleBibleVersionToggle = (version: 'kjv' | 'esv') => {
-    // Stop any current speech first
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-    
+    forceStopAllAudio();
     setBibleVersion(version);
     localStorage.setItem('lylo_bible_version', version);
     
-    // Wait a moment then play feedback
     setTimeout(() => {
       const versionName = version === 'kjv' ? 'King James Version' : 'English Standard Version';
       const feedbackText = `Bible version changed to ${versionName}.`;
       speakText(feedbackText, voiceGender);
-    }, 200);
+    }, 300);
   };
 
   // Handle Persona Change with Tier Check
@@ -245,80 +360,6 @@ export default function ChatInterface({
     setShowDropdown(false);
   };
 
-  // --- SPEECH RECOGNITION ---
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      const recognition = new SpeechRecognition();
-      
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
-      recognition.maxAlternatives = 1;
-
-      recognition.onstart = () => { setMicActive(true); };
-
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (result.isFinal) {
-            finalTranscript += result[0].transcript + ' ';
-          } else {
-            interimTranscript += result[0].transcript;
-          }
-        }
-
-        if (finalTranscript || interimTranscript) {
-             setInput((prev) => {
-                 if (prev.endsWith(finalTranscript.trim())) return prev;
-                 return prev + finalTranscript;
-             });
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech') return;
-        if (event.error === 'not-allowed') {
-          alert('Microphone blocked. Please allow access.');
-          setIsListening(false);
-          setMicActive(false);
-        }
-      };
-
-      recognition.onend = () => {
-        setMicActive(false);
-        if (isListening) {
-          try {
-             recognition.start();
-          } catch (e) {
-             setTimeout(() => {
-                 if(isListening) recognition.start();
-             }, 100);
-          }
-        }
-      };
-      
-      recognitionRef.current = recognition;
-      setMicSupported(true);
-    } else {
-      setMicSupported(false);
-    }
-  }, [language, isListening]);
-
-  useEffect(() => {
-      const recognition = recognitionRef.current;
-      if (!recognition) return;
-
-      if (isListening && !micActive) {
-          try { recognition.start(); } catch(e) {}
-      } else if (!isListening && micActive) {
-          recognition.stop();
-      }
-  }, [isListening, micActive]);
-
   const loadUserStats = async () => {
     try {
       const stats = await getUserStats(userEmail);
@@ -327,16 +368,19 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
-  // FIXED TTS FUNCTION - Prevents voice layering
+  // COMPLETELY FIXED TTS FUNCTION - Prevents voice layering and echo
   const speakText = async (text: string, forceGender?: string) => {
     if ((!autoTTS && !forceGender) || !text) return;
     
-    // CRITICAL FIX: Force stop ALL speech synthesis immediately
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    // CRITICAL: Stop mic to prevent echo
+    if (isListening || micActive) {
+      forceStopRecognition();
+    }
     
-    // Small delay to ensure cancellation completes
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Stop all existing audio
+    forceStopAllAudio();
+    
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
     if (!cleanText) return;
@@ -360,20 +404,32 @@ export default function ChatInterface({
 
       if (data.audio_b64) {
         const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-        audio.onended = () => setIsSpeaking(false);
-        audio.play().catch(e => setIsSpeaking(false));
+        setCurrentAudio(audio);
+        
+        audio.onended = () => {
+          setIsSpeaking(false);
+          setCurrentAudio(null);
+        };
+        
+        audio.onerror = () => {
+          setIsSpeaking(false);
+          setCurrentAudio(null);
+        };
+        
+        await audio.play();
       } else {
         throw new Error("No audio returned");
       }
 
     } catch (error) {
       // Fallback to browser TTS with proper cleanup
-      window.speechSynthesis.cancel(); // Extra safety
+      forceStopAllAudio();
       if (window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = 0.9;
         utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
         utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
         window.speechSynthesis.speak(utterance);
       } else {
         setIsSpeaking(false);
@@ -383,52 +439,49 @@ export default function ChatInterface({
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.sender === 'bot' && autoTTS && !isSpeaking) {
+    if (lastMessage?.sender === 'bot' && autoTTS && !isSpeaking && !isListening) {
       setTimeout(() => speakText(lastMessage.content), 500);
     }
   }, [messages, autoTTS]);
 
-  // FIXED: Mic toggle with voice cleanup
+  // COMPLETELY FIXED: Mic toggle with proper cleanup
   const toggleListening = () => {
     if (!micSupported) return alert('Not supported');
     
-    // If we are starting to listen, stop speaking first
-    if (!isListening) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+    if (isListening || micActive) {
+      // STOPPING: Force stop everything
+      forceStopRecognition();
+    } else {
+      // STARTING: Stop speech first to prevent echo, then start listening
+      forceStopAllAudio();
+      setTimeout(() => {
+        setIsListening(true);
+      }, 300);
     }
-    
-    setIsListening(prev => !prev);
   };
 
   // FIXED: TTS toggle with proper cleanup
   const toggleTTS = () => {
-    // Force stop everything first
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-    
-    // Small delay to ensure cleanup
+    forceStopAllAudio();
     setTimeout(() => {
       setAutoTTS(!autoTTS);
-    }, 50);
+    }, 100);
   };
 
   // FIXED: Voice toggle with proper cleanup
   const handleVoiceToggle = (gender: 'male' | 'female') => {
-    // Stop any current speech first
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
+    forceStopAllAudio();
+    forceStopRecognition(); // Also stop mic to prevent echo
     
     setVoiceGender(gender);
     localStorage.setItem('lylo_voice_gender', gender);
     
-    // Wait a moment then play preview
     setTimeout(() => {
       const previewText = gender === 'male' 
         ? (language === 'es' ? "Voz configurada a Masculino." : "Voice set to Male.") 
         : (language === 'es' ? "Voz configurada a Femenino." : "Voice set to Female.");
       speakText(previewText, gender);
-    }, 200);
+    }, 400);
   };
 
   const cycleFontSize = () => {
@@ -842,13 +895,37 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING INDEFINITELY</div>}
+          {(isListening || micActive) && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING</div>}
           <div className="flex items-center justify-between mb-3">
-            <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
+            <button 
+              onClick={toggleListening} 
+              disabled={loading || !micSupported} 
+              className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${
+                (isListening || micActive) 
+                  ? 'bg-red-600 text-white animate-pulse border-red-500' 
+                  : micSupported 
+                    ? 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20' 
+                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              } disabled:opacity-50 border`} 
+              style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
+            >
+              Mic {(isListening || micActive) ? 'ON' : 'OFF'}
+            </button>
             
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             
-            <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
+            <button 
+              onClick={toggleTTS} 
+              className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative border ${
+                autoTTS 
+                  ? 'bg-[#3b82f6] text-white border-blue-500' 
+                  : 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20'
+              }`} 
+              style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
+            >
+              Voice {autoTTS ? 'ON' : 'OFF'}
+              {isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+            </button>
           </div>
           <div className="flex items-end gap-3">
              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
@@ -859,16 +936,16 @@ export default function ChatInterface({
               <textarea 
                 ref={inputRef}
                 value={displayText} 
-                onChange={(e) => !isListening && setInput(e.target.value)}
+                onChange={(e) => !(isListening || micActive) && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
-                disabled={loading}
-                className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
+                placeholder={(isListening || micActive) ? "Listening..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
+                disabled={loading || isListening || micActive}
+                className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${(isListening || micActive) ? 'text-yellow-300 italic cursor-not-allowed' : ''}`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
                 rows={1}
               />
             </div>
-            <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage)} className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Sending' : 'Send'}</button>
+            <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage) || isListening || micActive} className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading && !isListening && !micActive ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Sending' : 'Send'}</button>
           </div>
           <div className="text-center mt-3 pb-1">
             <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.2em] italic">
