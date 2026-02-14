@@ -1,15 +1,15 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         {/* SET ASSESSMENT AS THE PRIMARY ROOT GATE */}
-        {/* This removes the redirect loop and fixes the Not Found error */}
+        {/* Using HashRouter ensures that the /#/ routes from index.html are caught by React */}
         <Route path="/" element={<Assessment />} />
         
         {/* APP ROUTES */}
@@ -17,6 +17,6 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin/beta-testers" element={<BetaTesterAdmin />} /> 
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
