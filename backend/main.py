@@ -526,7 +526,7 @@ async def check_beta_access(request: Request):
         if user_data:
             return {
                 "access": True,
-                "tier": user_data.get("tier", "elite"),
+                "tier": user_data.get("tier", "max"),
                 "name": user_data.get("name", "Beta User"),
                 "message": "Access Granted"
             }
@@ -571,7 +571,7 @@ async def verify_access(email: str = Form(...)):
 async def add_beta_tester(
     admin_email: str = Form(...), 
     new_email: str = Form(...), 
-    tier: str = Form("elite"), 
+    tier: str = Form("max"), 
     name: str = Form("")
 ):
     """Admin route to add new users manually."""
@@ -625,8 +625,8 @@ async def get_scam_recovery_info(user_email: str):
     """Returns the full, static recovery guide for Elite members."""
     user_data = ELITE_USERS.get(user_email.lower(), None)
     
-    # Gatekeeper Check
-    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
+    # Gatekeeper Check (Updated to include max)
+    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") not in ["elite", "max"]):
         raise HTTPException(status_code=403, detail="Elite access required")
     
     # Full Content Guide
@@ -741,7 +741,7 @@ async def scam_recovery_chat(
     Personalized AI recovery advice based on specific user details.
     """
     user_data = ELITE_USERS.get(user_email.lower(), None)
-    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") != "elite"):
+    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") not in ["elite", "max"]):
         return {"error": "Elite access required"}
     
     user_display_name = user_data.get("name") if isinstance(user_data, dict) else "User"
