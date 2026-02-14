@@ -88,7 +88,7 @@ export default function ChatInterface({
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); 
   
-  // FIXED: Initialize userTier immediately from local storage
+  // FIXED: Initialize userTier immediately from local storage to unlock personalities
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>(
     (localStorage.getItem('userTier') as any) || 'free'
   );
@@ -639,7 +639,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER - Updated Logo & Wordmark (Icon Removed) */}
+      {/* HEADER - Updated Logo Branding (Icon removed next to wordmark) */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -672,7 +672,7 @@ export default function ChatInterface({
 
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
-                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">Bible Version</h3>
+                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2">Bible Version</h3>
                      <div className="flex gap-2">
                        <button onClick={() => handleBibleVersionToggle('kjv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>KJV</button>
                        <button onClick={() => handleBibleVersionToggle('esv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>ESV</button>
@@ -687,7 +687,9 @@ export default function ChatInterface({
                 )}
                 
                 <div className="mb-3">
-                  <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">AI Personality</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-bold text-xs uppercase tracking-wider">AI Personality</h3>
+                  </div>
                   <div className="space-y-1">
                     {PERSONAS.map(persona => {
                       const canAccess = canAccessPersona(persona);
@@ -760,7 +762,7 @@ export default function ChatInterface({
             </p>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
-                🚨 SCAM RECOVERY CENTER
+                SCAM RECOVERY CENTER
               </button>
             )}
           </div>
