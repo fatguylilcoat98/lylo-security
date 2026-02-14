@@ -646,7 +646,7 @@ export default function ChatInterface({
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
                      <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">
-                       ✝ Bible Version
+                       Bible Version
                      </h3>
                      <div className="flex gap-2">
                        <button 
@@ -678,8 +678,7 @@ export default function ChatInterface({
                   <div className="space-y-1">
                     {PERSONAS.map(persona => (
                       <button key={persona.id} onClick={() => { onPersonaChange(persona); setShowDropdown(false); }} className={`w-full text-left p-2 rounded-lg transition-colors ${currentPersona.id === persona.id ? (persona.id === 'disciple' ? 'bg-yellow-700 text-yellow-200 border border-yellow-500/50' : 'bg-[#3b82f6] text-white') : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>
-                        <div className={`font-medium text-xs ${persona.id === 'disciple' ? 'flex items-center gap-1' : ''}`}>
-                          {persona.id === 'disciple' && <span className="text-yellow-400">✝</span>}
+                        <div className={`font-medium text-xs`}>
                           {persona.name}
                         </div>
                         <div className="text-xs opacity-70">{persona.description}</div>
@@ -687,14 +686,13 @@ export default function ChatInterface({
                     ))}
                   </div>
                 </div>
-                {/* REMOVED: Text Size controls from dropdown */}
                 <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
               </div>
             )}
           </div>
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              <img src="/logo.png" alt="LYLO" className="w-5 h-5 object-contain" />
+              <img src="/logo.png" alt="LYLO" className="w-6 h-6 object-contain" />
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
@@ -731,7 +729,7 @@ export default function ChatInterface({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
             <div className={`w-16 h-16 ${currentPersona.id === 'disciple' ? 'bg-gradient-to-br from-yellow-600 to-yellow-800' : 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8]'} rounded-2xl flex items-center justify-center mb-4 shadow-lg ${currentPersona.id === 'disciple' ? 'shadow-yellow-500/20' : 'shadow-blue-500/20'}`}>
-              <span className="text-white font-black text-xl">{currentPersona.id === 'disciple' ? '✝' : 'L'}</span>
+              <span className="text-white font-black text-xl">{currentPersona.id === 'disciple' ? 'L' : 'L'}</span>
             </div>
             <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
             <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium italic">
@@ -798,7 +796,7 @@ export default function ChatInterface({
           {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
-            <button onClick={cycleFontSize} className="text-[10px] px-3 py-1 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            <button onClick={cycleFontSize} className="text-sm px-6 py-2.5 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
           <div className="flex items-end gap-3">
