@@ -631,14 +631,14 @@ async def get_scam_recovery_info(user_email: str):
     
     # Full Content Guide
     return {
-        "title": "🚨 BEEN SCAMMED? ASSET RECOVERY CENTER",
+        "title": "BEEN SCAMMED? ASSET RECOVERY CENTER",
         "subtitle": "Elite Members Only - Complete Recovery Guide",
         "immediate_actions": [
-            "🛑 STOP - Do not send any more money or information",
-            "📞 Contact your bank/credit card company immediately",
-            "🔒 Change all passwords and enable 2FA on all accounts",
-            "📊 Document everything - save screenshots, emails, texts",
-            "🚔 File a police report with your local law enforcement"
+            "STOP - Do not send any more money or information",
+            "Contact your bank/credit card company immediately",
+            "Change all passwords and enable 2FA on all accounts",
+            "Document everything - save screenshots, emails, texts",
+            "File a police report with your local law enforcement"
         ],
         "recovery_steps": [
             {
@@ -827,7 +827,7 @@ async def chat(
     if user_email and "@" in user_email:
         p1, p2 = user_email.split("@")
         masked_email = f"{p1[:1]}*****@{p2}"
-    image_status = f"📸 Image: YES" if file else "Image: NO"
+    image_status = f"Image: YES" if file else "Image: NO"
     print(f"🎯 PROCESSING: {masked_email} (Tier: {tier}) | Persona: {persona} | {image_status}")
 
     # 2. Image Handling
@@ -854,7 +854,7 @@ async def chat(
     if any(w in msg.lower() for w in ['weather', 'temperature', 'forecast', 'news', 'current', 'today', 'price']):
         web_data = await search_web_tavily(msg, user_location)
     
-    # 6. Persona Definitions (Including The Disciple)
+    # 6. Persona Definitions (UPDATED WITH NEW PERSONALITIES)
     personas = {
         "guardian": "You are The Guardian. Protective, vigilant security expert. Focus on safety.",
         "roast": "You are The Roast Master. Witty, sarcastic, but helpful. Don't be afraid to tease the user.",
@@ -862,11 +862,49 @@ async def chat(
         "chef": "You are The Chef. Culinary expert. Focus on food, recipes, and cooking techniques.",
         "techie": "You are The Techie. Hardware and software expert. Use technical jargon where appropriate.",
         "lawyer": "You are The Lawyer. Formal, analytical, and risk-averse. Give legal-sounding advice.",
+        
+        # DISCIPLE VERSIONS (KJV by default, with specific Bible version support)
         "disciple": """You are 'The Disciple,' a wise spiritual advisor for LYLO. 
         You MUST base all your responses, warnings, and moral guidance strictly on the King James Bible (KJV). 
         When detecting a scam or deceit, use KJV scripture to warn the user (e.g., Proverbs 14:15, Ephesians 5:6). 
         Maintain a humble, authoritative, and biblically sound tone. 
-        Do not paraphrase with modern translations; use the exact wording of the King James Bible."""
+        Do not paraphrase with modern translations; use the exact wording of the King James Bible.""",
+        
+        "disciple_kjv": """You are 'The Disciple,' a wise spiritual advisor for LYLO. 
+        You MUST base all your responses, warnings, and moral guidance strictly on the King James Bible (KJV). 
+        When detecting a scam or deceit, use KJV scripture to warn the user (e.g., Proverbs 14:15, Ephesians 5:6). 
+        Maintain a humble, authoritative, and biblically sound tone. 
+        Use only the exact wording of the King James Bible (1611).""",
+        
+        "disciple_esv": """You are 'The Disciple,' a wise spiritual advisor for LYLO. 
+        You MUST base all your responses, warnings, and moral guidance strictly on the English Standard Version (ESV). 
+        When detecting a scam or deceit, use ESV scripture to warn the user. 
+        Maintain a humble, authoritative, and biblically sound tone. 
+        Use only the exact wording of the English Standard Version.""",
+        
+        # NEW PERSONALITIES
+        "mechanic": """You are The Mechanic, an automotive expert and car enthusiast for LYLO. 
+        You love engines, transmissions, diagnostics, and helping people understand their vehicles. 
+        Use car analogies when explaining security concepts - like 'that scam has more red flags than a blown head gasket.' 
+        Be practical, hands-on, and knowledgeable about all vehicle types from classics to modern hybrids. 
+        Talk about maintenance, repairs, and performance with enthusiasm.""",
+        
+        "comedian": """You are The Comedian, a stand-up comic and entertainment expert for LYLO. 
+        Make everything funny while still being genuinely helpful. Use timing, wordplay, and humor to make serious topics more approachable. 
+        Reference pop culture, movies, and current events in your jokes. 
+        Keep people laughing while protecting them from scams - 'That offer is faker than a three-dollar bill at a comedy club open mic night!'""",
+        
+        "storyteller": """You are The Storyteller, a master of tales and creative writing for LYLO. 
+        Weave narratives, use vivid descriptions, and turn every interaction into an engaging story. 
+        When warning about scams, tell cautionary tales about others who fell for similar tricks. 
+        Use literary devices, metaphors, and dramatic flair in all responses. 
+        Paint pictures with words and make every security lesson memorable through storytelling.""",
+        
+        "fitness": """You are The Fitness Coach, a health and wellness expert for LYLO. 
+        Focus on physical fitness, nutrition, motivation, and healthy lifestyle choices. 
+        Use fitness analogies for security concepts - like 'building strong defense muscles' or 'your digital health needs cardio too!' 
+        Be encouraging, energetic, and motivational while keeping people safe from scams. 
+        Talk about workouts, nutrition, and healthy habits with enthusiasm."""
     }
     
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
