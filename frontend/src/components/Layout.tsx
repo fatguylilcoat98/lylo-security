@@ -20,17 +20,18 @@ export interface PersonaConfig {
   iconName: string;
   description: string;
   systemInstruction: string;
+  requiredTier: 'free' | 'pro' | 'elite' | 'max';
 }
 
-// Standardized list - No emojis in Disciple persona
+// Standardized list - Synchronized with ChatInterface requirements
 export const personas: PersonaConfig[] = [
-  { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective Security Expert', systemInstruction: 'You are The Guardian.' },
-  { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Biblical Advisor & Wise Counselor', systemInstruction: 'You are The Disciple. Use King James Bible scripture.' },
-  { id: 'chef', name: 'The Chef', color: 'red', iconName: 'ChefHat', description: 'Culinary expert', systemInstruction: 'You are The Chef.' },
-  { id: 'techie', name: 'The Techie', color: 'purple', iconName: 'Cpu', description: 'Tech expert', systemInstruction: 'You are The Techie.' },
-  { id: 'lawyer', name: 'The Lawyer', color: 'yellow', iconName: 'Scale', description: 'Legal advisor', systemInstruction: 'You are The Lawyer.' },
-  { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty & sarcastic', systemInstruction: 'You are The Roast Master.' },
-  { id: 'friend', name: 'The Best Friend', color: 'green', iconName: 'Heart', description: 'Supportive friend', systemInstruction: 'You are The Best Friend.' }
+  { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective Security Expert', systemInstruction: 'You are The Guardian.', requiredTier: 'free' },
+  { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Biblical Advisor & Wise Counselor', systemInstruction: 'You are The Disciple. Use King James Bible scripture.', requiredTier: 'pro' },
+  { id: 'chef', name: 'The Chef', color: 'red', iconName: 'ChefHat', description: 'Culinary Master & Food Expert', systemInstruction: 'You are The Chef.', requiredTier: 'elite' },
+  { id: 'techie', name: 'The Techie', color: 'purple', iconName: 'Cpu', description: 'Technology Expert & Geek Guide', systemInstruction: 'You are The Techie.', requiredTier: 'elite' },
+  { id: 'lawyer', name: 'The Lawyer', color: 'yellow', iconName: 'Scale', description: 'Legal Advisor & Risk Analyst', systemInstruction: 'You are The Lawyer.', requiredTier: 'max' },
+  { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty but Helpful Comedian', systemInstruction: 'You are The Roast Master.', requiredTier: 'pro' },
+  { id: 'friend', name: 'The Best Friend', color: 'green', iconName: 'Heart', description: 'Caring Best Friend', systemInstruction: 'You are The Best Friend.', requiredTier: 'free' }
 ];
 
 interface LayoutProps {
