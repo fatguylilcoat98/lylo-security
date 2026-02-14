@@ -83,7 +83,8 @@ export default function ChatInterface({
   
   const [isEliteUser, setIsEliteUser] = useState(
     userEmail.toLowerCase().includes('stangman') || 
-    userEmail.toLowerCase().includes('elite')
+    userEmail.toLowerCase().includes('elite') ||
+    localStorage.getItem('userTier') === 'max'
   );
    
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -125,16 +126,17 @@ export default function ChatInterface({
   // --- HANDLERS ---
   const checkEliteStatus = async () => {
     try {
-      if (userEmail.toLowerCase().includes("stangman")) {
+      const cleanEmail = userEmail.toLowerCase().trim();
+      if (cleanEmail.includes("stangman")) {
           setIsEliteUser(true);
       }
       const response = await fetch(`${API_URL}/check-beta-access`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `email=${encodeURIComponent(userEmail)}`
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail })
       });
       const data = await response.json();
-      if (data.tier === 'elite') setIsEliteUser(true);
+      if (data.tier === 'elite' || data.tier === 'max') setIsEliteUser(true);
     } catch (error) {
       console.error('Failed to check elite status:', error);
     }
@@ -438,7 +440,6 @@ export default function ChatInterface({
   };
 
   // Only show transcript in input if it's new, otherwise show what user typed
-  // We actually updated Input directly in the speech handler, so just use Input here
   const displayText = input;
 
   return (
@@ -648,7 +649,7 @@ export default function ChatInterface({
           </div>
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              <img src="lylologo.png" alt="LYLO" className="w-5 h-5 object-contain" />
+              <img src="logo.png" alt="LYLO" className="w-5 h-5 object-contain" />
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
