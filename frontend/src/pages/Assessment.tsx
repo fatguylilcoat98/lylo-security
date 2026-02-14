@@ -75,7 +75,7 @@ export default function Assessment() {
       localStorage.setItem('userName', vipData.name);
       localStorage.setItem('isEliteUser', 'true');
       localStorage.setItem('isBetaTester', 'true');
-      localStorage.setItem('lylo_assessment_complete', 'true'); // Added this key to prevent loops
+      localStorage.setItem('lylo_assessment_complete', 'true'); // BRIDGE KEY
       
       // Short delay for "Initializing" feel
       await new Promise(resolve => setTimeout(resolve, 1200));
