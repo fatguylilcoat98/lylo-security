@@ -101,7 +101,8 @@ export default function Assessment() {
       if (selectedTier === 'elite') stripeUrl = STRIPE_LINKS.elite;
       if (selectedTier === 'max') stripeUrl = STRIPE_LINKS.max;
 
-      window.location.href = stripeUrl;
+      // Use window.location.assign for external Stripe redirect
+      window.location.assign(stripeUrl);
       return;
     }
 
