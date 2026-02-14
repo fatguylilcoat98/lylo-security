@@ -10,6 +10,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const userEmail = localStorage.getItem('userEmail');
   
   // 2. Check if they have a "VIP Pass" (Elite or Beta)
+  // These keys are set during the index.html or Assessment.tsx login process
   const isElite = localStorage.getItem('isEliteUser') === 'true';
   const isBeta = localStorage.getItem('isBetaTester') === 'true';
 
@@ -18,8 +19,9 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
   if (!hasAccess) {
     console.warn("Unauthorized access attempt by:", userEmail || "Anonymous");
-    // Send them back to the login (Dashboard)
-    return <Navigate to="/dashboard" replace />; 
+    // Send them back to the Root Gate (Assessment/Login)
+    // Using "/" ensures compatibility with your HashRouter setup
+    return <Navigate to="/" replace />; 
   }
 
   // If they pass, show them the page
