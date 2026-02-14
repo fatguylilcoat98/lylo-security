@@ -87,7 +87,10 @@ export default function ChatInterface({
   const [language, setLanguage] = useState<'en' | 'es'>('en'); 
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); 
-  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
+  // FIXED: Initialize tier from storage immediately to unlock personalities
+  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>(
+    (localStorage.getItem('userTier') as any) || 'free'
+  );
   
   // Scam Recovery State
   const [showScamRecovery, setShowScamRecovery] = useState(false);
@@ -635,7 +638,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER - Logo Addition */}
+      {/* HEADER - Icon/Thumbnail Removed as Requested */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -648,6 +651,7 @@ export default function ChatInterface({
             </button>
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[280px] z-[100003] max-h-[70vh] overflow-y-auto shadow-2xl">
+                {/* LANGUAGE TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Language / Idioma</h3>
                    <div className="flex gap-2">
@@ -656,6 +660,7 @@ export default function ChatInterface({
                    </div>
                 </div>
 
+                {/* VOICE GENDER TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Voice Gender / Género</h3>
                    <div className="flex gap-2">
@@ -666,7 +671,7 @@ export default function ChatInterface({
 
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
-                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">Bible Version</h3>
+                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2">Bible Version</h3>
                      <div className="flex gap-2">
                        <button onClick={() => handleBibleVersionToggle('kjv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>KJV</button>
                        <button onClick={() => handleBibleVersionToggle('esv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>ESV</button>
@@ -706,7 +711,7 @@ export default function ChatInterface({
           
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
+              {/* Thumbnail Icon Removed as Requested */}
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
@@ -724,6 +729,7 @@ export default function ChatInterface({
                   <div className="flex justify-between"><span>Tier:</span><span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>{userStats.tier.toUpperCase()} {isEliteUser && ' ★'}</span></div>
                   <div className="flex justify-between"><span>Today:</span><span className="text-white">{userStats.conversations_today}</span></div>
                   <div className="flex justify-between"><span>Total:</span><span className="text-white">{userStats.total_conversations}</span></div>
+                  <div className="flex justify-between"><span>Personalities:</span><span className="text-white">{getPersonasByTier().length}/10</span></div>
                   <div className="mt-2">
                     <div className="flex justify-between text-xs mb-1"><span>Usage:</span><span>{userStats.usage.current}/{userStats.usage.limit}</span></div>
                     <div className="bg-gray-800 rounded-full h-2"><div className="h-2 bg-[#3b82f6] rounded-full transition-all" style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }} /></div>
@@ -744,6 +750,7 @@ export default function ChatInterface({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
             <div className={`w-16 h-16 ${currentPersona.id === 'disciple' ? 'bg-gradient-to-br from-yellow-600 to-yellow-800' : 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8]'} rounded-2xl flex items-center justify-center mb-4 shadow-lg ${currentPersona.id === 'disciple' ? 'shadow-yellow-500/20' : 'shadow-blue-500/20'}`}>
+              {/* Disciple Icon Removed/Simplified as Requested */}
               <span className="text-white font-black text-xl">L</span>
             </div>
             <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
@@ -783,7 +790,7 @@ export default function ChatInterface({
                   </div>
                   {msg.scamDetected && (
                     <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-[10px] font-black uppercase">
-                      SCAM DETECTED
+                      ⚠️ SCAM DETECTED
                       {msg.scamIndicators && msg.scamIndicators.length > 0 && <div className="mt-1 text-[9px] opacity-80 font-normal normal-case">{msg.scamIndicators.join(', ')}</div>}
                     </div>
                   )}
@@ -807,11 +814,13 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
+          {/* New "Forever Mic" Indicator */}
+          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
             
-            {/* BIGGER SIZE BUTTON - Standardized for mobile/PC layout */}
-            <button onClick={cycleFontSize} className="text-xs md:text-sm px-6 py-2.5 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            {/* BIGGER SIZE BUTTON - Increased padding and font weight for better accessibility */}
+            <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
@@ -826,7 +835,7 @@ export default function ChatInterface({
                 value={displayText} 
                 onChange={(e) => !isListening && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "🎤 Listening..." : selectedImage ? `Image: ${selectedImage.name}` : `Message ${currentPersona.name}...`}
+                placeholder={isListening ? "🎤 Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
                 disabled={loading}
                 className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
