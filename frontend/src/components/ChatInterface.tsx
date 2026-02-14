@@ -87,7 +87,8 @@ export default function ChatInterface({
   const [language, setLanguage] = useState<'en' | 'es'>('en'); 
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); 
-  // FIXED: Initialize tier from storage immediately to unlock personalities
+  
+  // FIXED: Initialize userTier immediately from local storage
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>(
     (localStorage.getItem('userTier') as any) || 'free'
   );
@@ -638,7 +639,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER - Icon/Thumbnail Removed as Requested */}
+      {/* HEADER - Updated Logo & Wordmark (Icon Removed) */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -671,7 +672,7 @@ export default function ChatInterface({
 
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
-                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2">Bible Version</h3>
+                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">Bible Version</h3>
                      <div className="flex gap-2">
                        <button onClick={() => handleBibleVersionToggle('kjv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>KJV</button>
                        <button onClick={() => handleBibleVersionToggle('esv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>ESV</button>
@@ -686,9 +687,7 @@ export default function ChatInterface({
                 )}
                 
                 <div className="mb-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-white font-bold text-xs uppercase tracking-wider">AI Personality</h3>
-                  </div>
+                  <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">AI Personality</h3>
                   <div className="space-y-1">
                     {PERSONAS.map(persona => {
                       const canAccess = canAccessPersona(persona);
@@ -750,7 +749,6 @@ export default function ChatInterface({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
             <div className={`w-16 h-16 ${currentPersona.id === 'disciple' ? 'bg-gradient-to-br from-yellow-600 to-yellow-800' : 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8]'} rounded-2xl flex items-center justify-center mb-4 shadow-lg ${currentPersona.id === 'disciple' ? 'shadow-yellow-500/20' : 'shadow-blue-500/20'}`}>
-              {/* Disciple Icon Removed/Simplified as Requested */}
               <span className="text-white font-black text-xl">L</span>
             </div>
             <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
@@ -762,7 +760,7 @@ export default function ChatInterface({
             </p>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
-                SCAM RECOVERY CENTER
+                🚨 SCAM RECOVERY CENTER
               </button>
             )}
           </div>
@@ -819,7 +817,7 @@ export default function ChatInterface({
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
             
-            {/* BIGGER SIZE BUTTON - Increased padding and font weight for better accessibility */}
+            {/* BIGGER SIZE BUTTON - Standardized for mobile/PC layout */}
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
