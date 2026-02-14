@@ -127,73 +127,73 @@ if OPENAI_API_KEY:
 # USER DATABASE & MANAGEMENT
 # ---------------------------------------------------------
 
-# Elite Users Database - FULL EXPLICIT LIST
+# Elite Users Database - FULL EXPLICIT LIST (UPDATED TO MAX)
 ELITE_USERS = {
     "stangman9898@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Christopher"
     },
     "paintonmynails80@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Aubrey"
     },
     "tiffani.hughes@yahoo.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Tiffani"
     },
     "jcdabearman@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Jeff"
     },
     "birdznbloomz2b@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Sandy"
     },
     "chris.betatester1@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "James"
     },
-    "chris.betatester2@gmail.com": {"tier": "elite", "name": "Beta 2"},
-    "chris.betatester3@gmail.com": {"tier": "elite", "name": "Beta 3"},
-    "chris.betatester4@gmail.com": {"tier": "elite", "name": "Beta 4"},
-    "chris.betatester5@gmail.com": {"tier": "elite", "name": "Beta 5"},
-    "chris.betatester6@gmail.com": {"tier": "elite", "name": "Beta 6"},
-    "chris.betatester7@gmail.com": {"tier": "elite", "name": "Beta 7"},
-    "chris.betatester8@gmail.com": {"tier": "elite", "name": "Beta 8"},
-    "chris.betatester9@gmail.com": {"tier": "elite", "name": "Beta 9"},
-    "chris.betatester10@gmail.com": {"tier": "elite", "name": "Beta 10"},
-    "chris.betatester11@gmail.com": {"tier": "elite", "name": "Beta 11"},
-    "chris.betatester12@gmail.com": {"tier": "elite", "name": "Beta 12"},
-    "chris.betatester13@gmail.com": {"tier": "elite", "name": "Beta 13"},
-    "chris.betatester14@gmail.com": {"tier": "elite", "name": "Beta 14"},
-    "chris.betatester15@gmail.com": {"tier": "elite", "name": "Beta 15"},
-    "chris.betatester16@gmail.com": {"tier": "elite", "name": "Beta 16"},
-    "chris.betatester17@gmail.com": {"tier": "elite", "name": "Beta 17"},
-    "chris.betatester18@gmail.com": {"tier": "elite", "name": "Beta 18"},
-    "chris.betatester19@gmail.com": {"tier": "elite", "name": "Beta 19"},
-    "chris.betatester20@gmail.com": {"tier": "elite", "name": "Beta 20"},
+    "chris.betatester2@gmail.com": {"tier": "max", "name": "Beta 2"},
+    "chris.betatester3@gmail.com": {"tier": "max", "name": "Beta 3"},
+    "chris.betatester4@gmail.com": {"tier": "max", "name": "Beta 4"},
+    "chris.betatester5@gmail.com": {"tier": "max", "name": "Beta 5"},
+    "chris.betatester6@gmail.com": {"tier": "max", "name": "Beta 6"},
+    "chris.betatester7@gmail.com": {"tier": "max", "name": "Beta 7"},
+    "chris.betatester8@gmail.com": {"tier": "max", "name": "Beta 8"},
+    "chris.betatester9@gmail.com": {"tier": "max", "name": "Beta 9"},
+    "chris.betatester10@gmail.com": {"tier": "max", "name": "Beta 10"},
+    "chris.betatester11@gmail.com": {"tier": "max", "name": "Beta 11"},
+    "chris.betatester12@gmail.com": {"tier": "max", "name": "Beta 12"},
+    "chris.betatester13@gmail.com": {"tier": "max", "name": "Beta 13"},
+    "chris.betatester14@gmail.com": {"tier": "max", "name": "Beta 14"},
+    "chris.betatester15@gmail.com": {"tier": "max", "name": "Beta 15"},
+    "chris.betatester16@gmail.com": {"tier": "max", "name": "Beta 16"},
+    "chris.betatester17@gmail.com": {"tier": "max", "name": "Beta 17"},
+    "chris.betatester18@gmail.com": {"tier": "max", "name": "Beta 18"},
+    "chris.betatester19@gmail.com": {"tier": "max", "name": "Beta 19"},
+    "chris.betatester20@gmail.com": {"tier": "max", "name": "Beta 20"},
     "plabane916@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Paul"
     },
     "nemeses1298@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Eric"
     },
     "bearjcameron@icloud.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Bear"
     },
     "jcgcbear@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Gloria"
     },
     "laura@startupsac.org": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Laura"
     },
     "cmlabane@gmail.com": {
-        "tier": "elite", 
+        "tier": "max", 
         "name": "Corie"
     }
 }
