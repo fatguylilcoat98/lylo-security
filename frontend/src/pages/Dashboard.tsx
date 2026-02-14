@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Layout, { personas } from '../components/Layout';
+import Layout, { personas, PersonaConfig } from '../components/Layout';
 import ChatInterface from '../components/ChatInterface';
 
 export default function Dashboard() {
@@ -15,13 +15,12 @@ export default function Dashboard() {
   useEffect(() => {
     // 1. Retrieve the data saved by the Website Login
     const savedEmail = localStorage.getItem('userEmail');
-    const savedTier = localStorage.getItem('userTier') || 'free';
+    const savedTier = localStorage.getItem('userTier') as any || 'free';
     const savedName = localStorage.getItem('userName') || 'User';
     const savedPersona = localStorage.getItem('lylo_selected_persona');
     const isComplete = localStorage.getItem('lylo_assessment_complete');
 
     // 2. Gatekeeper: If not logged in or hasn't passed assessment, kick to Home
-    // We check for /#/ root to ensure compatibility with HashRouter
     if (!savedEmail || !isComplete) {
       window.location.href = '/'; 
       return;
@@ -49,7 +48,7 @@ export default function Dashboard() {
     // Trigger re-fetch of usage stats if needed
   };
 
-  const handlePersonaChange = (persona: any) => {
+  const handlePersonaChange = (persona: PersonaConfig) => {
     setCurrentPersona(persona.id);
   };
 
@@ -83,7 +82,7 @@ export default function Dashboard() {
             </div>
             <a 
               href="mailto:mylylo.ai@gmail.com?subject=MAX Tier Priority Legal Request" 
-              className="text-[9px] bg-purple-600 text-white px-6 py-2 font-black rounded-sm uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-600/20"
+              className="text-[9px] bg-purple-600 text-white px-4 py-2 font-black rounded-sm uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg shadow-purple-600/20"
             >
               Contact Priority Legal Team
             </a>
@@ -111,11 +110,11 @@ export default function Dashboard() {
         )}
 
         <ChatInterface 
-          currentPersona={currentPersonaConfig} 
+          currentPersona={currentPersonaConfig as any} 
           userEmail={userEmail}
           zoomLevel={zoomLevel}
           onZoomChange={setZoomLevel}
-          onPersonaChange={handlePersonaChange}
+          onPersonaChange={handlePersonaChange as any}
           onLogout={handleLogout}
           onUsageUpdate={handleUsageUpdate}
         />
