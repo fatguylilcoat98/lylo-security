@@ -11,6 +11,7 @@ export interface PersonaConfig {
   description: string;
   color: string;
   voice?: string;
+  requiredTier: 'free' | 'pro' | 'elite' | 'max';
 }
 
 interface ChatInterfaceProps {
@@ -34,13 +35,23 @@ interface RecoveryGuideData {
 }
 
 const PERSONAS: PersonaConfig[] = [
-  { id: 'guardian', name: 'The Guardian', description: 'Protective Security Expert', color: 'blue' },
-  { id: 'disciple', name: 'The Disciple', description: 'Biblical Advisor & Wise Counselor', color: 'gold' },
-  { id: 'roast', name: 'The Roast Master', description: 'Witty but Helpful', color: 'orange' },
-  { id: 'friend', name: 'The Friend', description: 'Caring Best Friend', color: 'green' },
-  { id: 'chef', name: 'The Chef', description: 'Food & Cooking Expert', color: 'red' },
-  { id: 'techie', name: 'The Techie', description: 'Technology Expert', color: 'purple' },
-  { id: 'lawyer', name: 'The Lawyer', description: 'Legal Advisor', color: 'yellow' }
+  // FREE TIER (1)
+  { id: 'guardian', name: 'The Guardian', description: 'Protective Security Expert', color: 'blue', requiredTier: 'free' },
+  
+  // PRO TIER (4 total)
+  { id: 'roast', name: 'The Roast Master', description: 'Witty but Helpful Comedian', color: 'orange', requiredTier: 'pro' },
+  { id: 'disciple', name: 'The Disciple', description: 'Biblical Advisor & Wise Counselor', color: 'gold', requiredTier: 'pro' },
+  { id: 'mechanic', name: 'The Mechanic', description: 'Auto Expert & Car Enthusiast', color: 'gray', requiredTier: 'pro' },
+  
+  // ELITE TIER (7 total)
+  { id: 'chef', name: 'The Chef', description: 'Culinary Master & Food Expert', color: 'red', requiredTier: 'elite' },
+  { id: 'techie', name: 'The Techie', description: 'Technology Expert & Geek Guide', color: 'purple', requiredTier: 'elite' },
+  { id: 'comedian', name: 'The Comedian', description: 'Stand-Up Comic & Entertainment Expert', color: 'pink', requiredTier: 'elite' },
+  
+  // MAX TIER (10 total)
+  { id: 'lawyer', name: 'The Lawyer', description: 'Legal Advisor & Risk Analyst', color: 'yellow', requiredTier: 'max' },
+  { id: 'storyteller', name: 'The Storyteller', description: 'Master of Tales & Creative Writing', color: 'indigo', requiredTier: 'max' },
+  { id: 'fitness', name: 'The Fitness Coach', description: 'Health & Wellness Expert', color: 'green', requiredTier: 'max' }
 ];
 
 export default function ChatInterface({ 
@@ -59,8 +70,8 @@ export default function ChatInterface({
   const [loading, setLoading] = useState(false);
   
   // VOICE STATE
-  const [isListening, setIsListening] = useState(false); // User's INTENT to listen
-  const [micActive, setMicActive] = useState(false);     // Actual Hardware Status
+  const [isListening, setIsListening] = useState(false);
+  const [micActive, setMicActive] = useState(false);
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
@@ -75,7 +86,8 @@ export default function ChatInterface({
   // New Features State
   const [language, setLanguage] = useState<'en' | 'es'>('en'); 
   const [showLimitModal, setShowLimitModal] = useState(false);
-  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'nlt'>('kjv'); // NEW: Bible version selector
+  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); // UPDATED: KJV/ESV
+  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   
   // Scam Recovery State
   const [showScamRecovery, setShowScamRecovery] = useState(false);
@@ -92,6 +104,36 @@ export default function ChatInterface({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- TIER CHECKING ---
+  const canAccessPersona = (persona: PersonaConfig): boolean => {
+    const tierHierarchy = { free: 0, pro: 1, elite: 2, max: 3 };
+    return tierHierarchy[userTier] >= tierHierarchy[persona.requiredTier];
+  };
+
+  const getPersonasByTier = () => {
+    return PERSONAS.filter(persona => canAccessPersona(persona));
+  };
+
+  const getTierName = (tier: string): string => {
+    switch(tier) {
+      case 'free': return 'Basic Shield';
+      case 'pro': return 'Pro Guardian';
+      case 'elite': return 'Elite Justice';
+      case 'max': return 'Max Unlimited';
+      default: return 'Unknown';
+    }
+  };
+
+  const getTierColor = (tier: string): string => {
+    switch(tier) {
+      case 'free': return 'text-gray-400';
+      case 'pro': return 'text-blue-400';
+      case 'elite': return 'text-amber-400';
+      case 'max': return 'text-purple-400';
+      default: return 'text-gray-400';
+    }
+  };
 
   // --- SECURITY UI LOGIC (GLOW) ---
   const getSecurityGlowClass = () => {
@@ -117,9 +159,9 @@ export default function ChatInterface({
     const savedVoice = localStorage.getItem('lylo_voice_gender');
     if (savedVoice === 'female') setVoiceGender('female');
     
-    // Load saved Bible version
+    // Load saved Bible version (updated to ESV)
     const savedBibleVersion = localStorage.getItem('lylo_bible_version');
-    if (savedBibleVersion === 'nlt') setBibleVersion('nlt');
+    if (savedBibleVersion === 'esv') setBibleVersion('esv');
   }, [userEmail]);
 
   useEffect(() => {
@@ -134,6 +176,7 @@ export default function ChatInterface({
       const cleanEmail = userEmail.toLowerCase().trim();
       if (cleanEmail.includes("stangman")) {
           setIsEliteUser(true);
+          setUserTier('max');
       }
       const response = await fetch(`${API_URL}/check-beta-access`, {
         method: 'POST',
@@ -141,7 +184,19 @@ export default function ChatInterface({
         body: JSON.stringify({ email: cleanEmail })
       });
       const data = await response.json();
-      if (data.tier === 'elite' || data.tier === 'max') setIsEliteUser(true);
+      
+      // Set user tier based on backend response
+      if (data.tier === 'max') {
+        setUserTier('max');
+        setIsEliteUser(true);
+      } else if (data.tier === 'elite') {
+        setUserTier('elite');
+        setIsEliteUser(true);
+      } else if (data.tier === 'pro') {
+        setUserTier('pro');
+      } else {
+        setUserTier('free');
+      }
     } catch (error) {
       console.error('Failed to check elite status:', error);
     }
@@ -161,34 +216,39 @@ export default function ChatInterface({
     }
   };
 
-  // NEW: Bible Version Toggle Handler
-  const handleBibleVersionToggle = (version: 'kjv' | 'nlt') => {
+  // Bible Version Toggle Handler (Updated for ESV)
+  const handleBibleVersionToggle = (version: 'kjv' | 'esv') => {
     setBibleVersion(version);
     localStorage.setItem('lylo_bible_version', version);
     
-    // Optional: Give feedback
-    const versionName = version === 'kjv' ? 'King James Version' : 'New Living Translation';
+    const versionName = version === 'kjv' ? 'King James Version' : 'English Standard Version';
     const feedbackText = `Bible version changed to ${versionName}.`;
     speakText(feedbackText, voiceGender);
   };
 
-  // --- NEW: "FOREVER MIC" LOGIC ---
+  // Handle Persona Change with Tier Check
+  const handlePersonaChange = (persona: PersonaConfig) => {
+    if (!canAccessPersona(persona)) {
+      alert(`${persona.name} requires ${getTierName(persona.requiredTier)} tier or higher.`);
+      return;
+    }
+    onPersonaChange(persona);
+    setShowDropdown(false);
+  };
+
+  // --- SPEECH RECOGNITION LOGIC ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = true;     // Keep listening even after user stops speaking
-      recognition.interimResults = true; // Show words as they are spoken
+      recognition.continuous = true;
+      recognition.interimResults = true;
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
 
-      // START EVENT
-      recognition.onstart = () => {
-        setMicActive(true);
-      };
+      recognition.onstart = () => { setMicActive(true); };
 
-      // RESULT EVENT
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
         let interimTranscript = '';
@@ -202,22 +262,16 @@ export default function ChatInterface({
           }
         }
 
-        // Update input state with what was said
         if (finalTranscript || interimTranscript) {
              setInput((prev) => {
-                 // Prevent duplicating the final text if it was just added
                  if (prev.endsWith(finalTranscript.trim())) return prev;
                  return prev + finalTranscript;
              });
         }
       };
 
-      // ERROR EVENT
       recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech') {
-            // Ignore silence errors, just keep going
-            return;
-        }
+        if (event.error === 'no-speech') return;
         if (event.error === 'not-allowed') {
           alert('Microphone blocked. Please allow access.');
           setIsListening(false);
@@ -225,15 +279,12 @@ export default function ChatInterface({
         }
       };
 
-      // END EVENT (THE CRITICAL FIX)
       recognition.onend = () => {
         setMicActive(false);
-        // IF the user still wants to listen, RESTART IMMEDIATELY
         if (isListening) {
           try {
              recognition.start();
           } catch (e) {
-             // If start fails (e.g. already started), wait 100ms and try again
              setTimeout(() => {
                  if(isListening) recognition.start();
              }, 100);
@@ -246,9 +297,8 @@ export default function ChatInterface({
     } else {
       setMicSupported(false);
     }
-  }, [language, isListening]); // Re-run if language changes
+  }, [language, isListening]);
 
-  // Trigger Start/Stop based on isListening state
   useEffect(() => {
       const recognition = recognitionRef.current;
       if (!recognition) return;
@@ -259,7 +309,6 @@ export default function ChatInterface({
           recognition.stop();
       }
   }, [isListening, micActive]);
-
 
   const loadUserStats = async () => {
     try {
@@ -327,12 +376,8 @@ export default function ChatInterface({
 
   const toggleListening = () => {
     if (!micSupported) return alert('Not supported');
-    
-    // Toggle the INTENT to listen
     setIsListening(prev => !prev);
-    
     if (!isListening) {
-        // If we are starting to listen, stop speaking
         if (isSpeaking) {
             window.speechSynthesis?.cancel();
             setIsSpeaking(false);
@@ -402,7 +447,7 @@ export default function ChatInterface({
         content: msg.content
       }));
 
-      // NEW: Add Bible version preference for The Disciple persona
+      // Include Bible version preference for The Disciple persona
       let personaWithBible = currentPersona.id;
       if (currentPersona.id === 'disciple') {
         personaWithBible = `disciple_${bibleVersion}`;
@@ -411,7 +456,7 @@ export default function ChatInterface({
       const response = await sendChatMessage(
         textToSend || "Analyze this image", 
         conversationHistory,
-        personaWithBible, // Send modified persona ID with Bible version
+        personaWithBible,
         userEmail,
         selectedImage,
         language 
@@ -462,7 +507,6 @@ export default function ChatInterface({
     return userEmail.split('@')[0];
   };
 
-  // Only show transcript in input if it's new, otherwise show what user typed
   const displayText = input;
 
   return (
@@ -505,7 +549,7 @@ export default function ChatInterface({
             <div className="p-4 border-b border-gray-800 bg-red-900/20 flex justify-between items-start flex-shrink-0">
               <div>
                 <h2 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-wider">
-                  🛡️ {guideData.title}
+                  {guideData.title}
                 </h2>
                 <p className="text-red-300 text-xs mt-1 font-bold">{guideData.subtitle}</p>
               </div>
@@ -545,7 +589,7 @@ export default function ChatInterface({
                 <h3 className="text-green-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-green-500/30 pb-1">Phase 3: Future Prevention</h3>
                 <ul className="grid grid-cols-1 gap-2">
                   {guideData.prevention_tips.map((tip, i) => (
-                    <li key={i} className="bg-green-900/10 text-green-200 p-2 rounded border border-green-500/20 text-xs font-medium">🔒 {tip}</li>
+                    <li key={i} className="bg-green-900/10 text-green-200 p-2 rounded border border-green-500/20 text-xs font-medium">{tip}</li>
                   ))}
                 </ul>
               </section>
@@ -567,18 +611,18 @@ export default function ChatInterface({
         <div className="fixed inset-0 z-[100020] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-black/95 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">🚨 SCAM RECOVERY CENTER</h2>
+              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">SCAM RECOVERY CENTER</h2>
               <button onClick={() => setShowScamRecovery(false)} className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg">✕</button>
             </div>
             <div className="space-y-4 text-sm">
               <div className="bg-red-900/20 border border-red-500/30 rounded p-3">
                 <p className="text-red-300 font-bold mb-2">IMMEDIATE ACTIONS:</p>
                 <ul className="text-gray-300 space-y-1 text-xs">
-                  <li>🛑 STOP sending any more money</li>
-                  <li>📞 Call your bank immediately</li>
-                  <li>🔒 Change all passwords</li>
-                  <li>📸 Screenshot everything</li>
-                  <li>🚔 File police report</li>
+                  <li>STOP sending any more money</li>
+                  <li>Call your bank immediately</li>
+                  <li>Change all passwords</li>
+                  <li>Screenshot everything</li>
+                  <li>File police report</li>
                 </ul>
               </div>
               <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-3">
@@ -590,7 +634,7 @@ export default function ChatInterface({
                 onClick={handleGetFullGuide}
                 disabled={loading}
               >
-                {loading ? <span>GENERATING GUIDE...</span> : <><span>📋</span> GET FULL RECOVERY GUIDE</>}
+                {loading ? <span>GENERATING GUIDE...</span> : <span>GET FULL RECOVERY GUIDE</span>}
               </button>
             </div>
           </div>
@@ -609,21 +653,21 @@ export default function ChatInterface({
               </div>
             </button>
             {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[220px] z-[100003] max-h-[60vh] overflow-y-auto shadow-2xl">
+              <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[280px] z-[100003] max-h-[70vh] overflow-y-auto shadow-2xl">
                 {/* LANGUAGE TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Language / Idioma</h3>
                    <div className="flex gap-2">
                      <button onClick={() => setLanguage('en')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>
-                       🇺🇸 ENG
+                       ENG
                      </button>
                      <button onClick={() => setLanguage('es')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>
-                       🇲🇽 ESP
+                       ESP
                      </button>
                    </div>
                 </div>
 
-                {/* NEW: VOICE GENDER TOGGLE */}
+                {/* VOICE GENDER TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Voice Gender / Género</h3>
                    <div className="flex gap-2">
@@ -631,18 +675,18 @@ export default function ChatInterface({
                        onClick={() => handleVoiceToggle('male')} 
                        className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-1 ${voiceGender === 'male' ? 'bg-slate-700 text-white border border-slate-500' : 'bg-white/5 text-gray-400'}`}
                      >
-                       ♂ Male
+                       Male
                      </button>
                      <button 
                        onClick={() => handleVoiceToggle('female')} 
                        className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-1 ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200 border border-pink-500/50' : 'bg-white/5 text-gray-400'}`}
                      >
-                       ♀ Female
+                       Female
                      </button>
                    </div>
                 </div>
 
-                {/* NEW: BIBLE VERSION SELECTOR (Only show when The Disciple is active) */}
+                {/* BIBLE VERSION SELECTOR (Only show when The Disciple is active) */}
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
                      <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -656,43 +700,75 @@ export default function ChatInterface({
                          KJV
                        </button>
                        <button 
-                         onClick={() => handleBibleVersionToggle('nlt')} 
-                         className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'nlt' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}
+                         onClick={() => handleBibleVersionToggle('esv')} 
+                         className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}
                        >
-                         NLT
+                         ESV
                        </button>
                      </div>
                      <p className="text-gray-500 text-[9px] mt-1 font-medium">
-                       {bibleVersion === 'kjv' ? 'King James Version (1611)' : 'New Living Translation (Modern)'}
+                       {bibleVersion === 'kjv' ? 'King James Version (1611)' : 'English Standard Version (2001)'}
                      </p>
                   </div>
                 )}
 
                 {isEliteUser && (
                   <div className="mb-3 pb-3 border-b border-red-500/20">
-                    <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"><span>🚨</span> SCAM RECOVERY</button>
+                    <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2">SCAM RECOVERY</button>
                   </div>
                 )}
+
+                {/* AI PERSONALITY SECTION WITH TIER RESTRICTIONS */}
                 <div className="mb-3">
-                  <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-1">AI Personality</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-bold text-xs uppercase tracking-wider">AI Personality</h3>
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded ${getTierColor(userTier)}`}>
+                      {getTierName(userTier)}
+                    </span>
+                  </div>
                   <div className="space-y-1">
-                    {PERSONAS.map(persona => (
-                      <button key={persona.id} onClick={() => { onPersonaChange(persona); setShowDropdown(false); }} className={`w-full text-left p-2 rounded-lg transition-colors ${currentPersona.id === persona.id ? (persona.id === 'disciple' ? 'bg-yellow-700 text-yellow-200 border border-yellow-500/50' : 'bg-[#3b82f6] text-white') : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>
-                        <div className={`font-medium text-xs`}>
-                          {persona.name}
-                        </div>
-                        <div className="text-xs opacity-70">{persona.description}</div>
-                      </button>
-                    ))}
+                    {PERSONAS.map(persona => {
+                      const canAccess = canAccessPersona(persona);
+                      return (
+                        <button 
+                          key={persona.id} 
+                          onClick={() => canAccess ? handlePersonaChange(persona) : null}
+                          disabled={!canAccess}
+                          className={`w-full text-left p-2 rounded-lg transition-colors relative ${
+                            currentPersona.id === persona.id 
+                              ? (persona.id === 'disciple' ? 'bg-yellow-700 text-yellow-200 border border-yellow-500/50' : 'bg-[#3b82f6] text-white') 
+                              : canAccess 
+                                ? 'bg-white/5 text-gray-300 hover:bg-white/10' 
+                                : 'bg-gray-800/30 text-gray-600 cursor-not-allowed'
+                          }`}
+                        >
+                          <div className={`font-medium text-xs flex items-center justify-between`}>
+                            <span className="flex items-center gap-1">
+                              {persona.name}
+                            </span>
+                            {!canAccess && (
+                              <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${getTierColor(persona.requiredTier)}`}>
+                                {getTierName(persona.requiredTier)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs opacity-70">{persona.description}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 p-2 bg-blue-900/20 border border-blue-500/30 rounded text-blue-300 text-[9px] font-medium">
+                    Your tier: {getTierName(userTier)} • Access: {getPersonasByTier().length}/10 personalities
                   </div>
                 </div>
+
                 <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
               </div>
             )}
           </div>
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              <img src="/logo.png" alt="LYLO" className="w-6 h-6 object-contain" />
+              <img src="/logo.png" alt="LYLO" className="w-5 h-5 object-contain" />
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
@@ -709,6 +785,7 @@ export default function ChatInterface({
                   <div className="flex justify-between"><span>Tier:</span><span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>{userStats.tier.toUpperCase()} {isEliteUser && ' ★'}</span></div>
                   <div className="flex justify-between"><span>Today:</span><span className="text-white">{userStats.conversations_today}</span></div>
                   <div className="flex justify-between"><span>Total:</span><span className="text-white">{userStats.total_conversations}</span></div>
+                  <div className="flex justify-between"><span>Personalities:</span><span className="text-white">{getPersonasByTier().length}/10</span></div>
                   <div className="mt-2">
                     <div className="flex justify-between text-xs mb-1"><span>Usage:</span><span>{userStats.usage.current}/{userStats.usage.limit}</span></div>
                     <div className="bg-gray-800 rounded-full h-2"><div className="h-2 bg-[#3b82f6] rounded-full transition-all" style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }} /></div>
@@ -729,7 +806,7 @@ export default function ChatInterface({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-10">
             <div className={`w-16 h-16 ${currentPersona.id === 'disciple' ? 'bg-gradient-to-br from-yellow-600 to-yellow-800' : 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8]'} rounded-2xl flex items-center justify-center mb-4 shadow-lg ${currentPersona.id === 'disciple' ? 'shadow-yellow-500/20' : 'shadow-blue-500/20'}`}>
-              <span className="text-white font-black text-xl">{currentPersona.id === 'disciple' ? 'L' : 'L'}</span>
+              <span className="text-white font-black text-xl">L</span>
             </div>
             <h2 className="text-lg font-black text-white uppercase tracking-[0.1em] mb-2">{currentPersona.name}</h2>
             <p className="text-gray-400 text-sm max-w-sm uppercase tracking-[0.1em] font-medium italic">
@@ -738,9 +815,12 @@ export default function ChatInterface({
                 : 'Security & Wisdom Systems Ready'
               }
             </p>
+            <div className="mt-4 text-xs text-gray-600 font-bold uppercase tracking-wider">
+              Tier: {getTierName(userTier)} • Personalities: {getPersonasByTier().length}/10
+            </div>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
-                🚨 SCAM RECOVERY CENTER
+                SCAM RECOVERY CENTER
               </button>
             )}
           </div>
@@ -768,7 +848,7 @@ export default function ChatInterface({
                   </div>
                   {msg.scamDetected && (
                     <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-[10px] font-black uppercase">
-                      ⚠️ SCAM DETECTED
+                      SCAM DETECTED
                       {msg.scamIndicators && msg.scamIndicators.length > 0 && <div className="mt-1 text-[9px] opacity-80 font-normal normal-case">{msg.scamIndicators.join(', ')}</div>}
                     </div>
                   )}
@@ -792,11 +872,10 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {/* New "Forever Mic" Indicator */}
-          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 MIC ACTIVE - LISTENING INDEFINITELY</div>}
+          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
-            <button onClick={cycleFontSize} className="text-sm px-6 py-2.5 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            <button onClick={cycleFontSize} className="text-[10px] px-3 py-1 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
           <div className="flex items-end gap-3">
