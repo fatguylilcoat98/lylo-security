@@ -86,7 +86,7 @@ export default function ChatInterface({
   // New Features State
   const [language, setLanguage] = useState<'en' | 'es'>('en'); 
   const [showLimitModal, setShowLimitModal] = useState(false);
-  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); 
+  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv');
   
   // FIXED: Initialize userTier immediately from local storage to unlock personalities
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>(
@@ -218,15 +218,24 @@ export default function ChatInterface({
     }
   };
 
+  // Bible Version Toggle Handler (FIXED - with voice cleanup)
   const handleBibleVersionToggle = (version: 'kjv' | 'esv') => {
+    // Stop any current speech first
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    
     setBibleVersion(version);
     localStorage.setItem('lylo_bible_version', version);
     
-    const versionName = version === 'kjv' ? 'King James Version' : 'English Standard Version';
-    const feedbackText = `Bible version changed to ${versionName}.`;
-    speakText(feedbackText, voiceGender);
+    // Wait a moment then play feedback
+    setTimeout(() => {
+      const versionName = version === 'kjv' ? 'King James Version' : 'English Standard Version';
+      const feedbackText = `Bible version changed to ${versionName}.`;
+      speakText(feedbackText, voiceGender);
+    }, 200);
   };
 
+  // Handle Persona Change with Tier Check
   const handlePersonaChange = (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
       alert(`${persona.name} requires ${getTierName(persona.requiredTier)} tier or higher.`);
@@ -318,12 +327,16 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
+  // FIXED TTS FUNCTION - Prevents voice layering
   const speakText = async (text: string, forceGender?: string) => {
     if ((!autoTTS && !forceGender) || !text) return;
-    if (isSpeaking) {
-      window.speechSynthesis.cancel(); 
-      setIsSpeaking(false);
-    }
+    
+    // CRITICAL FIX: Force stop ALL speech synthesis immediately
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    
+    // Small delay to ensure cancellation completes
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
     if (!cleanText) return;
@@ -354,8 +367,9 @@ export default function ChatInterface({
       }
 
     } catch (error) {
+      // Fallback to browser TTS with proper cleanup
+      window.speechSynthesis.cancel(); // Extra safety
       if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = 0.9;
         utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
@@ -374,32 +388,47 @@ export default function ChatInterface({
     }
   }, [messages, autoTTS]);
 
+  // FIXED: Mic toggle with voice cleanup
   const toggleListening = () => {
     if (!micSupported) return alert('Not supported');
-    setIsListening(prev => !prev);
+    
+    // If we are starting to listen, stop speaking first
     if (!isListening) {
-        if (isSpeaking) {
-            window.speechSynthesis?.cancel();
-            setIsSpeaking(false);
-        }
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
     }
+    
+    setIsListening(prev => !prev);
   };
 
+  // FIXED: TTS toggle with proper cleanup
   const toggleTTS = () => {
-    if (autoTTS) { 
-        window.speechSynthesis?.cancel(); 
-        setIsSpeaking(false); 
-    }
-    setAutoTTS(!autoTTS);
+    // Force stop everything first
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    
+    // Small delay to ensure cleanup
+    setTimeout(() => {
+      setAutoTTS(!autoTTS);
+    }, 50);
   };
 
+  // FIXED: Voice toggle with proper cleanup
   const handleVoiceToggle = (gender: 'male' | 'female') => {
+    // Stop any current speech first
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    
     setVoiceGender(gender);
     localStorage.setItem('lylo_voice_gender', gender);
-    const previewText = gender === 'male' 
-      ? (language === 'es' ? "Voz configurada a Masculino." : "Voice set to Male.") 
-      : (language === 'es' ? "Voz configurada a Femenino." : "Voice set to Female.");
-    speakText(previewText, gender);
+    
+    // Wait a moment then play preview
+    setTimeout(() => {
+      const previewText = gender === 'male' 
+        ? (language === 'es' ? "Voz configurada a Masculino." : "Voice set to Male.") 
+        : (language === 'es' ? "Voz configurada a Femenino." : "Voice set to Female.");
+      speakText(previewText, gender);
+    }, 200);
   };
 
   const cycleFontSize = () => {
@@ -519,7 +548,7 @@ export default function ChatInterface({
       {showLimitModal && (
         <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
-             <div className="text-4xl mb-3">🛑</div>
+             <div className="text-4xl mb-3">STOP</div>
              <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Daily Limit Reached</h2>
              <p className="text-gray-300 text-sm mb-6">
                You have used all {userStats?.usage.limit} messages for your current plan. Upgrade to <b>Elite</b> for 500 messages/day or <b>Max</b> for Unlimited.
@@ -555,7 +584,7 @@ export default function ChatInterface({
                 onClick={() => setShowFullGuide(false)}
                 className="p-2 bg-black/40 hover:bg-white/10 rounded-lg text-white transition-colors"
               >
-                ❌
+                X
               </button>
             </div>
             <div className="p-4 space-y-6 overflow-y-auto flex-1">
@@ -610,7 +639,7 @@ export default function ChatInterface({
           <div className="bg-black/95 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">SCAM RECOVERY CENTER</h2>
-              <button onClick={() => setShowScamRecovery(false)} className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg">✕</button>
+              <button onClick={() => setShowScamRecovery(false)} className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg">X</button>
             </div>
             <div className="space-y-4 text-sm">
               <div className="bg-red-900/20 border border-red-500/30 rounded p-3">
@@ -639,7 +668,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER - Updated Logo Branding (Icon removed next to wordmark) */}
+      {/* HEADER */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -712,7 +741,6 @@ export default function ChatInterface({
           
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              {/* Thumbnail Icon Removed as Requested */}
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
@@ -762,7 +790,7 @@ export default function ChatInterface({
             </p>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
-                🚨 SCAM RECOVERY CENTER
+                SCAM RECOVERY CENTER
               </button>
             )}
           </div>
@@ -790,7 +818,7 @@ export default function ChatInterface({
                   </div>
                   {msg.scamDetected && (
                     <div className="mt-2 p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-[10px] font-black uppercase">
-                      ⚠️ SCAM DETECTED
+                      SCAM DETECTED
                       {msg.scamIndicators && msg.scamIndicators.length > 0 && <div className="mt-1 text-[9px] opacity-80 font-normal normal-case">{msg.scamIndicators.join(', ')}</div>}
                     </div>
                   )}
@@ -814,12 +842,10 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {/* New "Forever Mic" Indicator */}
-          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">🎤 MIC ACTIVE - LISTENING INDEFINITELY</div>}
+          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
             
-            {/* BIGGER SIZE BUTTON - Increased padding and size for accessibility */}
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
@@ -835,7 +861,7 @@ export default function ChatInterface({
                 value={displayText} 
                 onChange={(e) => !isListening && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "🎤 Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
+                placeholder={isListening ? "Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
                 disabled={loading}
                 className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
@@ -844,7 +870,6 @@ export default function ChatInterface({
             </div>
             <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage)} className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Sending' : 'Send'}</button>
           </div>
-          {/* DISCLAIMER */}
           <div className="text-center mt-3 pb-1">
             <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.2em] italic">
               LYLO SECURITY SYSTEMS: VERIFY ALL CRITICAL FINANCIAL OR LEGAL ACTIONS.
