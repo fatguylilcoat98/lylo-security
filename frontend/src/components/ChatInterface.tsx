@@ -75,7 +75,7 @@ export default function ChatInterface({
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
-  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null); // Track current audio
+  const [premiumVoice, setPremiumVoice] = useState(false); // Toggle for OpenAI vs Browser TTS
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
@@ -89,7 +89,6 @@ export default function ChatInterface({
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv');
   
-  // FIXED: Initialize userTier immediately from local storage to unlock personalities
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>(
     (localStorage.getItem('userTier') as any) || 'free'
   );
@@ -166,6 +165,10 @@ export default function ChatInterface({
     
     const savedBibleVersion = localStorage.getItem('lylo_bible_version');
     if (savedBibleVersion === 'esv') setBibleVersion('esv');
+    
+    // Load premium voice preference
+    const savedPremiumVoice = localStorage.getItem('lylo_premium_voice');
+    if (savedPremiumVoice === 'true') setPremiumVoice(true);
   }, [userEmail]);
 
   useEffect(() => {
@@ -174,60 +177,41 @@ export default function ChatInterface({
     }
   }, [messages]);
 
-  // --- AUDIO CLEANUP FUNCTION ---
-  const forceStopAllAudio = () => {
-    // Stop TTS
+  // --- SPEED-OPTIMIZED AUDIO CLEANUP ---
+  const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
-    
-    // Stop current audio element
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-      setCurrentAudio(null);
-    }
   };
 
-  // --- MICROPHONE CONTROL FUNCTIONS ---
+  // --- OPTIMIZED MICROPHONE CONTROL ---
   const forceStopRecognition = () => {
     const recognition = recognitionRef.current;
     if (recognition) {
       recognition._manuallyStopped = true;
-      recognition._forceStop = true;
       try {
         recognition.stop();
-      } catch (e) {
-        console.log('Recognition stop failed:', e);
-      }
+      } catch (e) {}
     }
     setIsListening(false);
     setMicActive(false);
   };
 
-  // FIXED SPEECH RECOGNITION LOGIC
+  // OPTIMIZED SPEECH RECOGNITION (Faster initialization)
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false; // CHANGED: Don't use continuous mode
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
-
-      // Custom properties for control
       recognition._manuallyStopped = false;
-      recognition._forceStop = false;
 
-      recognition.onstart = () => { 
-        if (!recognition._forceStop) {
-          setMicActive(true); 
-        }
-      };
-
+      recognition.onstart = () => { if (!recognition._manuallyStopped) setMicActive(true); };
+      
       recognition.onresult = (event: any) => {
-        if (recognition._manuallyStopped || recognition._forceStop) return;
-
+        if (recognition._manuallyStopped) return;
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
@@ -235,36 +219,24 @@ export default function ChatInterface({
             finalTranscript += result[0].transcript + ' ';
           }
         }
-
         if (finalTranscript) {
           setInput((prev) => prev + finalTranscript);
         }
       };
 
-      recognition.onerror = (event: any) => {
-        console.log('Recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          alert('Microphone blocked. Please allow access.');
-        }
+      recognition.onerror = () => {
         setIsListening(false);
         setMicActive(false);
       };
 
-      // FIXED: Better onend handling
       recognition.onend = () => {
         setMicActive(false);
-        // Only restart if user still wants to listen AND we haven't been manually stopped
-        if (isListening && !recognition._manuallyStopped && !recognition._forceStop) {
+        if (isListening && !recognition._manuallyStopped) {
           setTimeout(() => {
-            if (isListening && !recognition._manuallyStopped && !recognition._forceStop) {
-              try {
-                recognition.start();
-              } catch (e) {
-                console.log('Recognition restart failed:', e);
-                setIsListening(false);
-              }
+            if (isListening && !recognition._manuallyStopped) {
+              try { recognition.start(); } catch (e) { setIsListening(false); }
             }
-          }, 100);
+          }, 50); // Reduced delay
         }
       };
       
@@ -275,20 +247,12 @@ export default function ChatInterface({
     }
   }, [language]);
 
-  // MICROPHONE STATE CONTROLLER
   useEffect(() => {
     const recognition = recognitionRef.current;
     if (!recognition) return;
-
     if (isListening && !micActive && !recognition._manuallyStopped) {
       recognition._manuallyStopped = false;
-      recognition._forceStop = false;
-      try { 
-        recognition.start(); 
-      } catch(e) {
-        console.log('Recognition start failed:', e);
-        setIsListening(false);
-      }
+      try { recognition.start(); } catch(e) { setIsListening(false); }
     }
   }, [isListening]);
 
@@ -337,20 +301,18 @@ export default function ChatInterface({
     }
   };
 
-  // Bible Version Toggle Handler (FIXED - with voice cleanup)
+  // SPEED-OPTIMIZED Bible Version Toggle
   const handleBibleVersionToggle = (version: 'kjv' | 'esv') => {
-    forceStopAllAudio();
+    quickStopAllAudio();
     setBibleVersion(version);
     localStorage.setItem('lylo_bible_version', version);
     
     setTimeout(() => {
       const versionName = version === 'kjv' ? 'King James Version' : 'English Standard Version';
-      const feedbackText = `Bible version changed to ${versionName}.`;
-      speakText(feedbackText, voiceGender);
-    }, 300);
+      speakText(`Bible version changed to ${versionName}.`, voiceGender);
+    }, 50); // Reduced delay
   };
 
-  // Handle Persona Change with Tier Check
   const handlePersonaChange = (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
       alert(`${persona.name} requires ${getTierName(persona.requiredTier)} tier or higher.`);
@@ -368,71 +330,56 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
-  // COMPLETELY FIXED TTS FUNCTION - Prevents voice layering and echo
+  // SPEED-OPTIMIZED TTS FUNCTION - Hybrid approach
   const speakText = async (text: string, forceGender?: string) => {
     if ((!autoTTS && !forceGender) || !text) return;
     
-    // CRITICAL: Stop mic to prevent echo
-    if (isListening || micActive) {
-      forceStopRecognition();
-    }
-    
-    // Stop all existing audio
-    forceStopAllAudio();
-    
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // INSTANT STOP
+    quickStopAllAudio();
+    if (isListening || micActive) forceStopRecognition();
 
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
     if (!cleanText) return;
 
-    const genderToUse = forceGender || voiceGender;
-    const voiceId = genderToUse === 'male' ? 'onyx' : 'nova';
-
     setIsSpeaking(true);
 
-    try {
-      const formData = new FormData();
-      formData.append('text', cleanText);
-      formData.append('voice', voiceId);
+    // SPEED OPTIMIZATION: Use browser TTS by default (instant), premium TTS as option
+    if (!premiumVoice || cleanText.length > 500) {
+      // FAST BROWSER TTS (No network delay)
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 0.9;
+      utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      // PREMIUM OPENAI TTS (for shorter messages when enabled)
+      try {
+        const formData = new FormData();
+        formData.append('text', cleanText.substring(0, 300)); // Limit length for speed
+        formData.append('voice', forceGender === 'male' || voiceGender === 'male' ? 'onyx' : 'nova');
 
-      const response = await fetch(`${API_URL}/generate-audio`, {
-        method: 'POST',
-        body: formData
-      });
+        const response = await fetch(`${API_URL}/generate-audio`, {
+          method: 'POST',
+          body: formData
+        });
 
-      const data = await response.json();
-
-      if (data.audio_b64) {
-        const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-        setCurrentAudio(audio);
-        
-        audio.onended = () => {
-          setIsSpeaking(false);
-          setCurrentAudio(null);
-        };
-        
-        audio.onerror = () => {
-          setIsSpeaking(false);
-          setCurrentAudio(null);
-        };
-        
-        await audio.play();
-      } else {
-        throw new Error("No audio returned");
-      }
-
-    } catch (error) {
-      // Fallback to browser TTS with proper cleanup
-      forceStopAllAudio();
-      if (window.speechSynthesis) {
+        const data = await response.json();
+        if (data.audio_b64) {
+          const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
+          audio.onended = () => setIsSpeaking(false);
+          audio.onerror = () => setIsSpeaking(false);
+          await audio.play();
+        } else {
+          throw new Error("No audio returned");
+        }
+      } catch (error) {
+        // Fallback to browser TTS
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = 0.9;
         utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
         utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
         window.speechSynthesis.speak(utterance);
-      } else {
-        setIsSpeaking(false);
       }
     }
   };
@@ -440,39 +387,29 @@ export default function ChatInterface({
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.sender === 'bot' && autoTTS && !isSpeaking && !isListening) {
-      setTimeout(() => speakText(lastMessage.content), 500);
+      setTimeout(() => speakText(lastMessage.content), 100); // Reduced delay
     }
   }, [messages, autoTTS]);
 
-  // COMPLETELY FIXED: Mic toggle with proper cleanup
+  // SPEED-OPTIMIZED Controls
   const toggleListening = () => {
     if (!micSupported) return alert('Not supported');
-    
     if (isListening || micActive) {
-      // STOPPING: Force stop everything
       forceStopRecognition();
     } else {
-      // STARTING: Stop speech first to prevent echo, then start listening
-      forceStopAllAudio();
-      setTimeout(() => {
-        setIsListening(true);
-      }, 300);
+      quickStopAllAudio();
+      setTimeout(() => setIsListening(true), 50); // Reduced delay
     }
   };
 
-  // FIXED: TTS toggle with proper cleanup
   const toggleTTS = () => {
-    forceStopAllAudio();
-    setTimeout(() => {
-      setAutoTTS(!autoTTS);
-    }, 100);
+    quickStopAllAudio();
+    setAutoTTS(!autoTTS);
   };
 
-  // FIXED: Voice toggle with proper cleanup
   const handleVoiceToggle = (gender: 'male' | 'female') => {
-    forceStopAllAudio();
-    forceStopRecognition(); // Also stop mic to prevent echo
-    
+    quickStopAllAudio();
+    forceStopRecognition();
     setVoiceGender(gender);
     localStorage.setItem('lylo_voice_gender', gender);
     
@@ -481,7 +418,18 @@ export default function ChatInterface({
         ? (language === 'es' ? "Voz configurada a Masculino." : "Voice set to Male.") 
         : (language === 'es' ? "Voz configurada a Femenino." : "Voice set to Female.");
       speakText(previewText, gender);
-    }, 400);
+    }, 100); // Reduced delay
+  };
+
+  const togglePremiumVoice = () => {
+    quickStopAllAudio();
+    const newPremium = !premiumVoice;
+    setPremiumVoice(newPremium);
+    localStorage.setItem('lylo_premium_voice', newPremium.toString());
+    
+    setTimeout(() => {
+      speakText(newPremium ? "Premium voice enabled." : "Fast voice enabled.", voiceGender);
+    }, 100);
   };
 
   const cycleFontSize = () => {
@@ -523,7 +471,8 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      const conversationHistory = messages.map(msg => ({
+      // SPEED OPTIMIZATION: Only send last 2 messages instead of full history
+      const conversationHistory = messages.slice(-2).map(msg => ({
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.content
       }));
@@ -743,13 +692,16 @@ export default function ChatInterface({
                    </div>
                 </div>
 
-                {/* VOICE GENDER TOGGLE */}
+                {/* VOICE CONTROLS */}
                 <div className="mb-3 pb-3 border-b border-white/10">
-                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Voice Gender / Género</h3>
-                   <div className="flex gap-2">
+                   <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Voice Settings</h3>
+                   <div className="flex gap-2 mb-2">
                      <button onClick={() => handleVoiceToggle('male')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'male' ? 'bg-slate-700 text-white' : 'bg-white/5 text-gray-400'}`}>Male</button>
                      <button onClick={() => handleVoiceToggle('female')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200' : 'bg-white/5 text-gray-400'}`}>Female</button>
                    </div>
+                   <button onClick={togglePremiumVoice} className={`w-full py-2 rounded text-xs font-bold uppercase ${premiumVoice ? 'bg-purple-700 text-purple-200' : 'bg-white/5 text-gray-400'}`}>
+                     {premiumVoice ? 'Premium Voice ON' : 'Fast Voice ON'}
+                   </button>
                 </div>
 
                 {currentPersona.id === 'disciple' && (
@@ -885,7 +837,7 @@ export default function ChatInterface({
             <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-xl">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">{[0, 1, 2].map(i => <div key={i} className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />)}</div>
-                <span className="text-gray-300 font-black uppercase tracking-widest text-[10px] italic">{currentPersona.name} searching the web...</span>
+                <span className="text-gray-300 font-black uppercase tracking-widest text-[10px] italic">{currentPersona.name} thinking...</span>
               </div>
             </div>
           </div>
@@ -895,7 +847,7 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {(isListening || micActive) && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING</div>}
+          {(isListening || micActive) && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE</div>}
           <div className="flex items-center justify-between mb-3">
             <button 
               onClick={toggleListening} 
