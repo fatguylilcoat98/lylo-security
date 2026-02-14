@@ -18,9 +18,11 @@ export default function Dashboard() {
     const savedTier = localStorage.getItem('userTier') || 'free';
     const savedName = localStorage.getItem('userName') || 'User';
     const savedPersona = localStorage.getItem('lylo_selected_persona');
+    const isComplete = localStorage.getItem('lylo_assessment_complete');
 
-    // 2. Gatekeeper: If not logged in, kick to Home
-    if (!savedEmail) {
+    // 2. Gatekeeper: If not logged in or hasn't passed assessment, kick to Home
+    // We check for /#/ root to ensure compatibility with HashRouter
+    if (!savedEmail || !isComplete) {
       window.location.href = '/'; 
       return;
     }
@@ -53,6 +55,7 @@ export default function Dashboard() {
 
   const handleLogout = () => {
     localStorage.clear();
+    // Redirect back to the main marketing site root
     window.location.href = '/';
   };
 
