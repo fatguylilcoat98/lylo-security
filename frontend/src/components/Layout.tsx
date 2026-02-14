@@ -23,15 +23,18 @@ export interface PersonaConfig {
   requiredTier: 'free' | 'pro' | 'elite' | 'max';
 }
 
-// Standardized list - Synchronized with ChatInterface requirements
+// Updated list - Synchronized with ChatInterface's 10 personalities
 export const personas: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective Security Expert', systemInstruction: 'You are The Guardian.', requiredTier: 'free' },
+  { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty but Helpful Comedian', systemInstruction: 'You are The Roast Master.', requiredTier: 'pro' },
   { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Biblical Advisor & Wise Counselor', systemInstruction: 'You are The Disciple. Use King James Bible scripture.', requiredTier: 'pro' },
+  { id: 'mechanic', name: 'The Mechanic', color: 'gray', iconName: 'Wrench', description: 'Auto Expert & Car Enthusiast', systemInstruction: 'You are The Mechanic.', requiredTier: 'pro' },
   { id: 'chef', name: 'The Chef', color: 'red', iconName: 'ChefHat', description: 'Culinary Master & Food Expert', systemInstruction: 'You are The Chef.', requiredTier: 'elite' },
   { id: 'techie', name: 'The Techie', color: 'purple', iconName: 'Cpu', description: 'Technology Expert & Geek Guide', systemInstruction: 'You are The Techie.', requiredTier: 'elite' },
+  { id: 'comedian', name: 'The Comedian', color: 'pink', iconName: 'Laugh', description: 'Stand-Up Comic & Entertainment Expert', systemInstruction: 'You are The Comedian.', requiredTier: 'elite' },
   { id: 'lawyer', name: 'The Lawyer', color: 'yellow', iconName: 'Scale', description: 'Legal Advisor & Risk Analyst', systemInstruction: 'You are The Lawyer.', requiredTier: 'max' },
-  { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty but Helpful Comedian', systemInstruction: 'You are The Roast Master.', requiredTier: 'pro' },
-  { id: 'friend', name: 'The Best Friend', color: 'green', iconName: 'Heart', description: 'Caring Best Friend', systemInstruction: 'You are The Best Friend.', requiredTier: 'free' }
+  { id: 'storyteller', name: 'The Storyteller', color: 'indigo', iconName: 'Book', description: 'Master of Tales & Creative Writing', systemInstruction: 'You are The Storyteller.', requiredTier: 'max' },
+  { id: 'fitness', name: 'The Fitness Coach', color: 'green', iconName: 'Dumbbell', description: 'Health & Wellness Expert', systemInstruction: 'You are The Fitness Coach.', requiredTier: 'max' }
 ];
 
 interface LayoutProps {
@@ -82,7 +85,7 @@ export default function Layout({
         md:relative md:translate-x-0 md:w-20 md:hover:w-72 md:group
       `}>
         
-        {/* Sidebar Header - Logo next to LYLO */}
+        {/* Sidebar Header - Icon Removed next to LYLO */}
         <div className="p-4 flex items-center gap-4 border-b border-white/10 h-16">
             <button 
               onClick={() => setSidebarOpen(false)}
@@ -92,7 +95,6 @@ export default function Layout({
             </button>
 
             <div className="flex items-center gap-3 overflow-hidden">
-              <img src={LYLO_LOGO_URL} alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
               <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap italic text-white uppercase">
                 LYLO<span className="text-blue-500">.</span>PRO
               </span>
@@ -129,7 +131,7 @@ export default function Layout({
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full relative w-full">
-        {/* Mobile Header Bar - Logo next to LYLO */}
+        {/* Mobile Header Bar - Icon Removed next to LYLO */}
         <div className="md:hidden h-16 bg-black border-b border-white/10 flex items-center px-4 gap-4 flex-shrink-0 z-30">
           <button 
             onClick={() => setSidebarOpen(true)}
@@ -138,7 +140,6 @@ export default function Layout({
             {icons?.Menu && <icons.Menu className="w-6 h-6" />}
           </button>
           <div className="flex items-center gap-2">
-            <img src={LYLO_LOGO_URL} alt="Logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-lg tracking-tighter italic uppercase text-white">LYLO<span className="text-blue-500">.</span>PRO</span>
           </div>
         </div>
