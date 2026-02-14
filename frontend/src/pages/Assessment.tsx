@@ -75,6 +75,7 @@ export default function Assessment() {
       localStorage.setItem('userName', vipData.name);
       localStorage.setItem('isEliteUser', 'true');
       localStorage.setItem('isBetaTester', 'true');
+      localStorage.setItem('lylo_assessment_complete', 'true'); // Added this key to prevent loops
       
       // Short delay for "Initializing" feel
       await new Promise(resolve => setTimeout(resolve, 1200));
@@ -109,6 +110,7 @@ export default function Assessment() {
     localStorage.setItem('userTier', 'free');
     localStorage.setItem('userName', cleanEmail.split('@')[0]);
     localStorage.setItem('isEliteUser', 'false');
+    localStorage.setItem('lylo_assessment_complete', 'true');
     await new Promise(resolve => setTimeout(resolve, 1500));
     navigate('/dashboard');
   };
