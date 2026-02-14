@@ -13,6 +13,7 @@ export default function App() {
         <Route path="/" element={<Assessment />} />
         
         {/* APP ROUTES */}
+        {/* These paths will now be accessible via /#/assessment and /#/dashboard */}
         <Route path="/assessment" element={<Assessment />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin/beta-testers" element={<BetaTesterAdmin />} /> 
