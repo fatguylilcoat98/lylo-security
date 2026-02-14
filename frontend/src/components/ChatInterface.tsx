@@ -86,7 +86,7 @@ export default function ChatInterface({
   // New Features State
   const [language, setLanguage] = useState<'en' | 'es'>('en'); 
   const [showLimitModal, setShowLimitModal] = useState(false);
-  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); // UPDATED: KJV/ESV
+  const [bibleVersion, setBibleVersion] = useState<'kjv' | 'esv'>('kjv'); 
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   
   // Scam Recovery State
@@ -159,7 +159,6 @@ export default function ChatInterface({
     const savedVoice = localStorage.getItem('lylo_voice_gender');
     if (savedVoice === 'female') setVoiceGender('female');
     
-    // Load saved Bible version (updated to ESV)
     const savedBibleVersion = localStorage.getItem('lylo_bible_version');
     if (savedBibleVersion === 'esv') setBibleVersion('esv');
   }, [userEmail]);
@@ -185,7 +184,6 @@ export default function ChatInterface({
       });
       const data = await response.json();
       
-      // Set user tier based on backend response
       if (data.tier === 'max') {
         setUserTier('max');
         setIsEliteUser(true);
@@ -216,7 +214,6 @@ export default function ChatInterface({
     }
   };
 
-  // Bible Version Toggle Handler (Updated for ESV)
   const handleBibleVersionToggle = (version: 'kjv' | 'esv') => {
     setBibleVersion(version);
     localStorage.setItem('lylo_bible_version', version);
@@ -226,7 +223,6 @@ export default function ChatInterface({
     speakText(feedbackText, voiceGender);
   };
 
-  // Handle Persona Change with Tier Check
   const handlePersonaChange = (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
       alert(`${persona.name} requires ${getTierName(persona.requiredTier)} tier or higher.`);
@@ -236,7 +232,7 @@ export default function ChatInterface({
     setShowDropdown(false);
   };
 
-  // --- SPEECH RECOGNITION LOGIC ---
+  // --- SPEECH RECOGNITION ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -417,7 +413,6 @@ export default function ChatInterface({
     setShowScamRecovery(true);
   };
 
-  // UPDATED: Include Bible version in chat message for The Disciple
   const handleSend = async () => {
     const textToSend = input.trim();
     if ((!textToSend && !selectedImage) || loading) return;
@@ -447,7 +442,6 @@ export default function ChatInterface({
         content: msg.content
       }));
 
-      // Include Bible version preference for The Disciple persona
       let personaWithBible = currentPersona.id;
       if (currentPersona.id === 'disciple') {
         personaWithBible = `disciple_${bibleVersion}`;
@@ -641,7 +635,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* HEADER */}
+      {/* HEADER - Logo Addition */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
@@ -654,125 +648,70 @@ export default function ChatInterface({
             </button>
             {showDropdown && (
               <div className="absolute top-12 left-0 bg-black/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-w-[280px] z-[100003] max-h-[70vh] overflow-y-auto shadow-2xl">
-                {/* LANGUAGE TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Language / Idioma</h3>
                    <div className="flex gap-2">
-                     <button onClick={() => setLanguage('en')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>
-                       ENG
-                     </button>
-                     <button onClick={() => setLanguage('es')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>
-                       ESP
-                     </button>
+                     <button onClick={() => setLanguage('en')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>ENG</button>
+                     <button onClick={() => setLanguage('es')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>ESP</button>
                    </div>
                 </div>
 
-                {/* VOICE GENDER TOGGLE */}
                 <div className="mb-3 pb-3 border-b border-white/10">
                    <h3 className="text-white font-bold text-xs uppercase tracking-wider mb-2">Voice Gender / Género</h3>
                    <div className="flex gap-2">
-                     <button 
-                       onClick={() => handleVoiceToggle('male')} 
-                       className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-1 ${voiceGender === 'male' ? 'bg-slate-700 text-white border border-slate-500' : 'bg-white/5 text-gray-400'}`}
-                     >
-                       Male
-                     </button>
-                     <button 
-                       onClick={() => handleVoiceToggle('female')} 
-                       className={`flex-1 py-2 rounded text-xs font-bold uppercase flex items-center justify-center gap-1 ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200 border border-pink-500/50' : 'bg-white/5 text-gray-400'}`}
-                     >
-                       Female
-                     </button>
+                     <button onClick={() => handleVoiceToggle('male')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'male' ? 'bg-slate-700 text-white' : 'bg-white/5 text-gray-400'}`}>Male</button>
+                     <button onClick={() => handleVoiceToggle('female')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200' : 'bg-white/5 text-gray-400'}`}>Female</button>
                    </div>
                 </div>
 
-                {/* BIBLE VERSION SELECTOR (Only show when The Disciple is active) */}
                 {currentPersona.id === 'disciple' && (
                   <div className="mb-3 pb-3 border-b border-yellow-500/20">
-                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">
-                       Bible Version
-                     </h3>
+                     <h3 className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1">Bible Version</h3>
                      <div className="flex gap-2">
-                       <button 
-                         onClick={() => handleBibleVersionToggle('kjv')} 
-                         className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}
-                       >
-                         KJV
-                       </button>
-                       <button 
-                         onClick={() => handleBibleVersionToggle('esv')} 
-                         className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}
-                       >
-                         ESV
-                       </button>
+                       <button onClick={() => handleBibleVersionToggle('kjv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>KJV</button>
+                       <button onClick={() => handleBibleVersionToggle('esv')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-yellow-800 text-yellow-200 border border-yellow-500' : 'bg-white/5 text-gray-400'}`}>ESV</button>
                      </div>
-                     <p className="text-gray-500 text-[9px] mt-1 font-medium">
-                       {bibleVersion === 'kjv' ? 'King James Version (1611)' : 'English Standard Version (2001)'}
-                     </p>
                   </div>
                 )}
 
                 {isEliteUser && (
                   <div className="mb-3 pb-3 border-b border-red-500/20">
-                    <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2">SCAM RECOVERY</button>
+                    <button onClick={() => { openScamRecovery(); setShowDropdown(false); }} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">SCAM RECOVERY</button>
                   </div>
                 )}
-
-                {/* AI PERSONALITY SECTION WITH TIER RESTRICTIONS */}
+                
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-white font-bold text-xs uppercase tracking-wider">AI Personality</h3>
-                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded ${getTierColor(userTier)}`}>
-                      {getTierName(userTier)}
-                    </span>
                   </div>
                   <div className="space-y-1">
                     {PERSONAS.map(persona => {
                       const canAccess = canAccessPersona(persona);
                       return (
-                        <button 
-                          key={persona.id} 
-                          onClick={() => canAccess ? handlePersonaChange(persona) : null}
-                          disabled={!canAccess}
-                          className={`w-full text-left p-2 rounded-lg transition-colors relative ${
-                            currentPersona.id === persona.id 
-                              ? (persona.id === 'disciple' ? 'bg-yellow-700 text-yellow-200 border border-yellow-500/50' : 'bg-[#3b82f6] text-white') 
-                              : canAccess 
-                                ? 'bg-white/5 text-gray-300 hover:bg-white/10' 
-                                : 'bg-gray-800/30 text-gray-600 cursor-not-allowed'
-                          }`}
-                        >
-                          <div className={`font-medium text-xs flex items-center justify-between`}>
-                            <span className="flex items-center gap-1">
-                              {persona.name}
-                            </span>
-                            {!canAccess && (
-                              <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${getTierColor(persona.requiredTier)}`}>
-                                {getTierName(persona.requiredTier)}
-                              </span>
-                            )}
+                        <button key={persona.id} onClick={() => canAccess ? handlePersonaChange(persona) : null} disabled={!canAccess} className={`w-full text-left p-2 rounded-lg transition-colors ${currentPersona.id === persona.id ? (persona.id === 'disciple' ? 'bg-yellow-700 text-yellow-200' : 'bg-[#3b82f6] text-white') : canAccess ? 'bg-white/5 text-gray-300 hover:bg-white/10' : 'bg-gray-800/30 text-gray-600 cursor-not-allowed'}`}>
+                          <div className="font-medium text-xs flex items-center justify-between">
+                            <span>{persona.name}</span>
+                            {!canAccess && <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded ${getTierColor(persona.requiredTier)}`}>{getTierName(persona.requiredTier)}</span>}
                           </div>
                           <div className="text-xs opacity-70">{persona.description}</div>
                         </button>
                       );
                     })}
                   </div>
-                  <div className="mt-2 p-2 bg-blue-900/20 border border-blue-500/30 rounded text-blue-300 text-[9px] font-medium">
-                    Your tier: {getTierName(userTier)} • Access: {getPersonasByTier().length}/10 personalities
-                  </div>
                 </div>
-
                 <button onClick={() => { onLogout(); setShowDropdown(false); }} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Logout</button>
               </div>
             )}
           </div>
+          
           <div className="text-center flex-1 px-2">
             <div className={`inline-flex items-center gap-3 px-4 py-1 rounded-full border-2 transition-all duration-700 ${getSecurityGlowClass()}`}>
-              <img src="/logo.png" alt="LYLO" className="w-5 h-5 object-contain" />
+              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
               <h1 className="text-white font-black text-lg uppercase tracking-[0.2em]" style={{ fontSize: `${zoomLevel / 100}rem` }}>L<span className="text-[#3b82f6]">Y</span>LO</h1>
             </div>
             <p className="text-gray-500 text-[10px] uppercase tracking-[0.3em] font-black mt-1">Digital Bodyguard</p>
           </div>
+          
           <div className="flex items-center gap-2 relative">
             <div className="text-right cursor-pointer hover:bg-white/10 rounded p-2 transition-colors" onClick={(e) => { e.stopPropagation(); setShowUserDetails(!showUserDetails); }}>
               <div className="text-white font-bold text-xs" style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{getUserDisplayName()}{isEliteUser && <span className="text-yellow-400 ml-1">★</span>}</div>
@@ -785,7 +724,6 @@ export default function ChatInterface({
                   <div className="flex justify-between"><span>Tier:</span><span className={`font-bold ${isEliteUser ? 'text-yellow-400' : 'text-[#3b82f6]'}`}>{userStats.tier.toUpperCase()} {isEliteUser && ' ★'}</span></div>
                   <div className="flex justify-between"><span>Today:</span><span className="text-white">{userStats.conversations_today}</span></div>
                   <div className="flex justify-between"><span>Total:</span><span className="text-white">{userStats.total_conversations}</span></div>
-                  <div className="flex justify-between"><span>Personalities:</span><span className="text-white">{getPersonasByTier().length}/10</span></div>
                   <div className="mt-2">
                     <div className="flex justify-between text-xs mb-1"><span>Usage:</span><span>{userStats.usage.current}/{userStats.usage.limit}</span></div>
                     <div className="bg-gray-800 rounded-full h-2"><div className="h-2 bg-[#3b82f6] rounded-full transition-all" style={{ width: `${Math.min(100, userStats.usage.percentage)}%` }} /></div>
@@ -815,9 +753,6 @@ export default function ChatInterface({
                 : 'Security & Wisdom Systems Ready'
               }
             </p>
-            <div className="mt-4 text-xs text-gray-600 font-bold uppercase tracking-wider">
-              Tier: {getTierName(userTier)} • Personalities: {getPersonasByTier().length}/10
-            </div>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
                 SCAM RECOVERY CENTER
@@ -872,10 +807,12 @@ export default function ChatInterface({
       {/* INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {isListening && <div className="mb-2 p-2 bg-green-900/20 border border-green-500/30 rounded text-green-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">MIC ACTIVE - LISTENING INDEFINITELY</div>}
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
-            <button onClick={cycleFontSize} className="text-[10px] px-3 py-1 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            
+            {/* BIGGER SIZE BUTTON - Standardized for mobile/PC layout */}
+            <button onClick={cycleFontSize} className="text-xs md:text-sm px-6 py-2.5 rounded bg-zinc-800 text-blue-400 font-black border border-blue-500/30 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-wide">Size: {zoomLevel}%</button>
+            
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
           <div className="flex items-end gap-3">
@@ -889,7 +826,7 @@ export default function ChatInterface({
                 value={displayText} 
                 onChange={(e) => !isListening && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
-                placeholder={isListening ? "🎤 Listening until you stop..." : selectedImage ? `Image selected: ${selectedImage.name}...` : `Message ${currentPersona.name}...`}
+                placeholder={isListening ? "🎤 Listening..." : selectedImage ? `Image: ${selectedImage.name}` : `Message ${currentPersona.name}...`}
                 disabled={loading}
                 className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isListening ? 'text-yellow-300 italic' : ''}`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
