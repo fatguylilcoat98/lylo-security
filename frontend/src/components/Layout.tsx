@@ -23,7 +23,7 @@ export interface PersonaConfig {
   requiredTier: 'free' | 'pro' | 'elite' | 'max';
 }
 
-// Updated list - Synchronized with ChatInterface's 10 personalities
+// Updated list - Matching the new 10 personalities with requiredTier build fix
 export const personas: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective Security Expert', systemInstruction: 'You are The Guardian.', requiredTier: 'free' },
   { id: 'roast', name: 'The Roast Master', color: 'orange', iconName: 'Flame', description: 'Witty but Helpful Comedian', systemInstruction: 'You are The Roast Master.', requiredTier: 'pro' },
@@ -69,7 +69,6 @@ export default function Layout({
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden font-sans">
       
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/80 z-40 backdrop-blur-sm md:hidden"
@@ -77,7 +76,6 @@ export default function Layout({
         />
       )}
 
-      {/* Sidebar Navigation */}
       <aside className={`
         fixed inset-y-0 left-0 z-50 bg-black/95 border-r border-white/10 
         transition-transform duration-300 ease-in-out w-72 flex flex-col
@@ -85,7 +83,7 @@ export default function Layout({
         md:relative md:translate-x-0 md:w-20 md:hover:w-72 md:group
       `}>
         
-        {/* Sidebar Header - Icon Removed next to LYLO */}
+        {/* Sidebar Header - Icon Removed as requested */}
         <div className="p-4 flex items-center gap-4 border-b border-white/10 h-16">
             <button 
               onClick={() => setSidebarOpen(false)}
@@ -129,9 +127,8 @@ export default function Layout({
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full relative w-full">
-        {/* Mobile Header Bar - Icon Removed next to LYLO */}
+        {/* Mobile Header Bar - Icon Removed as requested */}
         <div className="md:hidden h-16 bg-black border-b border-white/10 flex items-center px-4 gap-4 flex-shrink-0 z-30">
           <button 
             onClick={() => setSidebarOpen(true)}
@@ -144,7 +141,6 @@ export default function Layout({
           </div>
         </div>
 
-        {/* Child Content */}
         <div className="flex-1 relative overflow-hidden">
           {children}
         </div>
