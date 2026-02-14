@@ -83,19 +83,19 @@ export default function Layout({
         
         {/* Sidebar Header */}
         <div className="p-4 flex items-center gap-4 border-b border-white/10 h-16">
-           <button 
-             onClick={() => setSidebarOpen(false)}
-             className="md:hidden p-2 text-gray-400 hover:text-white"
-           >
-             {icons?.X && <icons.X className="w-6 h-6" />}
-           </button>
+            <button 
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-2 text-gray-400 hover:text-white"
+            >
+              {icons?.X && <icons.X className="w-6 h-6" />}
+            </button>
 
-           <div className="flex items-center gap-3 overflow-hidden">
-             <img src={LYLO_LOGO_URL} alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
-             <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap italic">
-               LYLO<span className="text-blue-500">.</span>PRO
-             </span>
-           </div>
+            <div className="flex items-center gap-3 overflow-hidden">
+              <img src={LYLO_LOGO_URL} alt="LYLO" className="w-8 h-8 object-contain flex-shrink-0" />
+              <span className="font-bold text-xl tracking-wider md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap italic text-white uppercase">
+                LYLO<span className="text-blue-500">.</span>PRO
+              </span>
+            </div>
         </div>
 
         {/* Persona List */}
@@ -138,7 +138,7 @@ export default function Layout({
           </button>
           <div className="flex items-center gap-2">
             <img src={LYLO_LOGO_URL} alt="Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-lg tracking-tighter italic uppercase">LYLO<span className="text-blue-500">.</span>PRO</span>
+            <span className="font-bold text-lg tracking-tighter italic uppercase text-white">LYLO<span className="text-blue-500">.</span>PRO</span>
           </div>
         </div>
 
