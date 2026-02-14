@@ -22,10 +22,10 @@ export interface PersonaConfig {
   systemInstruction: string;
 }
 
-// Standardized list including The Disciple
+// Standardized list - No emojis in Disciple persona
 export const personas: PersonaConfig[] = [
-  { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective, serious', systemInstruction: 'You are The Guardian.' },
-  { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Wise Advisor (KJV)', systemInstruction: 'You are The Disciple. Use King James Bible scripture.' },
+  { id: 'guardian', name: 'The Guardian', color: 'blue', iconName: 'Shield', description: 'Protective Security Expert', systemInstruction: 'You are The Guardian.' },
+  { id: 'disciple', name: 'The Disciple', color: 'gold', iconName: 'BookOpen', description: 'Biblical Advisor & Wise Counselor', systemInstruction: 'You are The Disciple. Use King James Bible scripture.' },
   { id: 'chef', name: 'The Chef', color: 'red', iconName: 'ChefHat', description: 'Culinary expert', systemInstruction: 'You are The Chef.' },
   { id: 'techie', name: 'The Techie', color: 'purple', iconName: 'Cpu', description: 'Tech expert', systemInstruction: 'You are The Techie.' },
   { id: 'lawyer', name: 'The Lawyer', color: 'yellow', iconName: 'Scale', description: 'Legal advisor', systemInstruction: 'You are The Lawyer.' },
@@ -81,7 +81,7 @@ export default function Layout({
         md:relative md:translate-x-0 md:w-20 md:hover:w-72 md:group
       `}>
         
-        {/* Sidebar Header */}
+        {/* Sidebar Header - Logo next to LYLO */}
         <div className="p-4 flex items-center gap-4 border-b border-white/10 h-16">
             <button 
               onClick={() => setSidebarOpen(false)}
@@ -128,7 +128,7 @@ export default function Layout({
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full relative w-full">
-        {/* Mobile Header Bar */}
+        {/* Mobile Header Bar - Logo next to LYLO */}
         <div className="md:hidden h-16 bg-black border-b border-white/10 flex items-center px-4 gap-4 flex-shrink-0 z-30">
           <button 
             onClick={() => setSidebarOpen(true)}
