@@ -762,7 +762,7 @@ export default function ChatInterface({
             </p>
             {isEliteUser && (
               <button onClick={openScamRecovery} className="mt-4 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors animate-pulse">
-                SCAM RECOVERY CENTER
+                🚨 SCAM RECOVERY CENTER
               </button>
             )}
           </div>
@@ -819,7 +819,7 @@ export default function ChatInterface({
           <div className="flex items-center justify-between mb-3">
             <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Mic {isListening ? 'ON' : 'OFF'}</button>
             
-            {/* BIGGER SIZE BUTTON - Standardized for mobile/PC layout */}
+            {/* BIGGER SIZE BUTTON - Increased padding and size for accessibility */}
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative ${autoTTS ? 'bg-[#3b82f6] text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
