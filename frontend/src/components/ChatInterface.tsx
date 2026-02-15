@@ -13,6 +13,7 @@ export interface PersonaConfig {
   spokenHook: string;
   color: string;
   requiredTier: 'free' | 'pro' | 'elite' | 'max';
+  keywords: string[];
 }
 
 interface ChatInterfaceProps {
@@ -34,7 +35,7 @@ interface RecoveryGuideData {
   prevention_tips: string[];
 }
 
-// THE 10-EXPERT PERSONNEL ROSTER (Complete Specification)
+// THE 10-EXPERT PERSONNEL ROSTER WITH KEYWORDS
 const PERSONAS: PersonaConfig[] = [
   // FREE TIER (1)
   { 
@@ -44,7 +45,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Security Lead',
     spokenHook: 'Guardian here, {userName}. Scanning your perimeter for threats.',
     color: 'blue', 
-    requiredTier: 'free' 
+    requiredTier: 'free',
+    keywords: ['scam', 'fraud', 'safe', 'hack', 'security', 'password', 'suspicious']
   },
   
   // PRO TIER (4 total)
@@ -55,7 +57,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Humor Shield',
     spokenHook: 'Watch out {userName}, I\'m feeling snarky. Ready to roast?',
     color: 'orange', 
-    requiredTier: 'pro' 
+    requiredTier: 'pro',
+    keywords: ['roast', 'joke', 'funny', 'stupid', 'laugh']
   },
   { 
     id: 'disciple', 
@@ -64,7 +67,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Spiritual Armor',
     spokenHook: 'I am the Disciple, {userName}. I have a word of wisdom for you.',
     color: 'gold', 
-    requiredTier: 'pro' 
+    requiredTier: 'pro',
+    keywords: ['bible', 'god', 'jesus', 'prayer', 'faith', 'verse']
   },
   { 
     id: 'mechanic', 
@@ -73,7 +77,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Garage Protector',
     spokenHook: 'Mechanic here, {userName}. Is your car acting up today?',
     color: 'gray', 
-    requiredTier: 'pro' 
+    requiredTier: 'pro',
+    keywords: ['car', 'engine', 'oil', 'tire', 'brake', 'repair', 'mechanic', 'toyota', 'ford', 'start']
   },
   
   // ELITE TIER (6 total)
@@ -84,7 +89,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Legal Shield',
     spokenHook: 'Lawyer here. Let\'s protect your rights today, {userName}.',
     color: 'yellow', 
-    requiredTier: 'elite' 
+    requiredTier: 'elite',
+    keywords: ['law', 'legal', 'contract', 'sue', 'divorce', 'rights', 'court', 'attorney']
   },
   { 
     id: 'techie', 
@@ -93,7 +99,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Tech Bridge',
     spokenHook: 'I\'m the Techie! Let\'s get those gadgets working for you, {userName}.',
     color: 'purple', 
-    requiredTier: 'elite' 
+    requiredTier: 'elite',
+    keywords: ['computer', 'wifi', 'printer', 'phone', 'app', 'bluetooth', 'laptop', 'screen', 'keyboard']
   },
   
   // MAX TIER (10 total)
@@ -104,7 +111,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Mental Guardian',
     spokenHook: '{userName}, I am the Storyteller. Shall we create a custom story?',
     color: 'indigo', 
-    requiredTier: 'max' 
+    requiredTier: 'max',
+    keywords: ['story', 'tale', 'history', 'write', 'book']
   },
   { 
     id: 'comedian', 
@@ -113,7 +121,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Mood Protector',
     spokenHook: 'Ready for a laugh, {userName}? Let\'s fix your tech with a smile.',
     color: 'pink', 
-    requiredTier: 'max' 
+    requiredTier: 'max',
+    keywords: ['comedy', 'standup']
   },
   { 
     id: 'chef', 
@@ -122,7 +131,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Kitchen Safety',
     spokenHook: 'Chef in the house! What are we cooking today, {userName}?',
     color: 'red', 
-    requiredTier: 'max' 
+    requiredTier: 'max',
+    keywords: ['cook', 'recipe', 'food', 'kitchen', 'eat', 'dinner', 'lunch']
   },
   { 
     id: 'fitness', 
@@ -131,7 +141,8 @@ const PERSONAS: PersonaConfig[] = [
     protectiveJob: 'Mobility Protector',
     spokenHook: 'Coach here! Let\'s get you moving safely today, {userName}.',
     color: 'green', 
-    requiredTier: 'max' 
+    requiredTier: 'max',
+    keywords: ['fitness', 'workout', 'pain', 'health', 'exercise', 'walk', 'run']
   }
 ];
 
@@ -156,14 +167,22 @@ export default function ChatInterface({
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
   // --- VOICE & MIC (Privacy Shield) ---
-  const [isListening, setIsListening] = useState(true); // DEFAULT: MIC ON for protection
+  const [isListening, setIsListening] = useState(true); 
   const [micActive, setMicActive] = useState(false);
-  const [autoTTS, setAutoTTS] = useState(true); // DEFAULT: VOICE ON for proactive guidance
+  const [autoTTS, setAutoTTS] = useState(true); 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [instantVoice, setInstantVoice] = useState(false);
-  const [lastInteractionTime, setLastInteractionTime] = useState(Date.now());
-  const [isInStandbyMode, setIsInStandbyMode] = useState(false);
+  
+  // --- TIMEOUT LOOP FIX: USE REFS ---
+  // Using Refs allows the interval to check current values without stale closures
+  const lastInteractionTimeRef = useRef(Date.now());
+  const isInStandbyModeRef = useRef(false);
+  const isListeningRef = useRef(true); // Tracks listening state for the timer
+  const standbyTimerRef = useRef<any>(null);
+  
+  // We still need state for the UI render
+  const [isInStandbyMode, setIsInStandbyMode] = useState(false); 
   
   // --- UI STATE ---
   const [showDropdown, setShowDropdown] = useState(false);
@@ -181,6 +200,15 @@ export default function ChatInterface({
     (localStorage.getItem('userTier') as any) || 'free'
   );
   
+  // --- ONBOARDING QUIZ ---
+  const [showQuizOverlay, setShowQuizOverlay] = useState(false);
+  const [quizStep, setQuizStep] = useState(1);
+  const [quizAnswers, setQuizAnswers] = useState({
+    deviceType: '',
+    primaryWorry: '',
+    drivingStatus: ''
+  });
+  
   // --- SCAM RECOVERY ---
   const [showScamRecovery, setShowScamRecovery] = useState(false);
   const [showFullGuide, setShowFullGuide] = useState(false); 
@@ -195,7 +223,6 @@ export default function ChatInterface({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const standbyTimerRef = useRef<any>(null);
 
   // --- TIER LOGIC ---
   const canAccessPersona = (persona: PersonaConfig): boolean => {
@@ -230,7 +257,7 @@ export default function ChatInterface({
   // --- PRIVACY SHIELD VISUAL ---
   const getPrivacyShieldClass = () => {
     if (isInStandbyMode) {
-      return 'border-gray-500 shadow-[0_0_10px_rgba(107,114,128,0.3)]'; // Gray: Private (Sleeping)
+      return 'border-gray-500 shadow-[0_0_10px_rgba(107,114,128,0.3)]';
     }
     
     if (loading) {
@@ -242,12 +269,17 @@ export default function ChatInterface({
       return 'border-red-500 shadow-[0_0_20px_rgba(255,77,77,0.8)] animate-bounce';
     }
     
-    return 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]'; // Blue: Protected (Active)
+    return 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]';
   };
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    initializeLylo();
+    // Check Quiz Status Immediately
+    if (!localStorage.getItem('lylo_quiz_complete')) {
+        setShowQuizOverlay(true);
+    } else {
+        initializeLylo();
+    }
     
     // Cleanup function
     return () => {
@@ -256,6 +288,11 @@ export default function ChatInterface({
       }
     };
   }, [userEmail]);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+      isListeningRef.current = isListening;
+  }, [isListening]);
 
   const initializeLylo = async () => {
     await loadUserStats();
@@ -292,20 +329,46 @@ export default function ChatInterface({
     if (savedUserName) setUserName(savedUserName);
   };
 
+  // --- ONBOARDING QUIZ HANDLERS ---
+  const handleQuizAnswer = (answer: string) => {
+    if (quizStep === 1) {
+      setQuizAnswers({...quizAnswers, deviceType: answer});
+      setQuizStep(2);
+    } else if (quizStep === 2) {
+      setQuizAnswers({...quizAnswers, primaryWorry: answer});
+      setQuizStep(3);
+    } else if (quizStep === 3) {
+      const finalAnswers = {...quizAnswers, drivingStatus: answer};
+      setQuizAnswers(finalAnswers);
+      completeQuiz(finalAnswers);
+    }
+  };
+
+  const completeQuiz = (finalAnswers: any) => {
+    localStorage.setItem('lylo_quiz_complete', 'true');
+    localStorage.setItem('lylo_quiz_answers', JSON.stringify(finalAnswers));
+    localStorage.setItem('lylo_intelligence_sync', '15'); // Boost sync immediately
+    setIntelligenceSync(15);
+    setShowQuizOverlay(false);
+    
+    // Initialize LYLO after quiz completion
+    setTimeout(() => {
+      initializeLylo();
+      speakText("Thank you. I have calibrated your security profile. I am now active and listening.");
+    }, 500);
+  };
+
   // --- DYNAMIC NAME DETECTION ---
   const detectUserName = () => {
     let detectedName = '';
     
-    // Try to extract from email
     if (userEmail && !detectedName) {
       const emailPart = userEmail.split('@')[0];
       if (emailPart.toLowerCase().includes('stangman')) detectedName = 'Christopher';
       else if (emailPart.toLowerCase().includes('paul')) detectedName = 'Paul';
       else if (emailPart.toLowerCase().includes('eric')) detectedName = 'Eric';
-      // Add more name mappings as needed
     }
     
-    // Check localStorage
     const savedUserName = localStorage.getItem('lylo_user_name');
     if (savedUserName && !detectedName) {
       detectedName = savedUserName;
@@ -314,7 +377,6 @@ export default function ChatInterface({
     if (detectedName) {
       setUserName(detectedName);
     } else {
-      // Ask for name verbally if not detected
       setTimeout(() => {
         askForUserName();
       }, 2000);
@@ -325,7 +387,6 @@ export default function ChatInterface({
     const askNameMessage = "I don't have your name in my records yet. What should I call you?";
     await speakText(askNameMessage);
     
-    // Add to messages
     const botMsg: Message = { 
       id: Date.now().toString(), 
       content: askNameMessage, 
@@ -336,14 +397,13 @@ export default function ChatInterface({
     setMessages(prev => [...prev, botMsg]);
   };
 
-  // --- THE VERBAL HANDSHAKE ---
+  // --- VERBAL HANDSHAKE ---
   const giveVerbalHandshake = async () => {
     if (hasGivenVerbalHandshake) return;
     
     const handshakeMessage = getVerbalHandshakeMessage();
     await speakText(handshakeMessage);
     
-    // Add to messages
     const botMsg: Message = { 
       id: Date.now().toString(), 
       content: handshakeMessage, 
@@ -423,49 +483,27 @@ export default function ChatInterface({
     localStorage.setItem('lylo_intelligence_sync', newSync.toString());
   };
 
-  const updateUserProfile = async (detail: string) => {
-    incrementIntelligenceSync();
-    const syncMessage = `I've updated your profile with that detail. We are now ${intelligenceSync}% synced. I am becoming more customized to you every time we talk.`;
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: syncMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 95
-    };
-    setMessages(prev => [...prev, botMsg]);
-    
-    await speakText(syncMessage);
-  };
-
-  // --- PRIVACY SHIELD (Auto-Standby) - FIXED ---
+  // --- PRIVACY SHIELD (Auto-Standby) - FIXED LOOP ---
   const startPrivacyShieldMonitoring = () => {
-    const checkStandby = () => {
-      const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-      
-      if (timeSinceLastInteraction > 120000 && !isInStandbyMode && isListening) { // 120 seconds
-        goToStandbyMode();
-      }
-    };
-    
     // Clear existing interval if any
     if (standbyTimerRef.current) {
       clearInterval(standbyTimerRef.current);
     }
     
-    standbyTimerRef.current = setInterval(checkStandby, 10000); // Check every 10 seconds
-    
-    return () => {
-      if (standbyTimerRef.current) {
-        clearInterval(standbyTimerRef.current);
+    standbyTimerRef.current = setInterval(() => {
+      const timeSinceLastInteraction = Date.now() - lastInteractionTimeRef.current;
+      
+      // FIXED: Checks Refs to avoid stale closure state
+      if (timeSinceLastInteraction > 120000 && !isInStandbyModeRef.current && isListeningRef.current) {
+        goToStandbyMode();
       }
-    };
+    }, 10000); // Check every 10 seconds
   };
 
   const goToStandbyMode = async () => {
-    if (isInStandbyMode) return; // Prevent multiple calls
+    if (isInStandbyModeRef.current) return; // Prevent multiple calls
     
+    isInStandbyModeRef.current = true;
     setIsInStandbyMode(true);
     setIsListening(false);
     
@@ -484,14 +522,15 @@ export default function ChatInterface({
   };
 
   const wakeFromStandby = () => {
+    isInStandbyModeRef.current = false;
     setIsInStandbyMode(false);
     setIsListening(true);
-    setLastInteractionTime(Date.now());
+    lastInteractionTimeRef.current = Date.now();
   };
 
   const updateInteractionTime = () => {
-    setLastInteractionTime(Date.now());
-    if (isInStandbyMode) {
+    lastInteractionTimeRef.current = Date.now();
+    if (isInStandbyModeRef.current) {
       wakeFromStandby();
     }
   };
@@ -574,9 +613,6 @@ export default function ChatInterface({
         }
         if (finalTranscript) {
           setInput((prev) => prev + finalTranscript);
-          
-          // Check for trigger phrases
-          checkForTriggerPhrases(finalTranscript.toLowerCase());
         }
       };
 
@@ -587,9 +623,9 @@ export default function ChatInterface({
 
       recognition.onend = () => {
         setMicActive(false);
-        if (isListening && !recognition._manuallyStopped && !isInStandbyMode) {
+        if (isListening && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
           setTimeout(() => {
-            if (isListening && !recognition._manuallyStopped && !isInStandbyMode) {
+            if (isListening && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
               try { recognition.start(); } catch (e) { setIsListening(false); }
             }
           }, 50);
@@ -601,86 +637,16 @@ export default function ChatInterface({
     } else {
       setMicSupported(false);
     }
-  }, [language, isInStandbyMode]);
+  }, [language]);
 
   useEffect(() => {
     const recognition = recognitionRef.current;
     if (!recognition) return;
-    if (isListening && !micActive && !recognition._manuallyStopped && !isInStandbyMode) {
+    if (isListening && !micActive && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
       recognition._manuallyStopped = false;
       try { recognition.start(); } catch(e) { setIsListening(false); }
     }
-  }, [isListening, isInStandbyMode]);
-
-  // --- TRIGGER PHRASE DETECTION ---
-  const checkForTriggerPhrases = (transcript: string) => {
-    // Easy Vision Protocol
-    if (transcript.includes('look at this') || transcript.includes('i want to show you something')) {
-      triggerVisionProtocol();
-    }
-    
-    // Expert Access
-    const expertTriggers = [
-      { trigger: 'talk to the mechanic', persona: 'mechanic' },
-      { trigger: 'get the lawyer', persona: 'lawyer' },
-      { trigger: 'call the chef', persona: 'chef' },
-      { trigger: 'bring the techie', persona: 'techie' },
-      { trigger: 'get the storyteller', persona: 'storyteller' },
-      { trigger: 'call the comedian', persona: 'comedian' },
-      { trigger: 'get the fitness coach', persona: 'fitness' },
-      { trigger: 'talk to the disciple', persona: 'disciple' },
-      { trigger: 'get the roast master', persona: 'roast' }
-    ];
-    
-    for (const {trigger, persona} of expertTriggers) {
-      if (transcript.includes(trigger)) {
-        const targetPersona = PERSONAS.find(p => p.id === persona);
-        if (targetPersona) {
-          handlePersonaChange(targetPersona);
-        }
-        break;
-      }
-    }
-    
-    // Shield Me
-    if (transcript.includes('is this message a scam') || transcript.includes('is this a scam')) {
-      handleShieldMe();
-    }
-  };
-
-  // --- TRIGGER ACTIONS ---
-  const triggerVisionProtocol = async () => {
-    const visionMessage = `I'm ready to look, ${userName || 'friend'}. Take a picture or select one from your gallery and I will analyze it immediately.`;
-    await speakText(visionMessage);
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: visionMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 100
-    };
-    setMessages(prev => [...prev, botMsg]);
-    
-    // Open photo menu
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleShieldMe = async () => {
-    const shieldMessage = `I'm analyzing your surroundings for potential threats, ${userName || 'friend'}. Please share the message or situation you want me to examine for scams.`;
-    await speakText(shieldMessage);
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: shieldMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 100
-    };
-    setMessages(prev => [...prev, botMsg]);
-  };
+  }, [isListening]);
 
   // --- USER INTERFACE HANDLERS ---
   useEffect(() => {
@@ -742,7 +708,7 @@ export default function ChatInterface({
     } else {
       quickStopAllAudio();
       setIsListening(true);
-      if (isInStandbyMode) {
+      if (isInStandbyModeRef.current) {
         wakeFromStandby();
       }
     }
@@ -781,6 +747,53 @@ export default function ChatInterface({
       return; 
     }
 
+    // --- AUTO-SWITCH LOGIC ---
+    let finalPersonaId = currentPersona.id;
+    let switched = false;
+
+    if (textToSend) {
+        const lowerMsg = textToSend.toLowerCase();
+        // Check keywords
+        for (const persona of PERSONAS) {
+            // Don't switch if we are already there
+            if (persona.id === currentPersona.id) continue;
+            
+            // Check matching keywords
+            if (persona.keywords.some(k => lowerMsg.includes(k))) {
+                // Check Access
+                if (canAccessPersona(persona)) {
+                    // SWITCH!
+                    onPersonaChange(persona);
+                    finalPersonaId = persona.id;
+                    switched = true;
+                    
+                    const switchMsg = `[Auto-Switch] Bringing in ${persona.name}...`;
+                    setMessages(prev => [...prev, { 
+                      id: Date.now().toString(), 
+                      content: switchMsg, 
+                      sender: 'bot', 
+                      timestamp: new Date(),
+                      confidenceScore: 100
+                    }]);
+                    break; // Stop checking
+                } else {
+                    // UPSOLD - Stop processing
+                    const expansionMessage = `I see you need help with ${persona.description.toLowerCase()}, but for that, we need to bring in ${persona.name}. Would you like me to expand your team and deploy them to your side now?`;
+                    setMessages(prev => [...prev, { 
+                      id: Date.now().toString(), 
+                      content: expansionMessage, 
+                      sender: 'bot', 
+                      timestamp: new Date(),
+                      confidenceScore: 90
+                    }]);
+                    await speakText(expansionMessage);
+                    setInput(''); // Clear input
+                    return; // EXIT
+                }
+            }
+        }
+    }
+
     let previewContent = textToSend;
     if (selectedImage) previewContent = textToSend ? `${textToSend} [Image: ${selectedImage.name}]` : `[Image: ${selectedImage.name}]`;
 
@@ -796,8 +809,8 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      // Add search verbalization for general questions
-      if (isGeneralSearchQuery(textToSend)) {
+      // Add search verbalization for general questions (only if no switch occurred)
+      if (!switched && isGeneralSearchQuery(textToSend)) {
         const searchMessage = `I'm searching the web for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
         const searchMsg: Message = { 
           id: (Date.now() + 0.5).toString(), 
@@ -815,8 +828,8 @@ export default function ChatInterface({
         content: msg.content
       }));
 
-      let personaWithBible = currentPersona.id;
-      if (currentPersona.id === 'disciple') {
+      let personaWithBible = finalPersonaId;
+      if (finalPersonaId === 'disciple') {
         personaWithBible = `disciple_${bibleVersion}`;
       }
 
@@ -953,7 +966,7 @@ export default function ChatInterface({
         {currentPersona.protectiveJob}
       </p>
       <p className="text-gray-400 text-xs uppercase tracking-[0.2em] font-medium mb-8">
-        {isInStandbyMode ? 'Privacy Mode - Click Mic to Activate' : 'Digital Bodyguard Active'}
+        {isInStandbyModeRef.current ? 'Privacy Mode - Click Mic to Activate' : 'Digital Bodyguard Active'}
       </p>
       
       {/* Intelligence Sync Progress */}
@@ -1038,9 +1051,9 @@ export default function ChatInterface({
 
       {/* Privacy Shield Status */}
       <div className="mt-8 flex items-center gap-3">
-        <div className={`w-3 h-3 rounded-full transition-colors ${isInStandbyMode ? 'bg-gray-500' : 'bg-blue-500'}`} />
+        <div className={`w-3 h-3 rounded-full transition-colors ${isInStandbyModeRef.current ? 'bg-gray-500' : 'bg-blue-500'}`} />
         <span className="text-gray-400 text-xs font-black uppercase tracking-widest">
-          {isInStandbyMode ? 'Privacy Mode' : 'Protected Mode'}
+          {isInStandbyModeRef.current ? 'Privacy Mode' : 'Protected Mode'}
         </span>
       </div>
     </div>
@@ -1054,6 +1067,9 @@ export default function ChatInterface({
         height: '100dvh', width: '100vw', overflow: 'hidden',
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
+      
+      {/* --- ONBOARDING QUIZ OVERLAY --- */}
+      {showQuizOverlay && <QuizOverlay />}
       
       {/* --- SCAM RECOVERY MODAL --- */}
       {showScamRecovery && (
@@ -1261,9 +1277,9 @@ export default function ChatInterface({
                 {isEliteUser && <span className="text-yellow-400 ml-1">★</span>}
               </div>
               <div className="flex items-center gap-1 justify-end">
-                <div className={`w-1.5 h-1.5 rounded-full ${isInStandbyMode ? 'bg-gray-500' : 'bg-blue-500'}`}></div>
+                <div className={`w-1.5 h-1.5 rounded-full ${isInStandbyModeRef.current ? 'bg-gray-500' : 'bg-blue-500'}`}></div>
                 <span className="text-gray-400 text-[10px] uppercase font-black">
-                  {isInStandbyMode ? 'Standby' : 'Protected'}
+                  {isInStandbyModeRef.current ? 'Standby' : 'Protected'}
                 </span>
               </div>
             </div>
@@ -1360,7 +1376,7 @@ export default function ChatInterface({
       {/* Input Area */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {(isListening || micActive) && !isInStandbyMode && (
+          {(isListening || micActive) && !isInStandbyModeRef.current && (
             <div className="mb-2 p-2 bg-blue-900/20 border border-blue-500/30 rounded text-blue-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">
               🛡️ BODYGUARD LISTENING - PROTECTED
             </div>
@@ -1371,9 +1387,9 @@ export default function ChatInterface({
               onClick={toggleListening} 
               disabled={loading || !micSupported} 
               className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all border ${
-                (isListening || micActive) && !isInStandbyMode
+                (isListening || micActive) && !isInStandbyModeRef.current
                   ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' 
-                  : isInStandbyMode
+                  : isInStandbyModeRef.current
                     ? 'bg-gray-700 text-gray-300 border-gray-500'
                     : micSupported 
                       ? 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20' 
@@ -1381,7 +1397,7 @@ export default function ChatInterface({
               } disabled:opacity-50`} 
               style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}
             >
-              {isInStandbyMode ? 'Wake' : (isListening || micActive) ? 'Listening' : 'Mic'}
+              {isInStandbyModeRef.current ? 'Wake' : (isListening || micActive) ? 'Listening' : 'Mic'}
             </button>
             
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">
@@ -1417,14 +1433,14 @@ export default function ChatInterface({
                 onChange={(e) => !(isListening || micActive) && setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder={
-                  isInStandbyMode ? "Wake LYLO to continue..." :
+                  isInStandbyModeRef.current ? "Wake LYLO to continue..." :
                   (isListening || micActive) ? "Listening for voice commands..." : 
                   selectedImage ? `Vision ready: ${selectedImage.name}...` : 
                   `Ask ${currentPersona.name} anything...`
                 }
-                disabled={loading || (isListening || micActive) || isInStandbyMode}
+                disabled={loading || (isListening || micActive) || isInStandbyModeRef.current}
                 className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${
-                  isInStandbyMode ? 'text-gray-500 cursor-not-allowed' :
+                  isInStandbyModeRef.current ? 'text-gray-500 cursor-not-allowed' :
                   (isListening || micActive) ? 'text-blue-300 italic cursor-not-allowed' : ''
                 }`}
                 style={{ fontSize: `${zoomLevel / 100}rem` }}
@@ -1434,9 +1450,9 @@ export default function ChatInterface({
             
             <button 
               onClick={handleSend} 
-              disabled={loading || (!input.trim() && !selectedImage) || (isListening || micActive) || isInStandbyMode} 
+              disabled={loading || (!input.trim() && !selectedImage) || (isListening || micActive) || isInStandbyModeRef.current} 
               className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${
-                (input.trim() || selectedImage) && !loading && !(isListening || micActive) && !isInStandbyMode
+                (input.trim() || selectedImage) && !loading && !(isListening || micActive) && !isInStandbyModeRef.current
                   ? 'bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-500/20' 
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`} 
