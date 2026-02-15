@@ -11,9 +11,9 @@ export interface PersonaConfig {
   description: string;
   protectiveJob: string;
   spokenHook: string;
+  capabilities: string[];
   color: string;
   requiredTier: 'free' | 'pro' | 'elite' | 'max';
-  keywords: string[];
 }
 
 interface ChatInterfaceProps {
@@ -35,7 +35,7 @@ interface RecoveryGuideData {
   prevention_tips: string[];
 }
 
-// THE 10-EXPERT PERSONNEL ROSTER WITH VASTLY EXPANDED KEYWORDS
+// THE 10-EXPERT PERSONNEL ROSTER WITH CAPABILITIES
 const PERSONAS: PersonaConfig[] = [
   // FREE TIER (1)
   { 
@@ -43,15 +43,17 @@ const PERSONAS: PersonaConfig[] = [
     name: 'The Guardian', 
     description: 'Security Lead', 
     protectiveJob: 'Security Lead',
-    spokenHook: 'Guardian here, {userName}. Scanning your perimeter for threats.',
+    spokenHook: 'I am The Guardian, your Security Lead.',
+    capabilities: [
+      'Detect scams and fraud attempts',
+      'Analyze suspicious messages and emails',
+      'Protect against identity theft',
+      'Check website safety and legitimacy',
+      'Identify phishing attempts',
+      'Verify bank and financial communications'
+    ],
     color: 'blue', 
-    requiredTier: 'free',
-    keywords: [
-      'scam', 'fraud', 'hack', 'security', 'suspicious', 'password', 'link', 'email', 'bank', 'money', 
-      'safe', 'protect', 'threat', 'phishing', 'virus', 'malware', 'identity', 'theft', 'credit', 'card',
-      'account', 'locked', 'verify', 'confirm', 'urgent', 'expire', 'update', 'suspicious', 'click', 'download',
-      'IRS', 'refund', 'lottery', 'winner', 'inheritance', 'prince', 'bitcoin', 'crypto', 'investment'
-    ]
+    requiredTier: 'free'
   },
   
   // PRO TIER (4 total)
@@ -60,45 +62,51 @@ const PERSONAS: PersonaConfig[] = [
     name: 'The Roast Master', 
     description: 'Humor Shield', 
     protectiveJob: 'Humor Shield',
-    spokenHook: 'Watch out {userName}, I\'m feeling snarky. Ready to roast?',
+    spokenHook: 'I am The Roast Master, your Humor Shield.',
+    capabilities: [
+      'Deliver witty comebacks and roasts',
+      'Use sarcasm to deflect threats',
+      'Make light of stressful situations',
+      'Provide comic relief during problems',
+      'Turn scammer interactions into jokes',
+      'Boost morale with humor'
+    ],
     color: 'orange', 
-    requiredTier: 'pro',
-    keywords: [
-      'roast', 'snarky', 'sarcastic', 'insult', 'burn', 'savage', 'mock', 'funny', 'joke', 'comedy',
-      'witty', 'humor', 'laugh', 'ridiculous', 'stupid', 'dumb', 'idiot', 'annoying', 'pathetic'
-    ]
+    requiredTier: 'pro'
   },
   { 
     id: 'disciple', 
     name: 'The Disciple', 
     description: 'Spiritual Armor', 
     protectiveJob: 'Spiritual Armor',
-    spokenHook: 'I am the Disciple, {userName}. I have a word of wisdom for you.',
+    spokenHook: 'I am The Disciple, your Spiritual Armor.',
+    capabilities: [
+      'Provide biblical wisdom and guidance',
+      'Quote relevant scriptures for situations',
+      'Offer spiritual protection advice',
+      'Share faith-based perspectives',
+      'Help with prayer and meditation',
+      'Give moral and ethical guidance'
+    ],
     color: 'gold', 
-    requiredTier: 'pro',
-    keywords: [
-      'bible', 'jesus', 'god', 'prayer', 'scripture', 'faith', 'church', 'kjv', 'esv', 'verse', 
-      'christian', 'lord', 'holy', 'spirit', 'salvation', 'heaven', 'sin', 'forgiveness', 'blessing',
-      'psalm', 'proverbs', 'matthew', 'john', 'romans', 'genesis', 'revelation', 'baptism', 'communion',
-      'pastor', 'minister', 'sermon', 'worship', 'praise', 'hallelujah', 'amen', 'trinity', 'cross'
-    ]
+    requiredTier: 'pro'
   },
   { 
     id: 'mechanic', 
     name: 'The Mechanic', 
     description: 'Garage Protector', 
     protectiveJob: 'Garage Protector',
-    spokenHook: 'Mechanic here, {userName}. Is your car acting up today?',
+    spokenHook: 'I am The Mechanic, your Garage Protector.',
+    capabilities: [
+      'Diagnose car problems and engine codes',
+      'Explain automotive repairs and maintenance',
+      'Identify automotive scam tactics',
+      'Help with vehicle purchasing decisions',
+      'Troubleshoot mechanical issues',
+      'Protect against repair shop fraud'
+    ],
     color: 'gray', 
-    requiredTier: 'pro',
-    keywords: [
-      'car', 'engine', 'oil', 'repair', 'tire', 'brake', 'battery', 'noise', 'ford', 'toyota', 'vehicle', 
-      'automotive', 'transmission', 'mechanic', 'gmc', 'chevy', 'honda', 'nissan', 'bmw', 'mercedes',
-      'audi', 'volkswagen', 'jeep', 'dodge', 'chrysler', 'buick', 'cadillac', 'pontiac', 'saturn',
-      'P0420', 'P0171', 'P0300', 'OBD2', 'check engine', 'mileage', 'fuel', 'gas', 'diesel',
-      'alternator', 'starter', 'radiator', 'coolant', 'thermostat', 'timing belt', 'spark plug',
-      'catalytic converter', 'muffler', 'exhaust', 'suspension', 'struts', 'shocks', 'alignment'
-    ]
+    requiredTier: 'pro'
   },
   
   // ELITE TIER (6 total)
@@ -107,34 +115,34 @@ const PERSONAS: PersonaConfig[] = [
     name: 'The Lawyer', 
     description: 'Legal Shield', 
     protectiveJob: 'Legal Shield',
-    spokenHook: 'Lawyer here. Let\'s protect your rights today, {userName}.',
+    spokenHook: 'I am The Lawyer, your Legal Shield.',
+    capabilities: [
+      'Explain legal rights and protections',
+      'Review contracts and agreements',
+      'Identify legal scams and fraud',
+      'Guide through legal processes',
+      'Help with estate planning basics',
+      'Protect against legal exploitation'
+    ],
     color: 'yellow', 
-    requiredTier: 'elite',
-    keywords: [
-      'legal', 'law', 'contract', 'sue', 'divorce', 'will', 'rights', 'court', 'attorney', 'agreement', 
-      'lawsuit', 'judge', 'notary', 'power of attorney', 'estate', 'probate', 'trust', 'inheritance',
-      'liability', 'negligence', 'malpractice', 'settlement', 'damages', 'plaintiff', 'defendant',
-      'deposition', 'subpoena', 'injunction', 'restraining order', 'custody', 'alimony', 'prenup',
-      'bankruptcy', 'foreclosure', 'eviction', 'landlord', 'tenant', 'lease', 'copyright', 'trademark',
-      'patent', 'intellectual property', 'HIPAA', 'GDPR', 'ADA', 'OSHA', 'discrimination', 'harassment'
-    ]
+    requiredTier: 'elite'
   },
   { 
     id: 'techie', 
     name: 'The Techie', 
     description: 'Tech Bridge', 
     protectiveJob: 'Tech Bridge',
-    spokenHook: 'I\'m the Techie! Let\'s get those gadgets working for you, {userName}.',
+    spokenHook: 'I am The Techie, your Tech Bridge.',
+    capabilities: [
+      'Fix computer and smartphone issues',
+      'Set up and troubleshoot devices',
+      'Protect against tech support scams',
+      'Explain technology in simple terms',
+      'Help with apps and software',
+      'Secure your digital devices'
+    ],
     color: 'purple', 
-    requiredTier: 'elite',
-    keywords: [
-      'wifi', 'computer', 'phone', 'app', 'printer', 'screen', 'laptop', 'mac', 'windows', 'update', 
-      'bluetooth', 'internet', 'software', 'tech', 'apple', 'iphone', 'ipad', 'android', 'samsung',
-      'google', 'microsoft', 'adobe', 'zoom', 'skype', 'facetime', 'email', 'gmail', 'outlook',
-      'facebook', 'instagram', 'twitter', 'tiktok', 'youtube', 'netflix', 'amazon', 'roku', 'firestick',
-      'IP address', 'router', 'modem', 'DNS', 'VPN', 'firewall', 'antivirus', 'malware', 'spyware',
-      'USB', 'HDMI', 'ethernet', 'cable', 'charger', 'backup', 'sync', 'cloud', 'dropbox', 'icloud'
-    ]
+    requiredTier: 'elite'
   },
   
   // MAX TIER (10 total)
@@ -143,70 +151,70 @@ const PERSONAS: PersonaConfig[] = [
     name: 'The Storyteller', 
     description: 'Mental Guardian', 
     protectiveJob: 'Mental Guardian',
-    spokenHook: '{userName}, I am the Storyteller. Shall we create a custom story?',
+    spokenHook: 'I am The Storyteller, your Mental Guardian.',
+    capabilities: [
+      'Create custom stories and narratives',
+      'Help process difficult experiences',
+      'Provide mental and emotional support',
+      'Use storytelling for therapy and healing',
+      'Share wisdom through tales',
+      'Protect your mental wellbeing'
+    ],
     color: 'indigo', 
-    requiredTier: 'max',
-    keywords: [
-      'story', 'tale', 'history', 'write', 'poem', 'book', 'narrative', 'creative', 'fiction',
-      'novel', 'short story', 'character', 'plot', 'dialogue', 'setting', 'theme', 'memoir',
-      'autobiography', 'biography', 'legend', 'myth', 'fairy tale', 'folklore', 'epic', 'saga'
-    ]
+    requiredTier: 'max'
   },
   { 
     id: 'comedian', 
     name: 'The Comedian', 
     description: 'Mood Protector', 
     protectiveJob: 'Mood Protector',
-    spokenHook: 'Ready for a laugh, {userName}? Let\'s fix your tech with a smile.',
+    spokenHook: 'I am The Comedian, your Mood Protector.',
+    capabilities: [
+      'Tell jokes and funny stories',
+      'Lighten the mood in any situation',
+      'Use humor to cope with stress',
+      'Provide entertainment and laughter',
+      'Make serious topics more approachable',
+      'Protect your emotional health with comedy'
+    ],
     color: 'pink', 
-    requiredTier: 'max',
-    keywords: [
-      'comedy', 'joke', 'standup', 'hilarious', 'funny', 'laugh', 'punchline', 'skit', 'improv',
-      'comedian', 'humor', 'wit', 'satire', 'parody', 'meme', 'viral', 'trending', 'lol', 'rofl'
-    ]
+    requiredTier: 'max'
   },
   { 
     id: 'chef', 
     name: 'The Chef', 
     description: 'Kitchen Safety', 
     protectiveJob: 'Kitchen Safety',
-    spokenHook: 'Chef in the house! What are we cooking today, {userName}?',
+    spokenHook: 'I am The Chef, your Kitchen Safety specialist.',
+    capabilities: [
+      'Create recipes and meal plans',
+      'Provide cooking tips and techniques',
+      'Ensure food safety and nutrition',
+      'Help with dietary restrictions',
+      'Protect against food-related scams',
+      'Make cooking enjoyable and safe'
+    ],
     color: 'red', 
-    requiredTier: 'max',
-    keywords: [
-      'cook', 'recipe', 'food', 'kitchen', 'eat', 'dinner', 'ingredient', 'bake', 'oven', 'stove', 
-      'meal', 'cooking', 'breakfast', 'lunch', 'snack', 'dessert', 'appetizer', 'sauce', 'spice',
-      'salt', 'pepper', 'garlic', 'onion', 'chicken', 'beef', 'pork', 'fish', 'vegetables',
-      'pasta', 'rice', 'bread', 'cheese', 'milk', 'butter', 'oil', 'flour', 'sugar', 'eggs',
-      'knife', 'cutting board', 'pan', 'pot', 'microwave', 'dishwasher', 'refrigerator', 'freezer'
-    ]
+    requiredTier: 'max'
   },
   { 
     id: 'fitness', 
     name: 'The Fitness Coach', 
     description: 'Mobility Protector', 
     protectiveJob: 'Mobility Protector',
-    spokenHook: 'Coach here! Let\'s get you moving safely today, {userName}.',
+    spokenHook: 'I am The Fitness Coach, your Mobility Protector.',
+    capabilities: [
+      'Design safe exercise routines',
+      'Help with mobility and physical therapy',
+      'Provide nutrition and wellness advice',
+      'Protect against fitness scams',
+      'Adapt workouts for any ability level',
+      'Keep you moving safely and healthily'
+    ],
     color: 'green', 
-    requiredTier: 'max',
-    keywords: [
-      'fitness', 'workout', 'pain', 'health', 'exercise', 'walk', 'gym', 'mobility', 'sore', 
-      'strength', 'training', 'cardio', 'muscle', 'weight', 'lifting', 'running', 'jogging',
-      'stretching', 'yoga', 'pilates', 'physical therapy', 'rehabilitation', 'injury', 'recovery',
-      'nutrition', 'diet', 'protein', 'vitamins', 'supplements', 'hydration', 'sleep', 'rest'
-    ]
+    requiredTier: 'max'
   }
 ];
-
-// URGENT KEYWORDS that bypass Entertainment Guards
-const URGENT_KEYWORDS = [
-  'code', 'error', 'fix', 'broken', 'help', 'seriously', 'problem', 'issue', 
-  'trouble', 'emergency', 'urgent', 'stop', 'stuck', 'crash', 'freeze', 
-  'won\'t work', 'not working', 'failed', 'can\'t', 'cannot'
-];
-
-// Intent words that override mission guards
-const INTENT_WORDS = ['help', 'broken', 'fix', 'seriously', 'need', 'problem', 'issue', 'trouble'];
 
 export default function ChatInterface({ 
   currentPersona, 
@@ -225,10 +233,10 @@ export default function ChatInterface({
   
   // --- IDENTITY & PERSONALIZATION ---
   const [userName, setUserName] = useState<string>('');
-  const [hasGivenVerbalHandshake, setHasGivenVerbalHandshake] = useState(false);
+  const [hasGivenInitialGreeting, setHasGivenInitialGreeting] = useState(false);
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // --- VOICE & MIC (WALKIE-TALKIE TAP-TO-RECORD-TO-SEND) ---
+  // --- VOICE & MIC (FIXED TAP-TO-RECORD-TO-SEND) ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [autoTTS, setAutoTTS] = useState(true);
@@ -411,9 +419,18 @@ export default function ChatInterface({
     detectUserName();
     startPrivacyShieldMonitoring();
     
-    // PROACTIVE INITIATION: AI speaks first
-    if (!hasGivenVerbalHandshake) {
-      setTimeout(() => giveVerbalHandshake(), 1000);
+    // Load saved persona preference
+    const savedPersona = localStorage.getItem('lylo_preferred_persona');
+    if (savedPersona) {
+      const persona = PERSONAS.find(p => p.id === savedPersona);
+      if (persona && canAccessPersona(persona)) {
+        onPersonaChange(persona);
+      }
+    }
+    
+    // MINIMAL INITIAL GREETING
+    if (!hasGivenInitialGreeting) {
+      setTimeout(() => giveInitialGreeting(), 1000);
     }
   };
 
@@ -427,8 +444,8 @@ export default function ChatInterface({
     const savedInstantVoice = localStorage.getItem('lylo_instant_voice');
     if (savedInstantVoice === 'true') setInstantVoice(true);
     
-    const savedHandshake = localStorage.getItem('lylo_verbal_handshake');
-    if (savedHandshake === 'true') setHasGivenVerbalHandshake(true);
+    const savedGreeting = localStorage.getItem('lylo_initial_greeting');
+    if (savedGreeting === 'true') setHasGivenInitialGreeting(true);
     
     const savedSync = localStorage.getItem('lylo_intelligence_sync');
     if (savedSync) setIntelligenceSync(parseInt(savedSync) || 0);
@@ -438,6 +455,9 @@ export default function ChatInterface({
     
     const savedAutoTTS = localStorage.getItem('lylo_auto_tts');
     if (savedAutoTTS === 'false') setAutoTTS(false);
+
+    const savedLanguage = localStorage.getItem('lylo_language');
+    if (savedLanguage === 'es') setLanguage('es');
   };
 
   // --- DYNAMIC NAME DETECTION ---
@@ -458,70 +478,33 @@ export default function ChatInterface({
     
     if (detectedName) {
       setUserName(detectedName);
-    } else {
-      setTimeout(() => {
-        askForUserName();
-      }, 2000);
     }
   };
 
-  const askForUserName = async () => {
-    const askNameMessage = "I don't have your name in my records yet. What should I call you?";
-    await speakText(askNameMessage);
+  // --- MINIMAL INITIAL GREETING ---
+  const giveInitialGreeting = async () => {
+    if (hasGivenInitialGreeting) return;
+    
+    const greetingMessage = "Hello, I'm LYLO. Please select a persona.";
+    await speakText(greetingMessage);
     
     const botMsg: Message = { 
       id: Date.now().toString(), 
-      content: askNameMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 100
-    };
-    setMessages(prev => [...prev, botMsg]);
-  };
-
-  // --- VERBAL HANDSHAKE (PROACTIVE INITIATION) ---
-  const giveVerbalHandshake = async () => {
-    if (hasGivenVerbalHandshake) return;
-    
-    const handshakeMessage = getVerbalHandshakeMessage();
-    await speakText(handshakeMessage);
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: handshakeMessage, 
+      content: greetingMessage, 
       sender: 'bot', 
       timestamp: new Date(),
       confidenceScore: 100
     };
     setMessages(prev => [...prev, botMsg]);
     
-    setHasGivenVerbalHandshake(true);
-    localStorage.setItem('lylo_verbal_handshake', 'true');
+    setHasGivenInitialGreeting(true);
+    localStorage.setItem('lylo_initial_greeting', 'true');
   };
 
-  const getVerbalHandshakeMessage = (): string => {
-    const displayName = userName || 'there';
-    const accessibleCount = getAccessiblePersonas().length;
-    
-    switch (userTier) {
-      case 'max':
-        return `Hello ${displayName}, I am LYLO. As a Max member, you have my full team of 10 experts standing by. I am your Digital Bodyguard, but I am also your personal search engine. You can ask me absolutely anything—from deep research to car repairs—and I will find the answer specifically for you. What can I find for you today?`;
-      
-      case 'elite':
-        return `Hello ${displayName}, I am LYLO. As an Elite member, you have access to ${accessibleCount} of my expert team members. I am your Digital Bodyguard and personalized search engine. You can ask me anything and I will find answers specifically for you. How can I help you today?`;
-      
-      case 'pro':
-        return `Hello ${displayName}, I am LYLO. As a Pro member, you have ${accessibleCount} expert team members at your service. I am your Digital Bodyguard and custom search engine. Ask me anything and I'll find the answer for you. What do you need?`;
-      
-      default: // free
-        return `Hello ${displayName}, I am LYLO, your Digital Bodyguard. I'm also your personal search engine—ask me anything and I'll find the answer specifically for you. What can I help you find today?`;
-    }
-  };
-
-  // --- INTELLIGENT AUTO-ROUTING WITH EXPANDED KEYWORDS ---
+  // --- PERSONA CHANGE WITH INTRODUCTION ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
-      const expansionMessage = `I can help with the security side of that, ${userName || 'friend'}, but for ${persona.description.toLowerCase()}, we need to bring in ${persona.name}. Would you like me to expand your team and deploy them to your side now?`;
+      const expansionMessage = `I can help with basic protection, but for ${persona.description.toLowerCase()}, we need to bring in ${persona.name}. Would you like to expand your team and deploy them to your side now?`;
       
       const botMsg: Message = { 
         id: Date.now().toString(), 
@@ -535,15 +518,23 @@ export default function ChatInterface({
       return;
     }
     
+    // FULL STOP - SILENCE ANY CURRENT SPEECH
+    quickStopAllAudio();
+    
+    // Save persona preference
+    localStorage.setItem('lylo_preferred_persona', persona.id);
+    
     onPersonaChange(persona);
     setShowDropdown(false);
     
-    const spokenHook = persona.spokenHook.replace('{userName}', userName || 'friend');
-    await speakText(spokenHook);
+    // PERSONA INTRODUCTION WITH CAPABILITIES
+    const introMessage = `${persona.spokenHook} Here's what I can do for you: ${persona.capabilities.slice(0, 3).join(', ')}, and much more. How can I protect and assist you today?`;
+    
+    await speakText(introMessage);
     
     const botMsg: Message = { 
       id: Date.now().toString(), 
-      content: spokenHook, 
+      content: introMessage, 
       sender: 'bot', 
       timestamp: new Date(),
       confidenceScore: 100
@@ -551,52 +542,6 @@ export default function ChatInterface({
     setMessages(prev => [...prev, botMsg]);
     
     incrementIntelligenceSync();
-  };
-
-  const shouldAutoSwitch = (userMessage: string, currentPersonaId: string): boolean => {
-    const lowerMsg = userMessage.toLowerCase();
-    
-    // URGENT BYPASS: If urgent keywords are used, bypass entertainment guards
-    const hasUrgentWord = URGENT_KEYWORDS.some(word => lowerMsg.includes(word));
-    if (hasUrgentWord) {
-      return true; // Always allow switching for urgent requests
-    }
-    
-    // MISSION OVERRIDE: If current persona is entertainment-focused, require intent words
-    const entertainmentPersonas = ['comedian', 'storyteller', 'roast'];
-    if (entertainmentPersonas.includes(currentPersonaId)) {
-      const hasIntentWord = INTENT_WORDS.some(word => lowerMsg.includes(word));
-      if (!hasIntentWord) {
-        return false; // Stay in entertainment mode unless user shows clear intent to switch
-      }
-    }
-    
-    return true; // Allow switching for all other cases
-  };
-
-  const findBestPersonaMatch = (userMessage: string, currentPersonaId: string): PersonaConfig | null => {
-    if (!shouldAutoSwitch(userMessage, currentPersonaId)) {
-      return null;
-    }
-    
-    const lowerMsg = userMessage.toLowerCase();
-    let bestMatch: PersonaConfig | null = null;
-    let maxMatches = 0;
-    
-    // Find persona with most keyword matches
-    for (const persona of PERSONAS) {
-      // Don't switch if already using this persona
-      if (persona.id === currentPersonaId) continue;
-      
-      const matches = persona.keywords.filter(keyword => lowerMsg.includes(keyword.toLowerCase())).length;
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        bestMatch = persona;
-      }
-    }
-    
-    // Only switch if we found at least one matching keyword
-    return maxMatches > 0 ? bestMatch : null;
   };
 
   const incrementIntelligenceSync = () => {
@@ -672,7 +617,7 @@ export default function ChatInterface({
     if (!autoTTS && !forceGender) return;
     if (!text) return;
     
-    // THE SHUSH RULE: Stop any current speech immediately
+    // FULL STOP: Stop any current speech immediately
     quickStopAllAudio();
     
     const cleanText = text.replace(/\([^)]*\)/g, '').replace(/\*\*/g, '').trim();
@@ -737,7 +682,7 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- WALKIE-TALKIE SPEECH RECOGNITION ---
+  // --- FIXED WALKIE-TALKIE SPEECH RECOGNITION ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -763,7 +708,7 @@ export default function ChatInterface({
           }
         }
         if (finalTranscript) {
-          setInput((prev) => prev + finalTranscript);
+          setInput(finalTranscript.trim());
         }
       };
 
@@ -774,12 +719,11 @@ export default function ChatInterface({
 
       recognition.onend = () => {
         setRecordingState('processing');
-        // AUTO-SEND: Automatically trigger send when recording ends
+        setIsRecording(false);
+        // FIXED: AUTO-SEND AFTER RECORDING STOPS
         setTimeout(() => {
-          if (recordingState === 'processing') {
-            handleSend();
-          }
-        }, 500);
+          handleSend();
+        }, 300);
       };
       
       recognitionRef.current = recognition;
@@ -836,7 +780,7 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
-  // --- WALKIE-TALKIE MIC HANDLER ---
+  // --- FIXED WALKIE-TALKIE MIC HANDLER ---
   const handleWalkieTalkieMic = () => {
     if (!micSupported) {
       alert('Microphone not supported');
@@ -846,7 +790,7 @@ export default function ChatInterface({
     updateInteractionTime();
     
     if (isRecording) {
-      // STOP & SEND: Stop recording and trigger send
+      // STOP RECORDING: This will trigger onend which auto-sends
       const recognition = recognitionRef.current;
       if (recognition) {
         try { 
@@ -856,7 +800,7 @@ export default function ChatInterface({
       setIsRecording(false);
     } else {
       // START RECORDING: Begin tap-to-record
-      quickStopAllAudio(); // THE SHUSH RULE
+      quickStopAllAudio(); // FULL STOP RULE
       setIsRecording(true);
       setRecordingState('recording');
       
@@ -888,7 +832,7 @@ export default function ChatInterface({
     if (e.target.files && e.target.files[0]) {
       setSelectedImage(e.target.files[0]);
       updateInteractionTime();
-      quickStopAllAudio(); // THE SHUSH RULE
+      quickStopAllAudio(); // FULL STOP RULE
     }
   };
 
@@ -897,7 +841,7 @@ export default function ChatInterface({
     if ((!textToSend && !selectedImage) || loading) return;
 
     updateInteractionTime();
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
 
     // Check for name in user input
     if (!userName && textToSend) {
@@ -912,51 +856,6 @@ export default function ChatInterface({
     if (userStats && userStats.usage.current >= userStats.usage.limit) {
       setShowLimitModal(true); 
       return; 
-    }
-
-    // --- INTELLIGENT AUTO-ROUTING WITH VAST KEYWORDS ---
-    let finalPersonaId = currentPersona.id;
-    let switched = false;
-
-    if (textToSend) {
-        const bestMatch = findBestPersonaMatch(textToSend, currentPersona.id);
-        
-        if (bestMatch) {
-            // TIER VALIDATION: Check if user can access this persona
-            if (canAccessPersona(bestMatch)) {
-                // CONTEXT BRIDGE: Reference the previous conversation
-                const contextBridge = `I see you were talking about ${textToSend.split(' ').slice(0, 3).join(' ')}, let me bring in ${bestMatch.name} to help with that.`;
-                
-                // SWITCH!
-                onPersonaChange(bestMatch);
-                finalPersonaId = bestMatch.id;
-                switched = true;
-                
-                const switchMsg = `[Auto-Switch] ${contextBridge}`;
-                setMessages(prev => [...prev, { 
-                  id: Date.now().toString(), 
-                  content: switchMsg, 
-                  sender: 'bot', 
-                  timestamp: new Date(),
-                  confidenceScore: 100
-                }]);
-            } else {
-                // TEAM EXPANSION UPSELL - Stop processing
-                const expansionMessage = `I see you need help with ${bestMatch.description.toLowerCase()}, but for that, we need to bring in ${bestMatch.name}. Would you like me to expand your team and deploy them to your side now?`;
-                setMessages(prev => [...prev, { 
-                  id: Date.now().toString(), 
-                  content: expansionMessage, 
-                  sender: 'bot', 
-                  timestamp: new Date(),
-                  confidenceScore: 90
-                }]);
-                await speakText(expansionMessage);
-                setInput(''); // Clear input
-                setIsRecording(false);
-                setRecordingState('idle');
-                return; // EXIT
-            }
-        }
     }
 
     let previewContent = textToSend;
@@ -977,8 +876,8 @@ export default function ChatInterface({
 
     try {
       // Add search verbalization for general questions
-      if (!switched && isGeneralSearchQuery(textToSend)) {
-        const searchMessage = `I'm searching the web for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
+      if (isGeneralSearchQuery(textToSend)) {
+        const searchMessage = `I'm searching for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
         const searchMsg: Message = { 
           id: (Date.now() + 0.5).toString(), 
           content: searchMessage, 
@@ -995,8 +894,8 @@ export default function ChatInterface({
         content: msg.content
       }));
 
-      let personaWithBible = finalPersonaId;
-      if (finalPersonaId === 'disciple') {
+      let personaWithBible = currentPersona.id;
+      if (currentPersona.id === 'disciple') {
         personaWithBible = `disciple_${bibleVersion}`;
       }
 
@@ -1097,7 +996,7 @@ export default function ChatInterface({
   };
 
   const openScamRecovery = () => {
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     if (!isEliteUser) {
       alert('Scam Recovery Center is exclusive to Elite and Max tier members.');
       return;
@@ -1108,7 +1007,7 @@ export default function ChatInterface({
   // --- COMMAND CENTER ACTION HUB HANDLERS ---
   const handleSearchEverything = async () => {
     updateInteractionTime();
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     
     const searchMessage = `What can you help me find?`;
     
@@ -1121,7 +1020,7 @@ export default function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     
     // Trigger LYLO's proactive response
-    const proactiveMessage = `I can help you find anything, ${userName || 'Christopher'}! I'm your personalized search engine. Ask me about current events, research topics, local businesses, how-to guides, or anything else. What would you like me to search for?`;
+    const proactiveMessage = `I can help you find anything! I'm your personalized search engine. Ask me about current events, research topics, local businesses, how-to guides, or anything else. What would you like me to search for?`;
     
     const botMsg: Message = { 
       id: (Date.now() + 1).toString(), 
@@ -1137,7 +1036,7 @@ export default function ChatInterface({
 
   const handleShieldMe = async () => {
     updateInteractionTime();
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     
     const shieldMessage = `Is this message a scam?`;
     
@@ -1150,7 +1049,7 @@ export default function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     
     // LYLO's scam protection response
-    const protectionMessage = `I'm activating scam detection mode, ${userName || 'Christopher'}. Share any suspicious message, email, text, or phone call with me and I'll analyze it for fraud indicators. I can detect phishing attempts, romance scams, tech support scams, and more. What message do you want me to check?`;
+    const protectionMessage = `I'm activating scam detection mode. Share any suspicious message, email, text, or phone call with me and I'll analyze it for fraud indicators. I can detect phishing attempts, romance scams, tech support scams, and more. What message do you want me to check?`;
     
     const botMsg: Message = { 
       id: (Date.now() + 1).toString(), 
@@ -1166,7 +1065,7 @@ export default function ChatInterface({
 
   const handleVisionLink = async () => {
     updateInteractionTime();
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     
     const visionMessage = `I want to show you something`;
     
@@ -1179,7 +1078,7 @@ export default function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     
     // LYLO's vision response
-    const visionResponse = `I'm ready to analyze any image, ${userName || 'Christopher'}! I can examine photos for scams, read text in images, analyze documents, check if something looks suspicious, or answer questions about what I see. Take a photo or select one from your gallery.`;
+    const visionResponse = `I'm ready to analyze any image! I can examine photos for scams, read text in images, analyze documents, check if something looks suspicious, or answer questions about what I see. Take a photo or select one from your gallery.`;
     
     const botMsg: Message = { 
       id: (Date.now() + 1).toString(), 
@@ -1200,13 +1099,13 @@ export default function ChatInterface({
 
   const handleTalkToExpert = () => {
     updateInteractionTime();
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     setShowDropdown(true);
   };
 
   // --- INTELLIGENCE SYNC MODAL HANDLERS ---
   const handleIntelligenceSyncClick = () => {
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     setShowIntelligenceModal(true);
     setCalibrationStep(1);
   };
@@ -1248,7 +1147,7 @@ export default function ChatInterface({
   };
 
   const cycleFontSize = () => {
-    quickStopAllAudio(); // THE SHUSH RULE
+    quickStopAllAudio(); // FULL STOP RULE
     if (zoomLevel < 100) onZoomChange(100);
     else if (zoomLevel < 125) onZoomChange(125);
     else onZoomChange(85);
@@ -1576,8 +1475,8 @@ export default function ChatInterface({
                   <div className="mb-3">
                     <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Language</label>
                     <div className="flex gap-2">
-                      <button onClick={() => setLanguage('en')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>ENG</button>
-                      <button onClick={() => setLanguage('es')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>ESP</button>
+                      <button onClick={() => { setLanguage('en'); localStorage.setItem('lylo_language', 'en'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-400'}`}>ENG</button>
+                      <button onClick={() => { setLanguage('es'); localStorage.setItem('lylo_language', 'es'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${language === 'es' ? 'bg-green-600 text-white' : 'bg-white/5 text-gray-400'}`}>ESP</button>
                     </div>
                   </div>
                   <div className="mb-3">
@@ -1701,14 +1600,14 @@ export default function ChatInterface({
       {/* BOTTOM INPUT AREA */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
-          {/* WALKIE-TALKIE Status */}
+          {/* FIXED WALKIE-TALKIE Status */}
           {isRecording && (
             <div className={`mb-2 p-2 border rounded text-center animate-pulse tracking-widest ${getPersonaColorClass(currentPersona, 'bg')}/20 ${getPersonaColorClass(currentPersona, 'border')}/30 ${getPersonaColorClass(currentPersona, 'text')} text-[10px] font-black uppercase`}>
-              🎙️ WALKIE-TALKIE ACTIVE - {recordingState === 'recording' ? 'RECORDING' : recordingState === 'processing' ? 'PROCESSING' : 'READY'}
+              🎙️ RECORDING - TAP AGAIN TO SEND
             </div>
           )}
           <div className="flex items-center justify-between mb-3">
-            {/* WALKIE-TALKIE MIC BUTTON */}
+            {/* FIXED WALKIE-TALKIE MIC BUTTON */}
             <button onClick={handleWalkieTalkieMic} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all border ${
               isRecording 
                 ? `${getPersonaColorClass(currentPersona, 'bg')} text-white ${getPersonaColorClass(currentPersona, 'border')} shadow-lg animate-pulse` 
@@ -1734,7 +1633,7 @@ export default function ChatInterface({
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </button>
             <div className="flex-1">
-              <textarea ref={inputRef} value={input} onChange={(e) => !isRecording && setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isInStandbyMode ? "Wake LYLO to continue..." : isRecording ? "Listening for voice commands..." : selectedImage ? `Vision ready: ${selectedImage.name}...` : `Ask ${currentPersona.name} anything...`} disabled={loading || isRecording || isInStandbyMode} className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isInStandbyMode ? 'text-gray-500 cursor-not-allowed' : isRecording ? 'text-blue-300 italic cursor-not-allowed' : ''}`} style={{ fontSize: `${zoomLevel / 100}rem` }} rows={1} />
+              <textarea ref={inputRef} value={input} onChange={(e) => !isRecording && setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isInStandbyMode ? "Wake LYLO to continue..." : isRecording ? "Recording voice..." : selectedImage ? `Vision ready: ${selectedImage.name}...` : `Ask ${currentPersona.name} anything...`} disabled={loading || isRecording || isInStandbyMode} className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isInStandbyMode ? 'text-gray-500 cursor-not-allowed' : isRecording ? getPersonaColorClass(currentPersona, 'text') + ' italic cursor-not-allowed' : ''}`} style={{ fontSize: `${zoomLevel / 100}rem` }} rows={1} />
             </div>
             <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage) || isRecording || isInStandbyMode} className={`px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all ${(input.trim() || selectedImage) && !loading && !isRecording && !isInStandbyMode ? `bg-gradient-to-r ${getPersonaColorClass(currentPersona, 'bg')} to-blue-800 text-white hover:shadow-lg` : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`} style={{ fontSize: `${zoomLevel / 100 * 0.9}rem` }}>{loading ? 'Processing' : 'Send'}</button>
           </div>
