@@ -35,7 +35,7 @@ interface RecoveryGuideData {
   prevention_tips: string[];
 }
 
-// THE 10-EXPERT PERSONNEL ROSTER WITH KEYWORDS
+// THE 10-EXPERT PERSONNEL ROSTER WITH EXPANDED KEYWORDS
 const PERSONAS: PersonaConfig[] = [
   // FREE TIER (1)
   { 
@@ -46,7 +46,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Guardian here, {userName}. Scanning your perimeter for threats.',
     color: 'blue', 
     requiredTier: 'free',
-    keywords: ['scam', 'fraud', 'safe', 'hack', 'security', 'password', 'suspicious']
+    keywords: ['scam', 'fraud', 'hack', 'security', 'suspicious', 'password', 'link', 'email', 'bank', 'money', 'safe', 'protect', 'threat']
   },
   
   // PRO TIER (4 total)
@@ -58,7 +58,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Watch out {userName}, I\'m feeling snarky. Ready to roast?',
     color: 'orange', 
     requiredTier: 'pro',
-    keywords: ['roast', 'joke', 'funny', 'stupid', 'laugh']
+    keywords: ['roast', 'snarky', 'sarcastic', 'insult', 'burn', 'savage', 'mock']
   },
   { 
     id: 'disciple', 
@@ -68,7 +68,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'I am the Disciple, {userName}. I have a word of wisdom for you.',
     color: 'gold', 
     requiredTier: 'pro',
-    keywords: ['bible', 'god', 'jesus', 'prayer', 'faith', 'verse']
+    keywords: ['bible', 'jesus', 'god', 'prayer', 'scripture', 'faith', 'church', 'kjv', 'esv', 'verse', 'christian', 'lord']
   },
   { 
     id: 'mechanic', 
@@ -78,7 +78,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Mechanic here, {userName}. Is your car acting up today?',
     color: 'gray', 
     requiredTier: 'pro',
-    keywords: ['car', 'engine', 'oil', 'tire', 'brake', 'repair', 'mechanic', 'toyota', 'ford', 'start']
+    keywords: ['car', 'engine', 'oil', 'repair', 'tire', 'brake', 'battery', 'noise', 'ford', 'toyota', 'vehicle', 'automotive', 'transmission', 'mechanic']
   },
   
   // ELITE TIER (6 total)
@@ -90,7 +90,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Lawyer here. Let\'s protect your rights today, {userName}.',
     color: 'yellow', 
     requiredTier: 'elite',
-    keywords: ['law', 'legal', 'contract', 'sue', 'divorce', 'rights', 'court', 'attorney']
+    keywords: ['legal', 'law', 'contract', 'sue', 'divorce', 'will', 'rights', 'court', 'attorney', 'agreement', 'lawsuit', 'judge']
   },
   { 
     id: 'techie', 
@@ -100,7 +100,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'I\'m the Techie! Let\'s get those gadgets working for you, {userName}.',
     color: 'purple', 
     requiredTier: 'elite',
-    keywords: ['computer', 'wifi', 'printer', 'phone', 'app', 'bluetooth', 'laptop', 'screen', 'keyboard']
+    keywords: ['wifi', 'computer', 'phone', 'app', 'printer', 'screen', 'laptop', 'mac', 'windows', 'update', 'bluetooth', 'internet', 'software', 'tech']
   },
   
   // MAX TIER (10 total)
@@ -112,7 +112,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: '{userName}, I am the Storyteller. Shall we create a custom story?',
     color: 'indigo', 
     requiredTier: 'max',
-    keywords: ['story', 'tale', 'history', 'write', 'book']
+    keywords: ['story', 'tale', 'history', 'write', 'poem', 'book', 'narrative', 'creative', 'fiction']
   },
   { 
     id: 'comedian', 
@@ -122,7 +122,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Ready for a laugh, {userName}? Let\'s fix your tech with a smile.',
     color: 'pink', 
     requiredTier: 'max',
-    keywords: ['comedy', 'standup']
+    keywords: ['comedy', 'joke', 'standup', 'hilarious', 'funny', 'laugh']
   },
   { 
     id: 'chef', 
@@ -132,7 +132,7 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Chef in the house! What are we cooking today, {userName}?',
     color: 'red', 
     requiredTier: 'max',
-    keywords: ['cook', 'recipe', 'food', 'kitchen', 'eat', 'dinner', 'lunch']
+    keywords: ['cook', 'recipe', 'food', 'kitchen', 'eat', 'dinner', 'ingredient', 'bake', 'oven', 'stove', 'meal', 'cooking']
   },
   { 
     id: 'fitness', 
@@ -142,9 +142,12 @@ const PERSONAS: PersonaConfig[] = [
     spokenHook: 'Coach here! Let\'s get you moving safely today, {userName}.',
     color: 'green', 
     requiredTier: 'max',
-    keywords: ['fitness', 'workout', 'pain', 'health', 'exercise', 'walk', 'run']
+    keywords: ['fitness', 'workout', 'pain', 'health', 'exercise', 'walk', 'gym', 'mobility', 'sore', 'strength', 'training']
   }
 ];
+
+// Intent words that override mission guards
+const INTENT_WORDS = ['help', 'broken', 'fix', 'seriously', 'need', 'problem', 'issue', 'trouble'];
 
 export default function ChatInterface({ 
   currentPersona, 
@@ -166,10 +169,10 @@ export default function ChatInterface({
   const [hasGivenVerbalHandshake, setHasGivenVerbalHandshake] = useState(false);
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // --- VOICE & MIC (Privacy Shield) ---
-  const [isListening, setIsListening] = useState(true); 
+  // --- VOICE & MIC (Privacy Shield) - FIXED TAP-TO-TALK ---
+  const [isListening, setIsListening] = useState(false); // DEFAULT: OFF
   const [micActive, setMicActive] = useState(false);
-  const [autoTTS, setAutoTTS] = useState(true); 
+  const [autoTTS, setAutoTTS] = useState(true); // INDEPENDENT AI VOICE TOGGLE
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [instantVoice, setInstantVoice] = useState(false);
@@ -177,10 +180,10 @@ export default function ChatInterface({
   // --- TIMEOUT LOOP FIX: USE REFS ---
   const lastInteractionTimeRef = useRef(Date.now());
   const isInStandbyModeRef = useRef(false);
-  const isListeningRef = useRef(true); 
+  const isListeningRef = useRef(false); 
   const standbyTimerRef = useRef<any>(null);
   
-  // We still need state for the UI render
+  // State for UI render
   const [isInStandbyMode, setIsInStandbyMode] = useState(false); 
   
   // --- UI STATE ---
@@ -288,6 +291,10 @@ export default function ChatInterface({
       isListeningRef.current = isListening;
   }, [isListening]);
 
+  useEffect(() => {
+      isInStandbyModeRef.current = isInStandbyMode;
+  }, [isInStandbyMode]);
+
   const initializeLylo = async () => {
     await loadUserStats();
     await checkEliteStatus();
@@ -295,6 +302,7 @@ export default function ChatInterface({
     detectUserName();
     startPrivacyShieldMonitoring();
     
+    // PROACTIVE INITIATION: AI speaks first even though mic starts OFF
     if (!hasGivenVerbalHandshake) {
       setTimeout(() => giveVerbalHandshake(), 1000);
     }
@@ -318,6 +326,9 @@ export default function ChatInterface({
     
     const savedUserName = localStorage.getItem('lylo_user_name');
     if (savedUserName) setUserName(savedUserName);
+    
+    const savedAutoTTS = localStorage.getItem('lylo_auto_tts');
+    if (savedAutoTTS === 'false') setAutoTTS(false);
   };
 
   // --- ONBOARDING QUIZ HANDLERS ---
@@ -335,16 +346,16 @@ export default function ChatInterface({
     }
   };
 
-  const completeQuiz = (finalAnswers: any) => {
+  const completeQuiz = async (finalAnswers: any) => {
     localStorage.setItem('lylo_quiz_complete', 'true');
     localStorage.setItem('lylo_quiz_answers', JSON.stringify(finalAnswers));
     localStorage.setItem('lylo_intelligence_sync', '15'); 
     setIntelligenceSync(15);
     setShowQuizOverlay(false);
     
-    setTimeout(() => {
-      initializeLylo();
-      speakText("Thank you. I have calibrated your security profile. I am now active and listening.");
+    setTimeout(async () => {
+      await initializeLylo();
+      await speakText("Thank you. I have calibrated your security profile. I am now active and ready to protect you.");
     }, 500);
   };
 
@@ -387,12 +398,12 @@ export default function ChatInterface({
     setMessages(prev => [...prev, botMsg]);
   };
 
-  // --- VERBAL HANDSHAKE ---
+  // --- VERBAL HANDSHAKE (PROACTIVE INITIATION) ---
   const giveVerbalHandshake = async () => {
     if (hasGivenVerbalHandshake) return;
     
     const handshakeMessage = getVerbalHandshakeMessage();
-    await speakText(handshakeMessage);
+    await speakText(handshakeMessage); // AI speaks first regardless of mic state
     
     const botMsg: Message = { 
       id: Date.now().toString(), 
@@ -413,20 +424,20 @@ export default function ChatInterface({
     
     switch (userTier) {
       case 'max':
-        return `Hello ${displayName}, I am LYLO. As a Max member, you have my full team of 10 experts standing by. I am your Digital Bodyguard, but I am also your personal search engine. You can ask me absolutely anything—from deep research to car repairs—and I will find the answer specifically for you. My mic is ON—you are fully protected. What can I find for you today?`;
+        return `Hello ${displayName}, I am LYLO. As a Max member, you have my full team of 10 experts standing by. I am your Digital Bodyguard, but I am also your personal search engine. You can ask me absolutely anything—from deep research to car repairs—and I will find the answer specifically for you. Click the microphone when you're ready to speak. What can I find for you today?`;
       
       case 'elite':
-        return `Hello ${displayName}, I am LYLO. As an Elite member, you have access to ${accessibleCount} of my expert team members. I am your Digital Bodyguard and personalized search engine. You can ask me anything and I will find answers specifically for you. My mic is ON—you are protected. How can I help you today?`;
+        return `Hello ${displayName}, I am LYLO. As an Elite member, you have access to ${accessibleCount} of my expert team members. I am your Digital Bodyguard and personalized search engine. You can ask me anything and I will find answers specifically for you. Click the microphone to speak. How can I help you today?`;
       
       case 'pro':
-        return `Hello ${displayName}, I am LYLO. As a Pro member, you have ${accessibleCount} expert team members at your service. I am your Digital Bodyguard and custom search engine. Ask me anything and I'll find the answer for you. My mic is ON—you are secure. What do you need?`;
+        return `Hello ${displayName}, I am LYLO. As a Pro member, you have ${accessibleCount} expert team members at your service. I am your Digital Bodyguard and custom search engine. Ask me anything and I'll find the answer for you. Click the microphone to get started. What do you need?`;
       
       default: // free
-        return `Hello ${displayName}, I am LYLO, your Digital Bodyguard. I'm also your personal search engine—ask me anything and I'll find the answer specifically for you. My mic is ON to keep you protected. What can I help you find today?`;
+        return `Hello ${displayName}, I am LYLO, your Digital Bodyguard. I'm also your personal search engine—ask me anything and I'll find the answer specifically for you. Click the microphone when you're ready to speak. What can I help you find today?`;
     }
   };
 
-  // --- AUTO-SWITCH LOGIC ---
+  // --- INTELLIGENT AUTO-SWITCH LOGIC WITH CONTEXT GUARDS ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
       const expansionMessage = `I can help with the security side of that, ${userName || 'friend'}, but for ${persona.description.toLowerCase()}, we need to bring in ${persona.name}. Would you like me to expand your team and deploy them to your side now?`;
@@ -461,13 +472,55 @@ export default function ChatInterface({
     incrementIntelligenceSync();
   };
 
+  const shouldAutoSwitch = (userMessage: string, currentPersonaId: string): boolean => {
+    const lowerMsg = userMessage.toLowerCase();
+    
+    // SOURCE GUARD: Only auto-switch based on USER messages (this function is only called for user messages)
+    
+    // MISSION OVERRIDE: If current persona is entertainment-focused, require intent words
+    const entertainmentPersonas = ['comedian', 'storyteller', 'roast'];
+    if (entertainmentPersonas.includes(currentPersonaId)) {
+      const hasIntentWord = INTENT_WORDS.some(word => lowerMsg.includes(word));
+      if (!hasIntentWord) {
+        return false; // Stay in entertainment mode unless user shows clear intent to switch
+      }
+    }
+    
+    return true; // Allow switching for all other cases
+  };
+
+  const findBestPersonaMatch = (userMessage: string, currentPersonaId: string): PersonaConfig | null => {
+    if (!shouldAutoSwitch(userMessage, currentPersonaId)) {
+      return null;
+    }
+    
+    const lowerMsg = userMessage.toLowerCase();
+    let bestMatch: PersonaConfig | null = null;
+    let maxMatches = 0;
+    
+    // Find persona with most keyword matches
+    for (const persona of PERSONAS) {
+      // Don't switch if already using this persona
+      if (persona.id === currentPersonaId) continue;
+      
+      const matches = persona.keywords.filter(keyword => lowerMsg.includes(keyword)).length;
+      if (matches > maxMatches) {
+        maxMatches = matches;
+        bestMatch = persona;
+      }
+    }
+    
+    // Only switch if we found at least one matching keyword
+    return maxMatches > 0 ? bestMatch : null;
+  };
+
   const incrementIntelligenceSync = () => {
     const newSync = Math.min(intelligenceSync + 5, 100);
     setIntelligenceSync(newSync);
     localStorage.setItem('lylo_intelligence_sync', newSync.toString());
   };
 
-  // --- PRIVACY SHIELD (Auto-Standby) ---
+  // --- PRIVACY SHIELD (Auto-Standby) - FIXED TIMEOUT LOOP ---
   const startPrivacyShieldMonitoring = () => {
     if (standbyTimerRef.current) {
       clearInterval(standbyTimerRef.current);
@@ -477,7 +530,10 @@ export default function ChatInterface({
       const timeSinceLastInteraction = Date.now() - lastInteractionTimeRef.current;
       
       // Check refs to ensure we have the latest state
-      if (timeSinceLastInteraction > 120000 && !isInStandbyModeRef.current && isListeningRef.current) {
+      // ONLY trigger standby if mic is currently ON
+      if (timeSinceLastInteraction > 120000 && 
+          !isInStandbyModeRef.current && 
+          isListeningRef.current) {
         goToStandbyMode();
       }
     }, 10000); // Check every 10 seconds
@@ -492,7 +548,11 @@ export default function ChatInterface({
     
     const displayName = userName || getUserDisplayName() || 'Friend';
     const standbyMessage = `${displayName}, I am going on standby to protect your privacy. Click the mic when you need me.`;
-    await speakText(standbyMessage);
+    
+    // Only speak the standby message if the mic was actually ON
+    if (isListeningRef.current) {
+      await speakText(standbyMessage);
+    }
     
     const botMsg: Message = { 
       id: Date.now().toString(), 
@@ -507,7 +567,6 @@ export default function ChatInterface({
   const wakeFromStandby = () => {
     isInStandbyModeRef.current = false;
     setIsInStandbyMode(false);
-    setIsListening(true);
     lastInteractionTimeRef.current = Date.now();
   };
 
@@ -518,14 +577,14 @@ export default function ChatInterface({
     }
   };
 
-  // --- AUDIO FUNCTIONS ---
+  // --- AUDIO FUNCTIONS (INDEPENDENT AI VOICE TOGGLE) ---
   const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
   };
 
   const speakText = async (text: string, forceGender?: string) => {
-    if (!autoTTS && !forceGender) return;
+    if (!autoTTS && !forceGender) return; // Respect the AI Voice toggle
     if (!text) return;
     
     quickStopAllAudio();
@@ -535,6 +594,7 @@ export default function ChatInterface({
 
     setIsSpeaking(true);
 
+    // Try OpenAI TTS first if realistic voice is enabled
     if (!instantVoice && cleanText.length < 800) {
       try {
         const formData = new FormData();
@@ -559,6 +619,7 @@ export default function ChatInterface({
       }
     }
     
+    // Fallback to browser speech synthesis
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 0.9;
     utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
@@ -567,7 +628,7 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- SPEECH RECOGNITION ---
+  // --- TAP-TO-TALK SPEECH RECOGNITION ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -577,12 +638,12 @@ export default function ChatInterface({
       recognition.interimResults = true;
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
-      recognition._manuallyStopped = false;
 
-      recognition.onstart = () => { if (!recognition._manuallyStopped) setMicActive(true); };
+      recognition.onstart = () => {
+        setMicActive(true);
+      };
       
       recognition.onresult = (event: any) => {
-        if (recognition._manuallyStopped) return;
         updateInteractionTime();
         
         let finalTranscript = '';
@@ -604,13 +665,8 @@ export default function ChatInterface({
 
       recognition.onend = () => {
         setMicActive(false);
-        if (isListening && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
-          setTimeout(() => {
-            if (isListening && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
-              try { recognition.start(); } catch (e) { setIsListening(false); }
-            }
-          }, 50);
-        }
+        // TAP-TO-TALK: Don't restart automatically
+        setIsListening(false);
       };
       
       recognitionRef.current = recognition;
@@ -620,12 +676,17 @@ export default function ChatInterface({
     }
   }, [language]);
 
+  // Start recognition when listening is enabled (TAP-TO-TALK)
   useEffect(() => {
     const recognition = recognitionRef.current;
     if (!recognition) return;
-    if (isListening && !micActive && !recognition._manuallyStopped && !isInStandbyModeRef.current) {
-      recognition._manuallyStopped = false;
-      try { recognition.start(); } catch(e) { setIsListening(false); }
+    
+    if (isListening && !micActive && !isInStandbyModeRef.current) {
+      try { 
+        recognition.start(); 
+      } catch(e) { 
+        setIsListening(false); 
+      }
     }
   }, [isListening]);
 
@@ -661,6 +722,8 @@ export default function ChatInterface({
       } else {
         setUserTier('free');
       }
+      
+      localStorage.setItem('userTier', data.tier || 'free');
     } catch (error) {
       console.error('Failed to check elite status:', error);
     }
@@ -675,18 +738,23 @@ export default function ChatInterface({
   };
 
   const toggleListening = () => {
-    if (!micSupported) return alert('Microphone not supported');
+    if (!micSupported) {
+      alert('Microphone not supported');
+      return;
+    }
+    
     updateInteractionTime();
     
     if (isListening || micActive) {
+      // Turn OFF: Stop recognition and turn off listening
       const recognition = recognitionRef.current;
       if (recognition) {
-        recognition._manuallyStopped = true;
         try { recognition.stop(); } catch (e) {}
       }
       setIsListening(false);
       setMicActive(false);
     } else {
+      // Turn ON: Start listening (tap-to-talk)
       quickStopAllAudio();
       setIsListening(true);
       if (isInStandbyModeRef.current) {
@@ -697,7 +765,9 @@ export default function ChatInterface({
 
   const toggleTTS = () => {
     quickStopAllAudio();
-    setAutoTTS(!autoTTS);
+    const newAutoTTS = !autoTTS;
+    setAutoTTS(newAutoTTS);
+    localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -728,48 +798,46 @@ export default function ChatInterface({
       return; 
     }
 
-    // --- AUTO-SWITCH LOGIC ---
+    // --- INTELLIGENT AUTO-SWITCH LOGIC WITH CONTEXT GUARDS ---
     let finalPersonaId = currentPersona.id;
     let switched = false;
 
     if (textToSend) {
-        const lowerMsg = textToSend.toLowerCase();
-        for (const persona of PERSONAS) {
-            // Don't switch if we are already there
-            if (persona.id === currentPersona.id) continue;
-            
-            // Check matching keywords
-            if (persona.keywords.some(k => lowerMsg.includes(k))) {
-                // Check Access
-                if (canAccessPersona(persona)) {
-                    // SWITCH!
-                    onPersonaChange(persona);
-                    finalPersonaId = persona.id;
-                    switched = true;
-                    
-                    const switchMsg = `[Auto-Switch] Bringing in ${persona.name}...`;
-                    setMessages(prev => [...prev, { 
-                      id: Date.now().toString(), 
-                      content: switchMsg, 
-                      sender: 'bot', 
-                      timestamp: new Date(),
-                      confidenceScore: 100
-                    }]);
-                    break; // Stop checking
-                } else {
-                    // UPSOLD - Stop processing
-                    const expansionMessage = `I see you need help with ${persona.description.toLowerCase()}, but for that, we need to bring in ${persona.name}. Would you like me to expand your team and deploy them to your side now?`;
-                    setMessages(prev => [...prev, { 
-                      id: Date.now().toString(), 
-                      content: expansionMessage, 
-                      sender: 'bot', 
-                      timestamp: new Date(),
-                      confidenceScore: 90
-                    }]);
-                    await speakText(expansionMessage);
-                    setInput(''); // Clear input
-                    return; // EXIT
-                }
+        const bestMatch = findBestPersonaMatch(textToSend, currentPersona.id);
+        
+        if (bestMatch) {
+            // TIER VALIDATION: Check if user can access this persona
+            if (canAccessPersona(bestMatch)) {
+                // SWITCH!
+                onPersonaChange(bestMatch);
+                finalPersonaId = bestMatch.id;
+                switched = true;
+                
+                const switchMsg = `[Auto-Switch] Bringing in ${bestMatch.name}...`;
+                setMessages(prev => [...prev, { 
+                  id: Date.now().toString(), 
+                  content: switchMsg, 
+                  sender: 'bot', 
+                  timestamp: new Date(),
+                  confidenceScore: 100
+                }]);
+            } else {
+                // TEAM EXPANSION UPSELL - Stop processing
+                const expansionMessage = `I see you need help with ${bestMatch.description.toLowerCase()}, but for that, we need to bring in ${bestMatch.name}. Would you like me to expand your team and deploy them to your side now?`;
+                setMessages(prev => [...prev, { 
+                  id: Date.now().toString(), 
+                  content: expansionMessage, 
+                  sender: 'bot', 
+                  timestamp: new Date(),
+                  confidenceScore: 90
+                }]);
+                await speakText(expansionMessage);
+                setInput(''); // Clear input
+                
+                // Turn off mic after sending (TAP-TO-TALK behavior)
+                setIsListening(false);
+                setMicActive(false);
+                return; // EXIT
             }
         }
     }
@@ -787,6 +855,10 @@ export default function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+
+    // Turn off mic after sending (TAP-TO-TALK behavior)
+    setIsListening(false);
+    setMicActive(false);
 
     try {
       // Add search verbalization for general questions
@@ -833,6 +905,10 @@ export default function ChatInterface({
       };
       
       setMessages(prev => [...prev, botMsg]);
+      
+      // Speak the response if AI voice is enabled
+      await speakText(response.answer);
+      
       setSelectedImage(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       await loadUserStats();
@@ -1277,12 +1353,13 @@ export default function ChatInterface({
         </div>
       )}
 
-      {showLimitModal && (
+      {/* FIXED: Protection Limit Modal appears exactly ONCE */}
+      {showLimitModal && userStats && (
         <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
              <div className="text-4xl mb-3">🛡️</div>
              <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Protection Limit Reached</h2>
-             <p className="text-gray-300 text-sm mb-6">You have used all {userStats?.usage.limit} daily protections. Upgrade to expand your digital bodyguard team.</p>
+             <p className="text-gray-300 text-sm mb-6">You have used all {userStats.usage.limit} daily protections. Upgrade to expand your digital bodyguard team.</p>
              <button onClick={() => { setShowLimitModal(false); onLogout(); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-all">Expand Team</button>
              <button onClick={() => setShowLimitModal(false)} className="mt-3 text-gray-500 text-xs font-bold hover:text-gray-300">Continue Reading</button>
           </div>
@@ -1334,12 +1411,19 @@ export default function ChatInterface({
                   <div className="mb-3">
                     <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Voice</label>
                     <div className="flex gap-2 mb-2">
-                      <button onClick={() => setVoiceGender('male')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'male' ? 'bg-slate-700 text-white' : 'bg-white/5 text-gray-400'}`}>Male</button>
-                      <button onClick={() => setVoiceGender('female')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200' : 'bg-white/5 text-gray-400'}`}>Female</button>
+                      <button onClick={() => { setVoiceGender('male'); localStorage.setItem('lylo_voice_gender', 'male'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'male' ? 'bg-slate-700 text-white' : 'bg-white/5 text-gray-400'}`}>Male</button>
+                      <button onClick={() => { setVoiceGender('female'); localStorage.setItem('lylo_voice_gender', 'female'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200' : 'bg-white/5 text-gray-400'}`}>Female</button>
                     </div>
-                    <button onClick={() => setInstantVoice(!instantVoice)} className={`w-full py-2 rounded text-xs font-bold uppercase ${instantVoice ? 'bg-orange-700 text-orange-200' : 'bg-green-700 text-green-200'}`}>
+                    <button onClick={() => { const newInstant = !instantVoice; setInstantVoice(newInstant); localStorage.setItem('lylo_instant_voice', newInstant.toString()); }} className={`w-full py-2 rounded text-xs font-bold uppercase ${instantVoice ? 'bg-orange-700 text-orange-200' : 'bg-green-700 text-green-200'}`}>
                       {instantVoice ? 'Instant Voice' : 'Realistic Voice'}
                     </button>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-gray-400 text-xs uppercase tracking-wider mb-2 block">Bible Version (Disciple)</label>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setBibleVersion('kjv'); localStorage.setItem('lylo_bible_version', 'kjv'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'kjv' ? 'bg-gold-600 text-white' : 'bg-white/5 text-gray-400'}`}>KJV</button>
+                      <button onClick={() => { setBibleVersion('esv'); localStorage.setItem('lylo_bible_version', 'esv'); }} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${bibleVersion === 'esv' ? 'bg-gold-600 text-white' : 'bg-white/5 text-gray-400'}`}>ESV</button>
+                    </div>
                   </div>
                 </div>
                 <button onClick={onLogout} className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors">Exit Protection</button>
@@ -1434,20 +1518,23 @@ export default function ChatInterface({
 
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/5 p-3 z-[100002]">
         <div className="bg-black/70 backdrop-blur-xl rounded-xl border border-white/10 p-3">
+          {/* TAP-TO-TALK Status */}
           {(isListening || micActive) && !isInStandbyMode && (
             <div className="mb-2 p-2 bg-blue-900/20 border border-blue-500/30 rounded text-blue-400 text-[10px] font-black uppercase text-center animate-pulse tracking-widest">
-              🛡️ BODYGUARD LISTENING - PROTECTED
+              🛡️ TAP-TO-TALK ACTIVE - RECORDING
             </div>
           )}
           <div className="flex items-center justify-between mb-3">
-            <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all border ${(isListening || micActive) && !isInStandbyMode ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : isInStandbyMode ? 'bg-gray-700 text-gray-300 border-gray-500' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed border-gray-600'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{isInStandbyMode ? 'Wake' : (isListening || micActive) ? 'Listening' : 'Mic'}</button>
+            {/* TAP-TO-TALK Microphone Button */}
+            <button onClick={toggleListening} disabled={loading || !micSupported} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all border ${(isListening || micActive) && !isInStandbyMode ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' : isInStandbyMode ? 'bg-gray-700 text-gray-300 border-gray-500' : micSupported ? 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20' : 'bg-gray-700 text-gray-500 cursor-not-allowed border-gray-600'} disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{isInStandbyMode ? 'Wake' : (isListening || micActive) ? 'Recording' : 'Mic'}</button>
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
-            <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative border ${autoTTS ? 'bg-[#3b82f6] text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
+            {/* INDEPENDENT AI VOICE TOGGLE */}
+            <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative border ${autoTTS ? 'bg-[#3b82f6] text-white border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20'}`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>AI Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
           <div className="flex items-end gap-3">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg transition-all ${selectedImage ? 'bg-green-600 text-white shadow-lg shadow-green-500/20' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`} title="Vision Link">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2v12a2 2 0 002 2z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </button>
             <div className="flex-1">
               <textarea ref={inputRef} value={input} onChange={(e) => !(isListening || micActive) && setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isInStandbyMode ? "Wake LYLO to continue..." : (isListening || micActive) ? "Listening for voice commands..." : selectedImage ? `Vision ready: ${selectedImage.name}...` : `Ask ${currentPersona.name} anything...`} disabled={loading || (isListening || micActive) || isInStandbyMode} className={`w-full bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[80px] font-medium pt-2 ${isInStandbyMode ? 'text-gray-500 cursor-not-allowed' : (isListening || micActive) ? 'text-blue-300 italic cursor-not-allowed' : ''}`} style={{ fontSize: `${zoomLevel / 100}rem` }} rows={1} />
