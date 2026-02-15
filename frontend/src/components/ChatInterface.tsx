@@ -248,6 +248,13 @@ export default function ChatInterface({
   // --- INITIALIZATION ---
   useEffect(() => {
     initializeLylo();
+    
+    // Cleanup function
+    return () => {
+      if (standbyTimerRef.current) {
+        clearInterval(standbyTimerRef.current);
+      }
+    };
   }, [userEmail]);
 
   const initializeLylo = async () => {
@@ -432,7 +439,7 @@ export default function ChatInterface({
     await speakText(syncMessage);
   };
 
-  // --- PRIVACY SHIELD (Auto-Standby) ---
+  // --- PRIVACY SHIELD (Auto-Standby) - FIXED ---
   const startPrivacyShieldMonitoring = () => {
     const checkStandby = () => {
       const timeSinceLastInteraction = Date.now() - lastInteractionTime;
@@ -442,16 +449,28 @@ export default function ChatInterface({
       }
     };
     
-    const monitoringInterval = setInterval(checkStandby, 10000); // Check every 10 seconds
+    // Clear existing interval if any
+    if (standbyTimerRef.current) {
+      clearInterval(standbyTimerRef.current);
+    }
     
-    return () => clearInterval(monitoringInterval);
+    standbyTimerRef.current = setInterval(checkStandby, 10000); // Check every 10 seconds
+    
+    return () => {
+      if (standbyTimerRef.current) {
+        clearInterval(standbyTimerRef.current);
+      }
+    };
   };
 
   const goToStandbyMode = async () => {
+    if (isInStandbyMode) return; // Prevent multiple calls
+    
     setIsInStandbyMode(true);
     setIsListening(false);
     
-    const standbyMessage = `${userName || 'Friend'}, I am going on standby to protect your privacy. Click the mic when you need me.`;
+    const displayName = userName || getUserDisplayName() || 'Friend';
+    const standbyMessage = `${displayName}, I am going on standby to protect your privacy. Click the mic when you need me.`;
     await speakText(standbyMessage);
     
     const botMsg: Message = { 
@@ -958,17 +977,32 @@ export default function ChatInterface({
           </p>
         </button>
 
-        <button
-          onClick={() => setShowDropdown(true)}
-          className="bg-gray-900/60 backdrop-blur-xl border border-purple-500/30 rounded-xl p-6 text-left hover:bg-gray-800/80 transition-all duration-300 group"
-        >
-          <h3 className="text-purple-400 font-black text-lg mb-2 uppercase tracking-wider group-hover:text-purple-300">
-            Expert Access
-          </h3>
-          <p className="text-gray-300 text-sm font-medium">
-            Access: {getAccessiblePersonas().length}/10 specialists
-          </p>
-        </button>
+        {/* ELITE/MAX EXCLUSIVE: Scam Recovery Center */}
+        {isEliteUser ? (
+          <button
+            onClick={openScamRecovery}
+            className="bg-gray-900/60 backdrop-blur-xl border border-red-500/50 rounded-xl p-6 text-left hover:bg-gray-800/80 transition-all duration-300 group animate-pulse"
+          >
+            <h3 className="text-red-400 font-black text-lg mb-2 uppercase tracking-wider group-hover:text-red-300">
+              🛡️ Been Scammed?
+            </h3>
+            <p className="text-gray-300 text-sm font-medium">
+              Elite Recovery Center - Get Help Now
+            </p>
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowDropdown(true)}
+            className="bg-gray-900/60 backdrop-blur-xl border border-purple-500/30 rounded-xl p-6 text-left hover:bg-gray-800/80 transition-all duration-300 group"
+          >
+            <h3 className="text-purple-400 font-black text-lg mb-2 uppercase tracking-wider group-hover:text-purple-300">
+              Expert Access
+            </h3>
+            <p className="text-gray-300 text-sm font-medium">
+              Access: {getAccessiblePersonas().length}/10 specialists
+            </p>
+          </button>
+        )}
       </div>
 
       {/* Privacy Shield Status */}
