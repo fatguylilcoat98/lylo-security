@@ -889,6 +889,37 @@ export default function ChatInterface({
     return searchIndicators.some(indicator => lowerQuery.includes(indicator));
   };
 
+  const handleGetFullGuide = async () => {
+    if (!isEliteUser) {
+      alert('Scam Recovery Center requires Elite team access.');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
+      if (!response.ok) {
+        throw new Error('Failed to load recovery guide');
+      }
+      const data = await response.json();
+      setGuideData(data);
+      setShowFullGuide(true); 
+    } catch (error) {
+      console.error('Recovery guide error:', error);
+      alert("Could not load the recovery guide. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openScamRecovery = () => {
+    if (!isEliteUser) {
+      alert('Scam Recovery Center is exclusive to Elite and Max tier members.');
+      return;
+    }
+    setShowScamRecovery(true);
+  };
+
   const cycleFontSize = () => {
     if (zoomLevel < 100) onZoomChange(100);
     else if (zoomLevel < 125) onZoomChange(125);
@@ -1024,6 +1055,105 @@ export default function ChatInterface({
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont'
     }}>
       
+      {/* --- SCAM RECOVERY MODAL --- */}
+      {showScamRecovery && (
+        <div className="fixed inset-0 z-[100020] bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-black/95 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-red-400 font-black text-lg uppercase tracking-wider">🛡️ SCAM RECOVERY CENTER</h2>
+              <button onClick={() => setShowScamRecovery(false)} className="text-white text-xl font-bold px-3 py-1 bg-red-600 rounded-lg">X</button>
+            </div>
+            <div className="space-y-4 text-sm">
+              <div className="bg-red-900/20 border border-red-500/30 rounded p-3">
+                <p className="text-red-300 font-bold mb-2">IMMEDIATE ACTIONS:</p>
+                <ul className="text-gray-300 space-y-1 text-xs">
+                  <li>• STOP sending any more money immediately</li>
+                  <li>• Call your bank fraud department right now</li>
+                  <li>• Change all passwords and enable 2FA</li>
+                  <li>• Screenshot everything for evidence</li>
+                  <li>• File police report with documentation</li>
+                </ul>
+              </div>
+              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded p-3">
+                <p className="text-yellow-300 font-bold mb-2">PHONE SCRIPT FOR BANK:</p>
+                <p className="text-gray-300 text-xs italic">"This is a fraud emergency. I need to report unauthorized access to my account and fraudulent transfers. Connect me to your fraud specialist immediately."</p>
+              </div>
+              <button
+                className={`w-full py-3 px-4 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${loading ? 'bg-gray-700 cursor-not-allowed text-gray-400' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                onClick={handleGetFullGuide}
+                disabled={loading}
+              >
+                {loading ? <span>GENERATING GUIDE...</span> : <span>🛡️ GET FULL RECOVERY GUIDE</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- RECOVERY GUIDE MODAL --- */}
+      {showFullGuide && guideData && (
+        <div className="fixed inset-0 z-[100030] bg-black/95 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-red-500/50 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-800 bg-red-900/20 flex justify-between items-start flex-shrink-0">
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2 uppercase tracking-wider">
+                  {guideData.title}
+                </h2>
+                <p className="text-red-300 text-xs mt-1 font-bold">{guideData.subtitle}</p>
+              </div>
+              <button 
+                onClick={() => setShowFullGuide(false)}
+                className="p-2 bg-black/40 hover:bg-white/10 rounded-lg text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 space-y-6 overflow-y-auto flex-1">
+              <section>
+                <h3 className="text-red-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-red-500/30 pb-1">Phase 1: Stop the Bleeding</h3>
+                <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
+                  <ul className="space-y-2">
+                    {guideData.immediate_actions.map((action, i) => (
+                      <li key={i} className="flex items-start gap-2 text-gray-200 text-sm">
+                        <span className="text-red-500 font-bold mt-0.5">●</span>
+                        {action}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+              <section className="space-y-3">
+                <h3 className="text-blue-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-blue-500/30 pb-1">Phase 2: Recovery Protocol</h3>
+                {guideData.recovery_steps.map((step) => (
+                  <div key={step.step} className="bg-gray-800/40 rounded-lg p-3 border border-white/5">
+                    <h4 className="font-bold text-white text-sm mb-1">Step {step.step}: {step.title}</h4>
+                    <ul className="space-y-1 pl-4 border-l-2 border-blue-500/30">
+                      {step.actions.map((act, i) => <li key={i} className="text-gray-400 text-xs">{act}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </section>
+              <section>
+                <h3 className="text-green-500 font-black mb-2 uppercase tracking-widest text-xs border-b border-green-500/30 pb-1">Phase 3: Future Prevention</h3>
+                <ul className="grid grid-cols-1 gap-2">
+                  {guideData.prevention_tips.map((tip, i) => (
+                    <li key={i} className="bg-green-900/10 text-green-200 p-2 rounded border border-green-500/20 text-xs font-medium">{tip}</li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+            <div className="p-3 border-t border-gray-800 bg-gray-900 flex-shrink-0">
+              <button 
+                onClick={() => setShowFullGuide(false)}
+                className="bg-white text-black w-full py-3 rounded-lg font-black text-sm uppercase tracking-widest hover:bg-gray-200 transition-colors"
+              >
+                Close Recovery Guide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Limit Modal */}
       {showLimitModal && (
         <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
@@ -1048,8 +1178,31 @@ export default function ChatInterface({
           </div>
         </div>
       )}
+        <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
+             <div className="text-4xl mb-3">🛡️</div>
+             <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Protection Limit Reached</h2>
+             <p className="text-gray-300 text-sm mb-6">
+               You have used all {userStats?.usage.limit} daily protections. Upgrade to expand your digital bodyguard team.
+             </p>
+             <button 
+               onClick={() => { setShowLimitModal(false); onLogout(); }} 
+               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-all"
+             >
+               Expand Team
+             </button>
+             <button 
+               onClick={() => setShowLimitModal(false)}
+               className="mt-3 text-gray-500 text-xs font-bold hover:text-gray-300"
+             >
+               Continue Reading
+             </button>
+          </div>
+        </div>
+      )}
 
-      {/* Header */}
+      {/* Limit Modal */}
+      {showLimitModal && (
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
           <div className="relative">
