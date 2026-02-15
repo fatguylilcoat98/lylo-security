@@ -137,11 +137,11 @@ const PERSONAS: PersonaConfig[] = [
 
 export default function ChatInterface({ 
   currentPersona, 
-  userEmail,
-  zoomLevel,
-  onZoomChange,
-  onPersonaChange,
-  onLogout,
+  userEmail, 
+  zoomLevel, 
+  onZoomChange, 
+  onPersonaChange, 
+  onLogout, 
   onUsageUpdate
 }: ChatInterfaceProps) {
   
@@ -190,7 +190,7 @@ export default function ChatInterface({
     userEmail.toLowerCase().includes('elite') ||
     localStorage.getItem('userTier') === 'max'
   );
-   
+    
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -693,8 +693,8 @@ export default function ChatInterface({
     try {
       const cleanEmail = userEmail.toLowerCase().trim();
       if (cleanEmail.includes("stangman")) {
-          setIsEliteUser(true);
-          setUserTier('max');
+           setIsEliteUser(true);
+           setUserTier('max');
       }
       const response = await fetch(`${API_URL}/check-beta-access`, {
         method: 'POST',
@@ -1156,28 +1156,6 @@ export default function ChatInterface({
 
       {/* Limit Modal */}
       {showLimitModal && (
-        <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
-             <div className="text-4xl mb-3">🛡️</div>
-             <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Protection Limit Reached</h2>
-             <p className="text-gray-300 text-sm mb-6">
-               You have used all {userStats?.usage.limit} daily protections. Upgrade to expand your digital bodyguard team.
-             </p>
-             <button 
-               onClick={() => { setShowLimitModal(false); onLogout(); }} 
-               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-all"
-             >
-               Expand Team
-             </button>
-             <button 
-               onClick={() => setShowLimitModal(false)}
-               className="mt-3 text-gray-500 text-xs font-bold hover:text-gray-300"
-             >
-               Continue Reading
-             </button>
-          </div>
-        </div>
-      )}
         <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
              <div className="text-4xl mb-3">🛡️</div>
