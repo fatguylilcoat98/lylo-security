@@ -75,7 +75,7 @@ export default function ChatInterface({
   const [autoTTS, setAutoTTS] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
-  const [premiumVoice, setPremiumVoice] = useState(false); // Toggle for OpenAI vs Browser TTS
+  const [instantVoice, setInstantVoice] = useState(false); // Toggle for instant browser TTS vs realistic OpenAI
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
@@ -166,9 +166,9 @@ export default function ChatInterface({
     const savedBibleVersion = localStorage.getItem('lylo_bible_version');
     if (savedBibleVersion === 'esv') setBibleVersion('esv');
     
-    // Load premium voice preference
-    const savedPremiumVoice = localStorage.getItem('lylo_premium_voice');
-    if (savedPremiumVoice === 'true') setPremiumVoice(true);
+    // Load instant voice preference
+    const savedInstantVoice = localStorage.getItem('lylo_instant_voice');
+    if (savedInstantVoice === 'true') setInstantVoice(true);
   }, [userEmail]);
 
   useEffect(() => {
@@ -330,7 +330,7 @@ export default function ChatInterface({
     } catch (error) { console.error(error); }
   };
 
-  // SPEED-OPTIMIZED TTS FUNCTION - Hybrid approach
+  // 🎤 REALISTIC TTS BY DEFAULT - Optimized for speed while keeping quality
   const speakText = async (text: string, forceGender?: string) => {
     if ((!autoTTS && !forceGender) || !text) return;
     
@@ -343,20 +343,12 @@ export default function ChatInterface({
 
     setIsSpeaking(true);
 
-    // SPEED OPTIMIZATION: Use browser TTS by default (instant), premium TTS as option
-    if (!premiumVoice || cleanText.length > 500) {
-      // FAST BROWSER TTS (No network delay)
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 0.9;
-      utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // PREMIUM OPENAI TTS (for shorter messages when enabled)
+    // REALISTIC OPENAI TTS BY DEFAULT (with speed optimizations)
+    if (!instantVoice && cleanText.length < 800) {
       try {
         const formData = new FormData();
-        formData.append('text', cleanText.substring(0, 300)); // Limit length for speed
+        // SPEED OPTIMIZATION: Limit to 600 chars for faster processing while keeping quality
+        formData.append('text', cleanText.substring(0, 600));
         formData.append('voice', forceGender === 'male' || voiceGender === 'male' ? 'onyx' : 'nova');
 
         const response = await fetch(`${API_URL}/generate-audio`, {
@@ -370,18 +362,20 @@ export default function ChatInterface({
           audio.onended = () => setIsSpeaking(false);
           audio.onerror = () => setIsSpeaking(false);
           await audio.play();
-        } else {
-          throw new Error("No audio returned");
+          return; // Success - exit here with realistic voice
         }
       } catch (error) {
-        // Fallback to browser TTS
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.rate = 0.9;
-        utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
-        utterance.onend = () => setIsSpeaking(false);
-        window.speechSynthesis.speak(utterance);
+        console.log('OpenAI TTS failed, using browser fallback');
       }
     }
+    
+    // FALLBACK: Browser TTS (for long messages, instant mode, or when OpenAI fails)
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 0.9;
+    utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
   };
 
   useEffect(() => {
@@ -421,14 +415,14 @@ export default function ChatInterface({
     }, 100); // Reduced delay
   };
 
-  const togglePremiumVoice = () => {
+  const toggleInstantVoice = () => {
     quickStopAllAudio();
-    const newPremium = !premiumVoice;
-    setPremiumVoice(newPremium);
-    localStorage.setItem('lylo_premium_voice', newPremium.toString());
+    const newInstant = !instantVoice;
+    setInstantVoice(newInstant);
+    localStorage.setItem('lylo_instant_voice', newInstant.toString());
     
     setTimeout(() => {
-      speakText(newPremium ? "Premium voice enabled." : "Fast voice enabled.", voiceGender);
+      speakText(newInstant ? "Instant voice enabled." : "Realistic voice enabled.", voiceGender);
     }, 100);
   };
 
@@ -699,8 +693,8 @@ export default function ChatInterface({
                      <button onClick={() => handleVoiceToggle('male')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'male' ? 'bg-slate-700 text-white' : 'bg-white/5 text-gray-400'}`}>Male</button>
                      <button onClick={() => handleVoiceToggle('female')} className={`flex-1 py-2 rounded text-xs font-bold uppercase ${voiceGender === 'female' ? 'bg-pink-900/60 text-pink-200' : 'bg-white/5 text-gray-400'}`}>Female</button>
                    </div>
-                   <button onClick={togglePremiumVoice} className={`w-full py-2 rounded text-xs font-bold uppercase ${premiumVoice ? 'bg-purple-700 text-purple-200' : 'bg-white/5 text-gray-400'}`}>
-                     {premiumVoice ? 'Premium Voice ON' : 'Fast Voice ON'}
+                   <button onClick={toggleInstantVoice} className={`w-full py-2 rounded text-xs font-bold uppercase ${instantVoice ? 'bg-orange-700 text-orange-200' : 'bg-green-700 text-green-200'}`}>
+                     {instantVoice ? 'Instant Voice ON' : 'Realistic Voice ON ✨'}
                    </button>
                 </div>
 
