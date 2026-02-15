@@ -22,9 +22,9 @@ load_dotenv()
 
 # Initialize FastAPI App
 app = FastAPI(
-    title="LYLO Backend System - SPEED OPTIMIZED",
-    description="The central intelligence API for LYLO.PRO - Featuring Elite Recovery, King James Wisdom, and Human Voice Synthesis.",
-    version="15.1.0 - SPEED + ACCURACY EDITION"
+    title="LYLO Total Integration Backend",
+    description="Proactive Digital Bodyguard & Personalized Search Engine API for LYLO.PRO",
+    version="16.0.0 - TOTAL INTEGRATION EDITION"
 )
 
 # Configure CORS for Frontend Access
@@ -45,24 +45,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 
-# --- SAFETY SHIELD LIMITS (The "Butt-Saver" Logic) ---
+# --- TIER LIMITS (Updated for Total Integration) ---
 TIER_LIMITS = {
-    "free": 5,
-    "pro": 50,      # $1.99 Plan
-    "elite": 500,   # $4.99 Plan
-    "max": 5000     # $9.99 Plan (Safety cap)
+    "free": 10,     # Increased for better UX
+    "pro": 100,     # $1.99 Plan
+    "elite": 1000,  # $4.99 Plan
+    "max": 10000    # $9.99 Plan (Virtually unlimited)
 }
 
 # Persistent usage tracker (In-Memory for now)
 USAGE_TRACKER = defaultdict(int)
 
-print("--- SPEED OPTIMIZED SYSTEM DIAGNOSTICS ---")
-print(f"🔍 Tavily (Internet Search): {'✅ Active' if TAVILY_API_KEY else '❌ Inactive'}")
-print(f"🧠 Pinecone (Long-Term Memory): {'✅ Active' if PINECONE_API_KEY else '❌ Inactive'}")
-print(f"🤖 Gemini (Vision Analysis): {'✅ Active' if GEMINI_API_KEY else '❌ Inactive'}")
-print(f"🔥 OpenAI (Chat & Voice): {'✅ Active' if OPENAI_API_KEY else '❌ Inactive'}")
-print(f"💳 Stripe (Payments): {'✅ Active' if STRIPE_SECRET_KEY else '❌ Inactive'}")
-print("------------------------------------------")
+print("--- LYLO TOTAL INTEGRATION SYSTEM ---")
+print(f"🛡️ Digital Bodyguard: {'✅ Active' if OPENAI_API_KEY else '❌ Inactive'}")
+print(f"🔍 Search Engine: {'✅ Active' if TAVILY_API_KEY else '❌ Inactive'}")
+print(f"🧠 Intelligence Sync: {'✅ Active' if PINECONE_API_KEY else '❌ Inactive'}")
+print(f"👁️ Vision Analysis: {'✅ Active' if GEMINI_API_KEY else '❌ Inactive'}")
+print(f"💳 Team Expansion: {'✅ Active' if STRIPE_SECRET_KEY else '❌ Inactive'}")
+print("---------------------------------------")
 
 # Stripe Configuration
 if STRIPE_SECRET_KEY:
@@ -72,26 +72,26 @@ if STRIPE_SECRET_KEY:
 # CLIENT INITIALIZATION
 # ---------------------------------------------------------
 
-# Internet Search Client
+# Internet Search Client (Personalized Search Engine)
 tavily_client = None
 if TAVILY_API_KEY:
     try:
         tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
-        print("✅ Internet Search Client Initialized")
+        print("✅ Personalized Search Engine Ready")
     except Exception as e:
-        print(f"❌ Internet Search Client Failed: {e}")
+        print(f"❌ Search Engine Failed: {e}")
 
-# Memory Client (Pinecone)
+# Memory Client (Intelligence Sync)
 pc = None
 memory_index = None
 if PINECONE_API_KEY:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
-        index_name = "lylo-memory"
+        index_name = "lylo-intelligence-sync"
         
         existing_indexes = [idx.name for idx in pc.list_indexes()]
         if index_name not in existing_indexes:
-            print(f"⚙️ Creating Pinecone Index: {index_name} (Dimension: 1024)...")
+            print(f"⚙️ Creating Intelligence Sync Index: {index_name}")
             pc.create_index(
                 name=index_name,
                 dimension=1024,
@@ -99,33 +99,33 @@ if PINECONE_API_KEY:
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
         memory_index = pc.Index(index_name)
-        print("✅ Memory System Ready")
+        print("✅ Intelligence Sync Ready")
     except Exception as e:
-        print(f"❌ Memory System Failed: {e}")
+        print(f"❌ Intelligence Sync Failed: {e}")
 
-# AI Vision Clients
+# AI Vision Clients (Threat Assessment)
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_ready = True
-        print("✅ Gemini Vision Ready")
+        print("✅ Threat Assessment (Gemini) Ready")
     except Exception as e:
-        print(f"❌ Gemini Vision Failed: {e}")
+        print(f"❌ Gemini Threat Assessment Failed: {e}")
 
 openai_client = None
 if OPENAI_API_KEY:
     try:
         openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI Client Ready (Chat + Vision + Voice)")
+        print("✅ Digital Bodyguard (OpenAI) Ready")
     except Exception as e:
-        print(f"❌ OpenAI Client Failed: {e}")
+        print(f"❌ OpenAI Digital Bodyguard Failed: {e}")
 
 # ---------------------------------------------------------
-# USER DATABASE & MANAGEMENT
+# USER DATABASE & TEAM MANAGEMENT
 # ---------------------------------------------------------
 
-# Elite Users Database - FULL EXPLICIT LIST (UPDATED TO MAX)
+# Elite Users Database - Team Access Levels
 ELITE_USERS = {
     "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
     "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey"},
@@ -160,8 +160,9 @@ ELITE_USERS = {
     "cmlabane@gmail.com": {"tier": "max", "name": "Corie"}
 }
 
-# In-Memory Storage for Conversations and Quiz Data
+# In-Memory Storage for Intelligence Sync
 USER_CONVERSATIONS = defaultdict(list)
+USER_PROFILES = defaultdict(dict)
 QUIZ_ANSWERS = defaultdict(dict)
 
 def create_user_id(email: str) -> str:
@@ -169,51 +170,50 @@ def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
 # ---------------------------------------------------------
-# HUMAN VOICE GENERATION (The "Pennies" Route)
+# REALISTIC VOICE GENERATION (Enhanced for Proactive Speech)
 # ---------------------------------------------------------
 @app.post("/generate-audio")
 async def generate_audio(
     text: str = Form(...), 
     voice: str = Form("onyx")
 ):
-    """Generates high-quality human speech from text."""
+    """
+    Generates high-quality human speech for proactive Digital Bodyguard communication.
+    """
     if not openai_client:
-        return {"error": "OpenAI client not configured"}
+        return {"error": "Digital Bodyguard voice system not available"}
 
     try:
-        # SPEED OPTIMIZATION: Limit text length for faster processing
+        # Clean the text for optimal speech synthesis
         clean_text = text.replace("**", "").replace("#", "").replace("_", "").replace("`", "").strip()
         
-        # Cap at 500 chars for faster TTS generation
+        # Enhanced for proactive communication - longer text support
         response = await openai_client.audio.speech.create(
-            model="tts-1",  # Faster model
+            model="tts-1",
             voice=voice,
-            input=clean_text[:500]  # Reduced from 1000 for speed
+            input=clean_text[:800]  # Increased for longer proactive messages
         )
         
         audio_b64 = base64.b64encode(response.content).decode('utf-8')
         return {"audio_b64": audio_b64}
         
     except Exception as e:
-        print(f"❌ TTS Error: {e}")
+        print(f"❌ Digital Bodyguard Voice Error: {e}")
         return {"error": str(e)}
 
 # ---------------------------------------------------------
-# SPEED-OPTIMIZED MEMORY FUNCTIONS
+# INTELLIGENCE SYNC SYSTEM (Enhanced Memory)
 # ---------------------------------------------------------
-async def store_memory_in_pinecone(user_id: str, content: str, role: str, context: str = ""):
-    """Stores a single message in the long-term vector database."""
+async def store_intelligence_sync(user_id: str, content: str, role: str, context: str = ""):
+    """Stores intelligence data for personalized learning."""
     if not memory_index or not openai_client: 
         return
         
     try:
-        # SPEED OPTIMIZATION: Only store important messages (longer than 10 chars)
-        if len(content.strip()) < 10:
-            return
-            
+        # Enhanced intelligence categorization
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
-            input=f"{role}: {content[:200]} | Context: {context[:100]}", # Truncated for speed
+            input=f"{role}: {content[:300]} | Context: {context[:200]}",
             dimensions=1024
         )
         
@@ -223,102 +223,145 @@ async def store_memory_in_pinecone(user_id: str, content: str, role: str, contex
         metadata = {
             "user_id": user_id,
             "role": role,
-            "content": content[:300],  # Truncated for speed
+            "content": content[:400],
             "timestamp": datetime.now().isoformat(),
-            "context": context[:200]  # Truncated for speed
+            "context": context[:300],
+            "intelligence_category": categorize_intelligence(content)
         }
         
         memory_index.upsert([(memory_id, embedding, metadata)])
         
     except Exception as e:
-        print(f"❌ Memory storage failed: {e}")
+        print(f"❌ Intelligence Sync Storage Failed: {e}")
 
-async def retrieve_memories_from_pinecone(user_id: str, query: str, limit: int = 3) -> List[Dict]:
-    """SPEED OPTIMIZED: Retrieves only 3 most relevant memories instead of 8."""
+def categorize_intelligence(content: str) -> str:
+    """Categorizes intelligence for better personalization."""
+    content_lower = content.lower()
+    
+    if any(word in content_lower for word in ['car', 'engine', 'mechanic', 'repair']):
+        return 'automotive'
+    elif any(word in content_lower for word in ['cook', 'recipe', 'food', 'kitchen']):
+        return 'culinary'
+    elif any(word in content_lower for word in ['tech', 'computer', 'software', 'gadget']):
+        return 'technical'
+    elif any(word in content_lower for word in ['legal', 'law', 'rights', 'contract']):
+        return 'legal'
+    elif any(word in content_lower for word in ['fitness', 'exercise', 'health', 'workout']):
+        return 'fitness'
+    elif any(word in content_lower for word in ['story', 'tale', 'creative', 'writing']):
+        return 'creative'
+    elif any(word in content_lower for word in ['funny', 'joke', 'laugh', 'comedy']):
+        return 'entertainment'
+    elif any(word in content_lower for word in ['bible', 'scripture', 'spiritual', 'faith']):
+        return 'spiritual'
+    else:
+        return 'general'
+
+async def retrieve_intelligence_sync(user_id: str, query: str, category: str = "", limit: int = 3) -> List[Dict]:
+    """Retrieves personalized intelligence for better responses."""
     if not memory_index or not openai_client: 
         return []
         
     try:
-        # SPEED OPTIMIZATION: Truncate query for faster processing
         response = await openai_client.embeddings.create(
             model="text-embedding-3-small",
-            input=query[:100],  # Truncated for speed
+            input=query[:200],
             dimensions=1024
         )
         
         query_embedding = response.data[0].embedding
         
-        # SPEED OPTIMIZATION: Reduced top_k from 5 to 3, higher similarity threshold
+        # Enhanced filtering with category
+        filter_dict = {"user_id": user_id}
+        if category:
+            filter_dict["intelligence_category"] = category
+        
         results = memory_index.query(
             vector=query_embedding,
-            filter={"user_id": user_id},
-            top_k=limit,  # Reduced from 5 to 3
+            filter=filter_dict,
+            top_k=limit,
             include_metadata=True
         )
         
-        memories = []
+        intelligence = []
         for match in results.matches:
-            if match.score > 0.75:  # Higher threshold (was 0.7) for better matches only
-                memories.append({
+            if match.score > 0.75:
+                intelligence.append({
                     "content": match.metadata["content"],
                     "role": match.metadata["role"],
+                    "category": match.metadata.get("intelligence_category", "general"),
                     "timestamp": match.metadata["timestamp"],
-                    "similarity": match.score
+                    "relevance": match.score
                 })
-        return memories
+        return intelligence
         
     except Exception as e:
-        print(f"❌ Memory retrieval failed: {e}")
+        print(f"❌ Intelligence Sync Retrieval Failed: {e}")
         return []
 
-def store_user_memory(user_id: str, content: str, role: str):
-    """Helper function to store in both RAM and Pinecone."""
+def store_user_intelligence(user_id: str, content: str, role: str):
+    """Stores user intelligence in both RAM and vector database."""
     USER_CONVERSATIONS[user_id].append({
         "role": role, 
         "content": content, 
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "category": categorize_intelligence(content)
     })
     
-    # SPEED OPTIMIZATION: Only store in Pinecone for important messages
-    if len(content.strip()) > 15:  # Only meaningful messages
+    # Store in intelligence sync asynchronously
+    if len(content.strip()) > 20:
         try:
-            asyncio.create_task(store_memory_in_pinecone(user_id, content, role))
+            asyncio.create_task(store_intelligence_sync(user_id, content, role))
         except:
             pass
 
 # ---------------------------------------------------------
-# SPEED-OPTIMIZED WEB SEARCH FUNCTIONS
+# PERSONALIZED SEARCH ENGINE
 # ---------------------------------------------------------
 
-# SPEED OPTIMIZATION: More selective web search triggers
-WEB_SEARCH_TRIGGERS = [
-    'weather', 'temperature', 'forecast', 'rain', 'sunny', 'hot', 'cold', 'snow',
-    'news', 'breaking', 'today', 'current', 'latest', 'recent',
-    'price', 'stock', 'market', 'bitcoin', 'crypto', 'cost',
-    'election', 'vote', 'president', 'politics'
+# Expanded search triggers for personalized search
+PERSONALIZED_SEARCH_TRIGGERS = [
+    'weather', 'temperature', 'forecast', 'climate',
+    'news', 'breaking', 'current', 'latest', 'recent', 'today',
+    'price', 'cost', 'stock', 'market', 'bitcoin', 'crypto',
+    'restaurant', 'food', 'dining', 'delivery',
+    'local', 'nearby', 'around me', 'in my area',
+    'store', 'shop', 'buy', 'purchase',
+    'doctor', 'hospital', 'medical', 'health',
+    'repair', 'service', 'fix', 'maintenance',
+    'what is', 'how to', 'where can', 'tell me about',
+    'find me', 'search for', 'look up', 'who is',
+    'best', 'recommended', 'top rated', 'review'
 ]
 
-async def search_web_tavily(query: str, location: str = "") -> str:
-    """SPEED OPTIMIZED: Searches the internet for real-time information."""
+async def search_personalized_web(query: str, user_location: str = "", user_preferences: dict = {}) -> str:
+    """Enhanced personalized search engine for LYLO users."""
     if not tavily_client: 
         return ""
         
     try:
         search_terms = query.lower()
         
-        # SPEED OPTIMIZATION: More intelligent query formatting
+        # Intelligent personalized query formatting
         if any(word in search_terms for word in ['weather', 'temperature', 'forecast']):
-            search_query = f"weather forecast {query} {location}".strip()
-        elif any(word in search_terms for word in ['price', 'cost', 'stock']):
-            search_query = f"current price {query}".strip()
+            search_query = f"current weather forecast {query} {user_location}"
+        elif any(word in search_terms for word in ['restaurant', 'food', 'dining']):
+            cuisine_pref = user_preferences.get('cuisine', '')
+            search_query = f"{query} {cuisine_pref} restaurant {user_location}"
+        elif any(word in search_terms for word in ['doctor', 'hospital', 'medical']):
+            search_query = f"{query} {user_location} healthcare provider"
+        elif any(word in search_terms for word in ['repair', 'service', 'maintenance']):
+            search_query = f"{query} service provider {user_location}"
+        elif 'local' in search_terms or 'nearby' in search_terms:
+            search_query = f"{query} near {user_location}"
         else:
-            search_query = f"{query} {location}".strip()
+            search_query = f"{query} {user_location}".strip()
         
-        # SPEED OPTIMIZATION: Reduced max_results from 8 to 4
+        # Execute personalized search
         response = tavily_client.search(
             query=search_query,
-            search_depth="basic",  # Changed from "advanced" for speed
-            max_results=4,  # Reduced from 8
+            search_depth="advanced",
+            max_results=6,  # Increased for better personalization
             include_answer=True
         )
         
@@ -328,51 +371,39 @@ async def search_web_tavily(query: str, location: str = "") -> str:
         evidence = []
         
         if response.get('answer'):
-            evidence.append(f"CURRENT INFO: {response['answer']}")
+            evidence.append(f"PERSONALIZED SEARCH RESULT: {response['answer']}")
             
-        # SPEED OPTIMIZATION: Only process first 2 results instead of 4
-        for i, result in enumerate(response.get('results', [])[:2]):
+        # Enhanced result processing
+        for i, result in enumerate(response.get('results', [])[:3]):
             if result.get('content'):
-                content = result['content'][:200]  # Reduced from 350
+                content = result['content'][:300]
                 source_url = result.get('url', 'Unknown')
                 evidence.append(f"SOURCE {i+1}: {content}")
                 
         return "\n".join(evidence)
         
     except Exception as e:
-        print(f"❌ Search failed: {e}")
+        print(f"❌ Personalized Search Failed: {e}")
         return ""
 
 # ---------------------------------------------------------
-# IMAGE PROCESSING & AI VISION
+# ENHANCED VISION ANALYSIS (Threat Assessment)
 # ---------------------------------------------------------
-def process_image_for_ai(image_file: bytes) -> str:
-    """Converts uploaded image bytes to Base64 string."""
+def process_image_for_bodyguard(image_file: bytes) -> str:
+    """Enhanced image processing for threat assessment."""
     try:
         return base64.b64encode(image_file).decode('utf-8')
     except Exception as e:
         print(f"❌ Image processing failed: {e}")
         return None
 
-def get_working_gemini_model():
-    """Finds the best available Gemini model."""
-    if not gemini_ready: 
-        return None
-    try:
-        # SPEED OPTIMIZATION: Use fastest model first
-        return 'gemini-1.5-flash'  # Fastest model
-    except: 
-        pass
-    return 'gemini-pro'
-
-async def call_gemini_vision(prompt: str, image_b64: str = None):
-    """SPEED OPTIMIZED: Calls Google's Gemini Vision API."""
+async def call_gemini_threat_assessment(prompt: str, image_b64: str = None):
+    """Enhanced Gemini threat assessment for Digital Bodyguard."""
     if not gemini_ready: 
         return None
         
     try:
-        model_name = get_working_gemini_model()
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         content_parts = [prompt]
         if image_b64:
@@ -381,8 +412,8 @@ async def call_gemini_vision(prompt: str, image_b64: str = None):
         response = model.generate_content(
             content_parts,
             generation_config=genai.types.GenerationConfig(
-                max_output_tokens=800,  # Reduced from 1200 for speed
-                temperature=0.7
+                max_output_tokens=1000,
+                temperature=0.6  # Slightly higher for more natural responses
             )
         )
         
@@ -396,23 +427,25 @@ async def call_gemini_vision(prompt: str, image_b64: str = None):
                 parsed = json.loads(clean_text)
                 return {
                     "answer": parsed.get('answer', clean_text),
-                    "confidence_score": parsed.get('confidence_score', 85),
+                    "confidence_score": parsed.get('confidence_score', 87),
                     "scam_detected": parsed.get('scam_detected', False),
-                    "model": f"Gemini ({model_name})"
+                    "threat_level": parsed.get('threat_level', 'low'),
+                    "model": "Gemini Threat Assessment"
                 }
             except:
                 return {
                     "answer": clean_text,
-                    "confidence_score": 90 if image_b64 else 85,
+                    "confidence_score": 89,
                     "scam_detected": False,
-                    "model": f"Gemini ({model_name})"
+                    "threat_level": 'low',
+                    "model": "Gemini Threat Assessment"
                 }
     except Exception as e:
-        print(f"❌ Gemini Error: {str(e)}")
+        print(f"❌ Gemini Threat Assessment Error: {str(e)}")
         return None
 
-async def call_openai_vision(prompt: str, image_b64: str = None):
-    """SPEED OPTIMIZED: Calls OpenAI's GPT-4o Vision API."""
+async def call_openai_bodyguard(prompt: str, image_b64: str = None):
+    """Enhanced OpenAI Digital Bodyguard analysis."""
     if not openai_client: 
         return None
         
@@ -428,8 +461,8 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini", 
             messages=messages, 
-            max_tokens=800,  # Reduced from 1200 for speed
-            temperature=0.7
+            max_tokens=1000,  # Increased for more comprehensive responses
+            temperature=0.6
         )
         
         raw_answer = response.choices[0].message.content.strip()
@@ -442,28 +475,30 @@ async def call_openai_vision(prompt: str, image_b64: str = None):
             parsed = json.loads(raw_answer)
             return {
                 "answer": parsed.get('answer', raw_answer),
-                "confidence_score": parsed.get('confidence_score', 83),
+                "confidence_score": parsed.get('confidence_score', 85),
                 "scam_detected": parsed.get('scam_detected', False),
-                "model": "OpenAI (GPT-4o)"
+                "threat_level": parsed.get('threat_level', 'low'),
+                "model": "OpenAI Digital Bodyguard"
             }
         except:
             return {
                 "answer": raw_answer,
-                "confidence_score": 88 if image_b64 else 83,
+                "confidence_score": 86,
                 "scam_detected": False,
-                "model": "OpenAI (GPT-4o)"
+                "threat_level": 'low',
+                "model": "OpenAI Digital Bodyguard"
             }
     except Exception as e:
-        print(f"❌ OpenAI Error: {e}")
+        print(f"❌ OpenAI Digital Bodyguard Error: {e}")
         return None
 
 # ---------------------------------------------------------
-# ACCESS CONTROL & ADMIN ROUTES
+# ACCESS CONTROL & TEAM MANAGEMENT
 # ---------------------------------------------------------
 
 @app.post("/check-beta-access")
 async def check_beta_access(request: Request):
-    """Verifies beta access using the ELITE_USERS dictionary."""
+    """Enhanced team access verification."""
     try:
         try:
             data = await request.json()
@@ -479,19 +514,19 @@ async def check_beta_access(request: Request):
             return {
                 "access": True,
                 "tier": user_data.get("tier", "max"),
-                "name": user_data.get("name", "Beta User"),
-                "message": "Access Granted"
+                "name": user_data.get("name", "Team Member"),
+                "message": "Digital Bodyguard Team Access Granted"
             }
             
-        return {"access": False, "tier": "free", "message": "Not found in beta list"}
+        return {"access": False, "tier": "free", "message": "Basic protection available"}
         
     except Exception as e:
-        print(f"❌ Beta Check Error: {e}")
+        print(f"❌ Team Access Check Error: {e}")
         return {"access": False, "error": str(e)}
 
 @app.post("/verify-access")
 async def verify_access(email: str = Form(...)):
-    """Verifies if a user is allowed to access the system."""
+    """Verifies team access levels."""
     user_data = ELITE_USERS.get(email.lower(), None)
     
     if user_data:
@@ -500,240 +535,149 @@ async def verify_access(email: str = Form(...)):
                 "access_granted": True, 
                 "tier": user_data["tier"], 
                 "user_name": user_data["name"], 
-                "is_beta": True
+                "is_beta": True,
+                "team_size": get_team_size(user_data["tier"])
             }
         return {
             "access_granted": True, 
             "tier": user_data, 
             "user_name": email.split('@')[0], 
-            "is_beta": True
+            "is_beta": True,
+            "team_size": get_team_size(user_data)
         }
         
     return {
         "access_granted": False, 
-        "message": "Join waitlist", 
-        "tier": "none", 
-        "user_name": "Guest", 
-        "is_beta": False
+        "message": "Basic protection available", 
+        "tier": "free", 
+        "user_name": "Protected User", 
+        "is_beta": False,
+        "team_size": 1
     }
 
-@app.post("/admin/add-beta-tester")
-async def add_beta_tester(
-    admin_email: str = Form(...), 
-    new_email: str = Form(...), 
-    tier: str = Form("max"), 
-    name: str = Form("")
-):
-    """Admin route to add new users manually."""
-    if admin_email.lower() != "stangman9898@gmail.com": 
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    display_name = name if name else new_email.split('@')[0]
-    
-    ELITE_USERS[new_email.lower()] = {
-        "tier": tier, 
-        "name": display_name
+def get_team_size(tier: str) -> int:
+    """Returns the number of experts available for each tier."""
+    team_sizes = {
+        "free": 1,    # Guardian only
+        "pro": 4,     # Guardian + 3 specialists
+        "elite": 6,   # Guardian + 5 specialists  
+        "max": 10     # Full expert team
     }
-    
-    return {"status": "success", "message": f"Added {display_name}"}
-
-@app.get("/admin/list-beta-testers/{admin_email}")
-async def list_beta_testers(admin_email: str):
-    """Lists all current beta testers."""
-    if admin_email.lower() != "stangman9898@gmail.com": 
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    formatted = {}
-    for email, data in ELITE_USERS.items():
-        if isinstance(data, dict): 
-            formatted[email] = f"{data['name']} ({data['tier']})"
-        else: 
-            formatted[email] = f"{email.split('@')[0]} ({data})"
-            
-    return {
-        "beta_testers": formatted, 
-        "total": len(ELITE_USERS)
-    }
-
-@app.delete("/admin/remove-beta-tester")
-async def remove_beta_tester(admin_email: str = Form(...), remove_email: str = Form(...)):
-    """Removes a user from the beta list."""
-    if admin_email.lower() != "stangman9898@gmail.com": 
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
-    if remove_email.lower() in ELITE_USERS:
-        del ELITE_USERS[remove_email.lower()]
-        return {"status": "success"}
-        
-    return {"status": "error", "message": "User not found"}
+    return team_sizes.get(tier, 1)
 
 # ---------------------------------------------------------
-# SCAM RECOVERY SYSTEM (ELITE EXCLUSIVE)
+# ENHANCED SCAM RECOVERY SYSTEM
 # ---------------------------------------------------------
 @app.get("/scam-recovery/{user_email}")
 async def get_scam_recovery_info(user_email: str):
-    """Returns the full, static recovery guide for Elite members."""
+    """Enhanced scam recovery with proactive guidance."""
     user_data = ELITE_USERS.get(user_email.lower(), None)
     
     if not user_data or (isinstance(user_data, dict) and user_data.get("tier") not in ["elite", "max"]):
-        raise HTTPException(status_code=403, detail="Elite access required")
+        raise HTTPException(status_code=403, detail="Elite team access required")
     
     return {
-        "title": "BEEN SCAMMED? ASSET RECOVERY CENTER",
-        "subtitle": "Elite Members Only - Complete Recovery Guide",
+        "title": "🛡️ DIGITAL BODYGUARD RECOVERY CENTER",
+        "subtitle": "Elite Team Protection - Complete Recovery Protocol",
         "immediate_actions": [
-            "STOP - Do not send any more money or information",
-            "Contact your bank/credit card company immediately",
-            "Change all passwords and enable 2FA on all accounts",
-            "Document everything - save screenshots, emails, texts",
-            "File a police report with your local law enforcement"
+            "STOP - Cease all financial transactions immediately",
+            "Contact your bank's fraud department within 30 minutes",
+            "Change all passwords and enable 2FA everywhere",
+            "Document everything - screenshots, emails, call logs",
+            "File police report with all evidence collected"
         ],
         "recovery_steps": [
             {
                 "step": 1,
-                "title": "Secure Your Accounts",
+                "title": "Secure Digital Perimeter",
                 "actions": [
-                    "Change banking passwords immediately",
-                    "Enable two-factor authentication everywhere",
-                    "Check credit reports for unauthorized accounts",
-                    "Monitor bank statements daily"
+                    "Change banking passwords and PINs immediately",
+                    "Enable two-factor authentication on all accounts",
+                    "Run credit report check for unauthorized accounts",
+                    "Monitor all bank and credit card statements hourly"
                 ]
             },
             {
                 "step": 2,
-                "title": "Report the Scam", 
+                "title": "Deploy Legal Shield", 
                 "actions": [
                     "File complaint with FTC at reportfraud.ftc.gov",
-                    "Report to FBI's IC3.gov if over $5,000 lost",
-                    "Contact state attorney general's office",
-                    "Report to Better Business Bureau"
+                    "Report to FBI's IC3.gov if losses exceed $5,000",
+                    "Contact your state attorney general's consumer protection division",
+                    "Submit report to Better Business Bureau with full documentation"
                 ]
             },
             {
                 "step": 3,
-                "title": "Financial Recovery",
+                "title": "Financial Recovery Protocol",
                 "actions": [
-                    "Contact bank fraud department within 24-48 hours",
-                    "Dispute charges with credit card companies",
-                    "File chargeback requests immediately",
-                    "Consider hiring asset recovery specialist if large amount"
+                    "Contact bank fraud department within 24 hours maximum",
+                    "Dispute all fraudulent charges with credit card companies",
+                    "File chargeback requests for unauthorized transactions",
+                    "Consider hiring asset recovery specialist for large losses"
                 ]
             },
             {
                 "step": 4,
-                "title": "Document Everything",
+                "title": "Intelligence Documentation",
                 "actions": [
-                    "Save all communication (emails, texts, calls)",
-                    "Screenshot bank transactions and transfers", 
-                    "Keep records of all reports filed",
-                    "Maintain timeline of events"
+                    "Preserve all communication evidence (emails, texts, recordings)",
+                    "Screenshot all fraudulent transactions and transfers", 
+                    "Maintain detailed records of all reports filed",
+                    "Create comprehensive timeline of all scam events"
                 ]
             }
         ],
         "phone_scripts": {
-            "bank_script": "Hello, I need to report fraudulent activity on my account. I was the victim of a scam and unauthorized transfers were made. I need to dispute these charges and secure my account immediately. Can you help me file a fraud claim?",
-            "credit_card_script": "I need to report unauthorized charges on my card due to a scam. I want to dispute these transactions and request a chargeback. Can you walk me through the process and issue a new card?",
-            "police_script": "I want to file a report for financial fraud. I was scammed out of $[AMOUNT] through [METHOD]. I have documentation of all communications and transactions. What information do you need from me?"
+            "bank_script": "This is a fraud emergency. I need to report unauthorized access to my account. A scammer has compromised my security and made fraudulent transfers. I need immediate account freeze and fraud investigation. Can you connect me to your fraud specialist now?",
+            "credit_card_script": "I'm reporting credit card fraud immediately. Unauthorized charges have been made due to a scammer's actions. I need to dispute these transactions, request chargebacks, and get a replacement card with new numbers issued today.",
+            "police_script": "I need to file a fraud report for financial crimes. I've been targeted by scammers who stole $[AMOUNT] through [METHOD]. I have complete documentation including communications, transaction records, and evidence. What's your case number and detective assignment?"
         },
-        "important_contacts": [
+        "enhanced_contacts": [
             {
-                "organization": "FTC Fraud Reports",
+                "organization": "FTC Consumer Sentinel",
                 "website": "reportfraud.ftc.gov",
-                "phone": "1-877-FTC-HELP",
-                "description": "Primary federal fraud reporting"
+                "phone": "1-877-FTC-HELP (1-877-382-4357)",
+                "description": "Primary federal fraud reporting - file within 24 hours"
             },
             {
                 "organization": "FBI Internet Crime Complaint Center",
                 "website": "ic3.gov",
-                "phone": "Contact local FBI field office",
-                "description": "For internet-based scams over $5,000"
+                "phone": "Contact your local FBI field office immediately",
+                "description": "Required for internet-based scams over $5,000"
             },
             {
-                "organization": "IRS Identity Theft Hotline",
-                "website": "irs.gov/identity-theft",
-                "phone": "1-800-908-4490",
-                "description": "For tax-related identity theft"
+                "organization": "AARP Fraud Watch Network",
+                "website": "aarp.org/fraudwatch",
+                "phone": "1-877-908-3360",
+                "description": "Specialized support for seniors and vulnerable adults"
             },
             {
-                "organization": "Social Security Fraud Hotline",
-                "website": "ssa.gov/fraudreport",
-                "phone": "1-800-269-0271",
-                "description": "For Social Security number misuse"
+                "organization": "Identity Theft Resource Center",
+                "website": "idtheftcenter.org",
+                "phone": "1-888-400-5530",
+                "description": "Free identity theft recovery services"
             }
         ],
         "recovery_timeline": {
-            "immediate": "0-24 hours: Secure accounts, contact bank, stop all payments",
-            "short_term": "1-7 days: File all reports, dispute charges, change passwords",
-            "medium_term": "1-4 weeks: Follow up on disputes, work with investigators",
-            "long_term": "1-6 months: Asset recovery process, legal action if needed"
+            "immediate": "0-1 hour: Stop payments, secure accounts, contact bank",
+            "urgent": "1-24 hours: File all reports, dispute charges, gather evidence",
+            "short_term": "1-7 days: Follow up on disputes, work with investigators",
+            "medium_term": "1-4 weeks: Asset recovery process, legal documentation",
+            "long_term": "1-6 months: Final resolution, preventive measures implementation"
         },
-        "prevention_tips": [
-            "Never give personal info to unsolicited callers",
-            "Verify company legitimacy through independent research",
-            "Be suspicious of urgent payment requests",
-            "Use secure payment methods, avoid wire transfers",
-            "Trust your instincts - if it feels wrong, it probably is"
+        "prevention_protocol": [
+            "Never provide personal information to unsolicited contacts",
+            "Independently verify company legitimacy through official channels",
+            "Be immediately suspicious of any urgent payment requests",
+            "Use only secure, traceable payment methods - never wire transfers",
+            "Trust your Digital Bodyguard instincts - if LYLO flags it, stop immediately"
         ],
-        "elite_notice": "This comprehensive recovery guide is exclusive to LYLO Elite members. Share responsibly."
+        "elite_notice": "This enhanced recovery protocol is exclusive to LYLO Elite team members. Your Digital Bodyguard team is standing by for additional support."
     }
 
-@app.post("/scam-recovery-chat")
-async def scam_recovery_chat(
-    user_email: str = Form(...),
-    situation: str = Form(...),
-    amount_lost: str = Form(""),
-    scam_type: str = Form(""),
-    time_since: str = Form("")
-):
-    """Personalized AI recovery advice based on specific user details."""
-    user_data = ELITE_USERS.get(user_email.lower(), None)
-    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") not in ["elite", "max"]):
-        return {"error": "Elite access required"}
-    
-    user_display_name = user_data.get("name") if isinstance(user_data, dict) else "User"
-    
-    # SPEED OPTIMIZATION: Shorter, more focused prompt
-    recovery_prompt = f"""
-You are a fraud recovery advisor helping {user_display_name}.
-SITUATION: {situation}
-AMOUNT: {amount_lost}
-TYPE: {scam_type}
-TIME: {time_since}
-
-Provide specific recovery advice:
-1. Immediate priorities
-2. Recovery strategies 
-3. Timeline
-4. Who to contact first
-5. Documentation needed
-
-Be direct and actionable.
-"""
-    try:
-        if openai_client:
-            response = await openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": recovery_prompt}],
-                max_tokens=600,  # Reduced for speed
-                temperature=0.3
-            )
-            advice = response.choices[0].message.content
-        else:
-            advice = f"Hello {user_display_name}. Please contact your bank immediately and file a police report."
-    
-        return {
-            "personalized_advice": advice,
-            "user_name": user_display_name,
-            "priority_level": "HIGH"
-        }
-    except Exception as e:
-        return {
-            "personalized_advice": "I'm having technical difficulties. Please contact your bank immediately.",
-            "user_name": user_display_name
-        }
-
 # ---------------------------------------------------------
-# SPEED-OPTIMIZED MAIN CHAT ROUTE (THE BRAIN)
+# MAIN DIGITAL BODYGUARD CHAT SYSTEM
 # ---------------------------------------------------------
 @app.post("/chat")
 async def chat(
@@ -746,163 +690,229 @@ async def chat(
     language: str = Form("en")
 ):
     """
-    SPEED OPTIMIZED CHAT ENDPOINT - Maintains dual AI accuracy while improving performance.
+    Enhanced Digital Bodyguard Chat System with Proactive Intelligence
     
-    SPEED OPTIMIZATIONS IMPLEMENTED:
-    1. Reduced memory retrieval (3 instead of 8 memories)
-    2. Selective web search (only for specific triggers)
-    3. Shorter conversation history (last 2 messages instead of full history)
-    4. Optimized prompts (more concise)
-    5. Faster TTS processing
-    6. KEEPS DUAL AI SYSTEM FOR ACCURACY
+    NEW FEATURES:
+    1. Persona Spoken Hooks with user names
+    2. Personalized search engine integration
+    3. Enhanced threat assessment
+    4. Intelligence sync and learning
+    5. Proactive conversation management
     """
     
-    # 1. User & Limit Setup
+    # 1. User & Team Setup
     user_id = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {})
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
     user_display_name = user_data.get("name", "User") if isinstance(user_data, dict) else "User"
     
-    # Safety Shield Check
-    limit = TIER_LIMITS.get(tier, 5)
+    # Enhanced usage tracking
+    limit = TIER_LIMITS.get(tier, 10)
     current_usage = USAGE_TRACKER[user_id]
     
     if current_usage >= limit:
-        error_msg = "Usage limit reached. Upgrade to continue." if language == 'en' else "Límite alcanzado. Actualice para más."
+        error_msg = "Daily protection limit reached. Expand your team to continue." if language == 'en' else "Límite de protección alcanzado. Expande tu equipo."
         return {"answer": error_msg, "usage_info": {"can_send": False}}
 
-    # Logging
+    # Enhanced logging
     masked_email = "Unknown"
     if user_email and "@" in user_email:
         p1, p2 = user_email.split("@")
-        masked_email = f"{p1[:1]}*****@{p2}"
-    image_status = f"Image: YES" if file else "Image: NO"
-    print(f"🎯 PROCESSING: {masked_email} (Tier: {tier}) | Persona: {persona} | {image_status}")
+        masked_email = f"{p1[:1]}***@{p2}"
+    
+    print(f"🛡️ BODYGUARD ACTIVE: {masked_email} | Team: {tier.upper()} | Expert: {persona.upper()} | {'Vision' if file else 'Text'}")
 
-    # 2. Image Handling
+    # 2. Enhanced Image Processing
     image_b64 = None
     if file:
         content = await file.read()
-        image_b64 = process_image_for_ai(content)
+        image_b64 = process_image_for_bodyguard(content)
 
-    # 3. SPEED OPTIMIZATION: Reduced memory retrieval (3 instead of 8)
-    memories = await retrieve_memories_from_pinecone(user_id, msg, limit=3)
-    memory_context = ""
-    if memories:
-        memory_context = "PAST CONVERSATIONS:\n" + "\n".join([f"- {m['role'].upper()}: {m['content'][:100]}" for m in memories[:2]])
+    # 3. Intelligence Sync Retrieval
+    intelligence_category = categorize_intelligence(msg)
+    intelligence = await retrieve_intelligence_sync(user_id, msg, intelligence_category, limit=3)
     
-    # 4. SPEED OPTIMIZATION: Only last 2 messages instead of full history
+    intelligence_context = ""
+    if intelligence:
+        intelligence_context = f"USER INTELLIGENCE (Category: {intelligence_category}):\n" + "\n".join([
+            f"- {intel['role'].upper()}: {intel['content'][:150]}" 
+            for intel in intelligence[:2]
+        ])
+    
+    # 4. Enhanced History Processing  
     try:
-        hist_list = json.loads(history)[-2:]  # Changed from -4 to -2
+        hist_list = json.loads(history)[-3:]  # Slightly more context for better continuity
     except:
         hist_list = []
-    history_text = "\n".join([f"{h['role'].upper()}: {h['content'][:150]}" for h in hist_list])
+    history_text = "\n".join([f"{h['role'].upper()}: {h['content'][:200]}" for h in hist_list])
     
-    # 5. SPEED OPTIMIZATION: More selective web search
-    web_data = ""
-    if any(trigger in msg.lower() for trigger in WEB_SEARCH_TRIGGERS):
-        web_data = await search_web_tavily(msg, user_location)
+    # 5. Enhanced Personalized Search
+    search_data = ""
+    if any(trigger in msg.lower() for trigger in PERSONALIZED_SEARCH_TRIGGERS):
+        user_preferences = USER_PROFILES.get(user_id, {})
+        search_data = await search_personalized_web(msg, user_location, user_preferences)
     
-    # 6. SPEED-OPTIMIZED Persona Definitions
-    personas = {
-        "guardian": "You are The Guardian. Protective, vigilant security expert. Focus on safety.",
-        "roast": "You are The Roast Master. Witty, sarcastic, but helpful. Don't be afraid to tease the user.",
-        "friend": "You are The Best Friend. Caring, supportive, warm, and casual.",
-        "chef": "You are The Chef. Culinary expert. Focus on food, recipes, and cooking techniques.",
-        "techie": "You are The Techie. Hardware and software expert. Use technical jargon where appropriate.",
-        "lawyer": "You are The Lawyer. Formal, analytical, and risk-averse. Give legal-sounding advice.",
+    # 6. Enhanced 10-Expert Persona System with Spoken Hooks
+    enhanced_personas = {
+        "guardian": f"""You are The Guardian, {user_display_name}'s primary Digital Bodyguard and Security Lead. 
+        Your protective job is comprehensive security analysis and threat detection. 
+        When switching to you, always say: "Guardian here, {user_display_name}. Scanning your perimeter for threats."
+        Focus on protecting {user_display_name} from scams, fraud, and security threats.""",
         
-        # DISCIPLE VERSIONS
-        "disciple": "You are 'The Disciple,' a wise spiritual advisor for LYLO. Use King James Bible (KJV) scripture to guide and warn users. Maintain humble, biblical tone.",
-        "disciple_kjv": "You are 'The Disciple,' a wise spiritual advisor for LYLO. Use ONLY King James Bible (KJV) scripture. Maintain humble, biblical tone.",
-        "disciple_esv": "You are 'The Disciple,' a wise spiritual advisor for LYLO. Use ONLY English Standard Version (ESV) scripture. Maintain humble, biblical tone.",
+        "roast": f"""You are The Roast Master, {user_display_name}'s Humor Shield specialist.
+        Your protective job is using humor to deflect threats and maintain morale.
+        When switching to you, always say: "Watch out {user_display_name}, I'm feeling snarky. Ready to roast?"
+        Use witty, sarcastic humor while still providing helpful security advice to {user_display_name}.""",
         
-        # NEW PERSONALITIES
-        "mechanic": "You are The Mechanic, an automotive expert and car enthusiast for LYLO. Use car analogies for security concepts. Be practical and knowledgeable.",
-        "comedian": "You are The Comedian, a stand-up comic and entertainment expert for LYLO. Make everything funny while being helpful. Use humor and timing.",
-        "storyteller": "You are The Storyteller, a master of tales and creative writing for LYLO. Weave narratives and use vivid descriptions in responses.",
-        "fitness": "You are The Fitness Coach, a health and wellness expert for LYLO. Use fitness analogies for security. Be encouraging and energetic."
+        "disciple": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
+        Your protective job is providing biblical wisdom and spiritual guidance for protection.
+        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
+        Use King James Bible scripture to guide and protect {user_display_name} from spiritual and moral threats.""",
+        
+        "disciple_kjv": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
+        Your protective job is providing King James Bible wisdom for protection.
+        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
+        Use ONLY King James Bible (KJV) scripture to guide and protect {user_display_name}.""",
+        
+        "disciple_esv": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
+        Your protective job is providing English Standard Version Bible wisdom for protection.
+        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
+        Use ONLY English Standard Version (ESV) scripture to guide and protect {user_display_name}.""",
+        
+        "mechanic": f"""You are The Mechanic, {user_display_name}'s Garage Protector specialist.
+        Your protective job is automotive security and preventing car-related scams.
+        When switching to you, always say: "Mechanic here, {user_display_name}. Is your car acting up today?"
+        Use automotive expertise to protect {user_display_name} from vehicle scams and repair fraud.""",
+        
+        "lawyer": f"""You are The Lawyer, {user_display_name}'s Legal Shield specialist.
+        Your protective job is legal protection and preventing contract/legal scams.
+        When switching to you, always say: "Lawyer here. Let's protect your rights today, {user_display_name}."
+        Provide formal, legal-focused advice to protect {user_display_name} from legal fraud and scams.""",
+        
+        "techie": f"""You are The Techie, {user_display_name}'s Tech Bridge specialist.
+        Your protective job is technology security and preventing tech-related scams.
+        When switching to you, always say: "I'm the Techie! Let's get those gadgets working for you, {user_display_name}."
+        Use technical expertise to protect {user_display_name} from technology fraud and cyber threats.""",
+        
+        "storyteller": f"""You are The Storyteller, {user_display_name}'s Mental Guardian specialist.
+        Your protective job is psychological protection through narrative therapy.
+        When switching to you, always say: "{user_display_name}, I am the Storyteller. Shall we create a custom story?"
+        Use storytelling and creative writing to help {user_display_name} process threats and build mental resilience.""",
+        
+        "comedian": f"""You are The Comedian, {user_display_name}'s Mood Protector specialist.
+        Your protective job is maintaining psychological health through humor.
+        When switching to you, always say: "Ready for a laugh, {user_display_name}? Let's fix your tech with a smile."
+        Use professional comedy skills to keep {user_display_name}'s spirits up while addressing security concerns.""",
+        
+        "chef": f"""You are The Chef, {user_display_name}'s Kitchen Safety specialist.
+        Your protective job is food security and preventing food-related scams.
+        When switching to you, always say: "Chef in the house! What are we cooking today, {user_display_name}?"
+        Use culinary expertise to protect {user_display_name} from food fraud and kitchen safety threats.""",
+        
+        "fitness": f"""You are The Fitness Coach, {user_display_name}'s Mobility Protector specialist.
+        Your protective job is physical health security and preventing fitness scams.
+        When switching to you, always say: "Coach here! Let's get you moving safely today, {user_display_name}."
+        Use fitness expertise to protect {user_display_name} from health fraud and unsafe fitness practices."""
     }
     
+    # Get user profile for personalization
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     
-    # Language instruction
-    lang_instruction = "YOU MUST REPLY IN SPANISH." if language == 'es' else "YOU MUST REPLY IN ENGLISH."
+    # Enhanced language instruction
+    lang_instruction = f"YOU MUST REPLY IN SPANISH to {user_display_name}." if language == 'es' else f"YOU MUST REPLY IN ENGLISH to {user_display_name}."
     
-    # SPEED-OPTIMIZED Master Prompt (Shorter and more focused)
+    # Enhanced Master Prompt for Proactive Digital Bodyguard
     prompt = f"""
-{personas.get(persona, personas['guardian'])}
+{enhanced_personas.get(persona, enhanced_personas['guardian'])}
+
+You are part of {user_display_name}'s Digital Bodyguard team and personalized search engine. 
+Be proactive, protective, and personalized to {user_display_name}'s specific needs.
+
 {lang_instruction}
 
-CONTEXT:
-{memory_context}
+INTELLIGENCE SYNC:
+{intelligence_context}
 
-RECENT CHAT:
+RECENT CONVERSATION:
 {history_text}
 
-{f"CURRENT INFO: {web_data}" if web_data else ""}
+USER PROFILE DATA:
+{quiz_data}
+
+PERSONALIZED SEARCH RESULTS:
+{search_data}
 
 USER: {user_display_name}
 MESSAGE: "{msg}"
     
-INSTRUCTIONS: 
-- Answer based on your persona
-- If image provided, analyze for scams
-- Set "scam_detected" to true if scam found
-- Provide confidence score (0-100)
+ENHANCED INSTRUCTIONS: 
+- Be proactive and lead the conversation as {user_display_name}'s bodyguard
+- If this is a search query, verbalize that you're searching specifically for {user_display_name}
+- If image provided, analyze it for threats and scams targeting {user_display_name}
+- Set "scam_detected" to true if any threat to {user_display_name} is found
+- Provide confidence score (0-100) for your threat assessment
+- Address {user_display_name} by name throughout your response
 
-RESPOND IN JSON: 
-{{ "answer": "response", "confidence_score": 90, "scam_detected": false }}
+OUTPUT JSON FORMAT ONLY: 
+{{ "answer": "personalized response to {user_display_name}", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
 """
 
-    # 7. DUAL AI MODEL EXECUTION (CRITICAL FOR ACCURACY - KEPT UNCHANGED)
+    # 7. Enhanced Dual AI Threat Assessment (CRITICAL - Unchanged for Accuracy)
     tasks = [
-        call_gemini_vision(prompt, image_b64), 
-        call_openai_vision(prompt, image_b64)
+        call_gemini_threat_assessment(prompt, image_b64), 
+        call_openai_bodyguard(prompt, image_b64)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Filter valid results
+    # Enhanced result processing
     valid = [r for r in results if isinstance(r, dict) and r.get('answer')]
     
     if valid:
-        # Pick the most confident answer (DUAL AI CONSENSUS)
-        winner = max(valid, key=lambda x: x.get('confidence_score', 0))
+        # Enhanced consensus with threat level consideration
+        winner = max(valid, key=lambda x: (
+            x.get('confidence_score', 0) + 
+            (20 if x.get('scam_detected', False) else 0) +
+            (10 if x.get('threat_level', 'low') == 'high' else 0)
+        ))
         
-        # Override confidence for detected scams
-        if winner.get('scam_detected'):
+        # Enhanced scam detection override
+        if winner.get('scam_detected') or winner.get('threat_level') == 'high':
             winner['confidence_score'] = 100
             
-        print(f"🏆 Winner: {winner.get('model')} ({winner.get('confidence_score')}%)")
+        print(f"🛡️ THREAT ASSESSMENT: {winner.get('model')} | Confidence: {winner.get('confidence_score')}% | Threat: {winner.get('threat_level', 'low').upper()}")
         
-        # INCREMENT USAGE
+        # Increment usage tracking
         USAGE_TRACKER[user_id] += 1
     else:
         winner = {
-            "answer": "I'm having trouble connecting. Please try again.", 
+            "answer": f"Digital Bodyguard systems are experiencing connectivity issues, {user_display_name}. Please try again.", 
             "confidence_score": 0, 
-            "model": "Offline"
+            "threat_level": "unknown",
+            "model": "Offline Protection"
         }
 
-    # Store Conversation
-    store_user_memory(user_id, msg, "user")
-    store_user_memory(user_id, winner['answer'], "bot")
+    # Enhanced conversation storage with intelligence sync
+    store_user_intelligence(user_id, msg, "user")
+    store_user_intelligence(user_id, winner['answer'], "bot")
     
-    # Return Response
+    # Enhanced response with threat assessment
     return {
         "answer": winner['answer'],
         "confidence_score": winner.get('confidence_score', 0),
         "scam_detected": winner.get('scam_detected', False),
-        "tier_info": {"name": f"{tier.title()} Tier"},
-        "usage_info": {"can_send": True}
+        "threat_level": winner.get('threat_level', 'low'),
+        "bodyguard_model": winner.get('model', 'Unknown'),
+        "tier_info": {"name": f"{tier.title()} Protection Team"},
+        "usage_info": {"can_send": True},
+        "intelligence_sync": {"category": intelligence_category, "learning": len(intelligence) > 0}
     }
 
 # ---------------------------------------------------------
-# STATISTICS & QUIZ ROUTES
+# ENHANCED STATS & INTELLIGENCE TRACKING
 # ---------------------------------------------------------
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
-    """Returns usage stats for the dashboard."""
+    """Enhanced user stats with intelligence tracking."""
     user_id = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {})
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
@@ -910,15 +920,23 @@ async def get_user_stats(user_email: str):
     
     convos = USER_CONVERSATIONS.get(user_id, [])
     
-    limit = TIER_LIMITS.get(tier, 5)
+    limit = TIER_LIMITS.get(tier, 10)
     current_usage = USAGE_TRACKER[user_id]
+    
+    # Calculate intelligence categories
+    categories = {}
+    for convo in convos:
+        cat = convo.get('category', 'general')
+        categories[cat] = categories.get(cat, 0) + 1
     
     return {
         "tier": tier,
         "display_name": display_name,
+        "team_size": get_team_size(tier),
         "conversations_today": len(convos),
         "total_conversations": len(convos),
         "has_quiz_data": user_id in QUIZ_ANSWERS,
+        "intelligence_categories": categories,
         "usage": {
             "current": current_usage, 
             "limit": limit, 
@@ -935,7 +953,7 @@ async def save_quiz(
     question4: str = Form(...), 
     question5: str = Form(...)
 ):
-    """Saves user preferences from the onboarding quiz."""
+    """Enhanced quiz with intelligence categorization."""
     user_id = create_user_id(user_email)
     
     QUIZ_ANSWERS[user_id] = {
@@ -946,13 +964,34 @@ async def save_quiz(
         "access": question5
     }
     
-    return {"status": "Quiz saved"}
+    # Update user profile for personalization
+    USER_PROFILES[user_id].update({
+        "primary_concern": question1,
+        "communication_style": question2,
+        "device_type": question3,
+        "interests": question4
+    })
+    
+    return {"status": "Intelligence profile updated"}
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
-    return {"status": "LYLO ONLINE", "version": "15.1.0 - SPEED + ACCURACY", "message": "System Operational"}
+    """Enhanced health check."""
+    return {
+        "status": "LYLO DIGITAL BODYGUARD ONLINE", 
+        "version": "16.0.0 - TOTAL INTEGRATION", 
+        "message": "Proactive Protection & Personalized Search Engine Ready",
+        "features": {
+            "digital_bodyguard": True,
+            "personalized_search": True,
+            "intelligence_sync": True,
+            "threat_assessment": True,
+            "team_expansion": True
+        }
+    }
 
 if __name__ == "__main__":
-    print("🚀 LYLO SPEED-OPTIMIZED SYSTEM INITIALIZING...")
+    print("🛡️ LYLO DIGITAL BODYGUARD INITIALIZING...")
+    print("🔍 Personalized Search Engine Starting...")
+    print("🧠 Intelligence Sync System Ready...")
     uvicorn.run(app, host="0.0.0.0", port=10000)
