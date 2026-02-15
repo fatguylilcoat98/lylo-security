@@ -175,13 +175,13 @@ export default function ChatInterface({
   const [instantVoice, setInstantVoice] = useState(false);
   
   // --- TIMEOUT LOOP FIX: USE REFS ---
-  // Using Refs allows the interval to check current values without stale closures
+  // We use refs for timer logic to avoid closure staleness issues
   const lastInteractionTimeRef = useRef(Date.now());
   const isInStandbyModeRef = useRef(false);
-  const isListeningRef = useRef(true); // Tracks listening state for the timer
+  const isListeningRef = useRef(true); 
   const standbyTimerRef = useRef<any>(null);
   
-  // We still need state for the UI render
+  // We still need state for the UI render (e.g. changing the button text)
   const [isInStandbyMode, setIsInStandbyMode] = useState(false); 
   
   // --- UI STATE ---
@@ -274,14 +274,14 @@ export default function ChatInterface({
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    // Check Quiz Status Immediately
+    // Check Quiz Status Immediately on Load
     if (!localStorage.getItem('lylo_quiz_complete')) {
         setShowQuizOverlay(true);
     } else {
         initializeLylo();
     }
     
-    // Cleanup function
+    // Cleanup function for timers
     return () => {
       if (standbyTimerRef.current) {
         clearInterval(standbyTimerRef.current);
@@ -289,7 +289,7 @@ export default function ChatInterface({
     };
   }, [userEmail]);
 
-  // Keep refs in sync with state
+  // Keep refs in sync with state for the timer logic
   useEffect(() => {
       isListeningRef.current = isListening;
   }, [isListening]);
@@ -301,7 +301,6 @@ export default function ChatInterface({
     detectUserName();
     startPrivacyShieldMonitoring();
     
-    // Trigger verbal handshake on first load
     if (!hasGivenVerbalHandshake) {
       setTimeout(() => {
         giveVerbalHandshake();
@@ -436,10 +435,10 @@ export default function ChatInterface({
     }
   };
 
-  // --- PERSONA SWITCH HOOKS ---
+  // --- AUTO-SWITCH LOGIC ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
-      // Team Expansion Protocol (Soft Upsell)
+      // Upsell Logic
       const expansionMessage = `I can help with the security side of that, ${userName || 'friend'}, but for ${persona.description.toLowerCase()}, we need to bring in ${persona.name}. Would you like me to expand your team and deploy them to your side now?`;
       
       const botMsg: Message = { 
@@ -458,11 +457,9 @@ export default function ChatInterface({
     onPersonaChange(persona);
     setShowDropdown(false);
     
-    // Speak the persona hook
     const spokenHook = persona.spokenHook.replace('{userName}', userName || 'friend');
     await speakText(spokenHook);
     
-    // Add hook to messages
     const botMsg: Message = { 
       id: Date.now().toString(), 
       content: spokenHook, 
@@ -472,20 +469,17 @@ export default function ChatInterface({
     };
     setMessages(prev => [...prev, botMsg]);
     
-    // Update intelligence sync
     incrementIntelligenceSync();
   };
 
-  // --- INTELLIGENCE SYNC SYSTEM ---
   const incrementIntelligenceSync = () => {
     const newSync = Math.min(intelligenceSync + 5, 100);
     setIntelligenceSync(newSync);
     localStorage.setItem('lylo_intelligence_sync', newSync.toString());
   };
 
-  // --- PRIVACY SHIELD (Auto-Standby) - FIXED LOOP ---
+  // --- PRIVACY SHIELD (Auto-Standby) ---
   const startPrivacyShieldMonitoring = () => {
-    // Clear existing interval if any
     if (standbyTimerRef.current) {
       clearInterval(standbyTimerRef.current);
     }
@@ -493,7 +487,7 @@ export default function ChatInterface({
     standbyTimerRef.current = setInterval(() => {
       const timeSinceLastInteraction = Date.now() - lastInteractionTimeRef.current;
       
-      // FIXED: Checks Refs to avoid stale closure state
+      // Fixed logic: Check refs to ensure we have the latest state
       if (timeSinceLastInteraction > 120000 && !isInStandbyModeRef.current && isListeningRef.current) {
         goToStandbyMode();
       }
@@ -501,7 +495,7 @@ export default function ChatInterface({
   };
 
   const goToStandbyMode = async () => {
-    if (isInStandbyModeRef.current) return; // Prevent multiple calls
+    if (isInStandbyModeRef.current) return;
     
     isInStandbyModeRef.current = true;
     setIsInStandbyMode(true);
@@ -552,7 +546,6 @@ export default function ChatInterface({
 
     setIsSpeaking(true);
 
-    // Use realistic OpenAI TTS by default
     if (!instantVoice && cleanText.length < 800) {
       try {
         const formData = new FormData();
@@ -577,7 +570,6 @@ export default function ChatInterface({
       }
     }
     
-    // Fallback to browser TTS
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 0.9;
     utterance.lang = language === 'es' ? 'es-MX' : 'en-US';
@@ -753,7 +745,6 @@ export default function ChatInterface({
 
     if (textToSend) {
         const lowerMsg = textToSend.toLowerCase();
-        // Check keywords
         for (const persona of PERSONAS) {
             // Don't switch if we are already there
             if (persona.id === currentPersona.id) continue;
@@ -809,7 +800,7 @@ export default function ChatInterface({
     setLoading(true);
 
     try {
-      // Add search verbalization for general questions (only if no switch occurred)
+      // Add search verbalization for general questions
       if (!switched && isGeneralSearchQuery(textToSend)) {
         const searchMessage = `I'm searching the web for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
         const searchMsg: Message = { 
@@ -1055,6 +1046,62 @@ export default function ChatInterface({
         <span className="text-gray-400 text-xs font-black uppercase tracking-widest">
           {isInStandbyModeRef.current ? 'Privacy Mode' : 'Protected Mode'}
         </span>
+      </div>
+    </div>
+  );
+
+  // --- ONBOARDING QUIZ OVERLAY COMPONENT ---
+  const QuizOverlay = () => (
+    <div className="fixed inset-0 z-[100100] bg-black/95 flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-8 max-w-md w-full text-center shadow-2xl">
+        <div className="text-4xl mb-4">🛡️</div>
+        <h2 className="text-white font-black text-xl uppercase tracking-wider mb-4">Welcome to LYLO</h2>
+        <p className="text-gray-300 text-sm mb-6">Quick setup - 3 questions to personalize your protection</p>
+        
+        {quizStep === 1 && (
+          <div>
+            <h3 className="text-white font-bold mb-4">What device do you use most?</h3>
+            <div className="space-y-2">
+              {['Smartphone', 'Computer', 'Tablet', 'All devices'].map(option => (
+                <button key={option} onClick={() => handleQuizAnswer(option)} className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {quizStep === 2 && (
+          <div>
+            <h3 className="text-white font-bold mb-4">What's your biggest worry online?</h3>
+            <div className="space-y-2">
+              {['Scams & Fraud', 'Identity Theft', 'Malware', 'Privacy'].map(option => (
+                <button key={option} onClick={() => handleQuizAnswer(option)} className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {quizStep === 3 && (
+          <div>
+            <h3 className="text-white font-bold mb-4">Do you drive regularly?</h3>
+            <div className="space-y-2">
+              {['Yes, daily', 'Sometimes', 'No', 'I don\'t drive'].map(option => (
+                <button key={option} onClick={() => handleQuizAnswer(option)} className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <div className="flex justify-center mt-6 space-x-2">
+          {[1, 2, 3].map(step => (
+            <div key={step} className={`w-2 h-2 rounded-full ${step <= quizStep ? 'bg-blue-500' : 'bg-gray-600'}`} />
+          ))}
+        </div>
       </div>
     </div>
   );
