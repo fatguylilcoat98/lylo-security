@@ -1201,31 +1201,6 @@ export default function ChatInterface({
         </div>
       )}
 
-      {/* Limit Modal */}
-      {showLimitModal && (
-        <div className="fixed inset-0 z-[100050] bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-blue-500/50 rounded-xl p-6 max-w-sm w-full text-center shadow-2xl">
-             <div className="text-4xl mb-3">🛡️</div>
-             <h2 className="text-white font-black text-lg uppercase tracking-wider mb-2">Protection Limit Reached</h2>
-             <p className="text-gray-300 text-sm mb-6">
-               You have used all {userStats?.usage.limit} daily protections. Upgrade to expand your digital bodyguard team.
-             </p>
-             <button 
-               onClick={() => { setShowLimitModal(false); onLogout(); }} 
-               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg uppercase tracking-wider transition-all"
-             >
-               Expand Team
-             </button>
-             <button 
-               onClick={() => setShowLimitModal(false)}
-               className="mt-3 text-gray-500 text-xs font-bold hover:text-gray-300"
-             >
-               Continue Reading
-             </button>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-white/5 p-3 flex-shrink-0 relative z-[100002]">
         <div className="flex items-center justify-between">
