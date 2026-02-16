@@ -329,6 +329,26 @@ export default function ChatInterface({
     finally { setLoading(false); setSelectedImage(null); }
   };
 
+  // MISSING FUNCTION HANDLERS
+  const handleReplay = (messageContent: string, messageId?: string) => {
+    quickStopAllAudio();
+    speakText(messageContent, messageId);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedImage(e.target.files[0]);
+      quickStopAllAudio();
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   const handleGetFullGuide = async () => {
     if (!isEliteUser) return alert('Elite access required');
     setLoading(true);
@@ -418,6 +438,12 @@ export default function ChatInterface({
           <div className="flex flex-col items-center justify-center h-full p-4 overflow-y-auto pb-20">
             <div className={`relative w-20 h-20 bg-black/60 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-8 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
               <span className="text-white font-black text-2xl tracking-wider">LYLO</span>
+              {/* Live Status Animation */}
+              {(loading || isSpeaking) && (
+                <div className="absolute -inset-2 rounded-2xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
+                </div>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-white mb-2 text-center mt-4">Digital Bodyguard Services</h1>
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-20">
@@ -435,6 +461,17 @@ export default function ChatInterface({
                         <p className="text-gray-400 text-xs mt-1">{persona.description}</p>
                       </div>
                     </div>
+                    
+                    {/* Tier Badge */}
+                    {persona.requiredTier !== 'free' && (
+                      <div className={`absolute -top-2 -right-2 px-2 py-1 rounded-full text-xs font-bold ${
+                        persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
+                        persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
+                        'bg-blue-500 text-white'
+                      }`}>
+                        {persona.requiredTier.toUpperCase()}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -443,17 +480,97 @@ export default function ChatInterface({
         ) : (
           <>
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border ${msg.sender === 'user' ? 'bg-blue-500/20 border-blue-400/30' : `bg-black/40 ${getPersonaColorClass(activePersona, 'border')}/30`}`}>
-                  <div className="text-white text-sm font-medium">{msg.content}</div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-400 uppercase font-black">{msg.sender === 'user' ? 'You' : activePersona.name}</span>
-                    {msg.sender === 'bot' && <button onClick={() => handleReplay(msg.content)} className="ml-2 text-gray-400 hover:text-white"><RotateCcw className="w-3 h-3" /></button>}
+              <div key={msg.id} className="space-y-2">
+                <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all relative ${
+                    msg.sender === 'user' 
+                      ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' 
+                      : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border`
+                  }`}>
+                    <div className="leading-relaxed font-medium">{msg.content}</div>
+                    <div className={`text-[10px] mt-2 opacity-70 font-black uppercase tracking-wider flex items-center justify-between ${
+                      msg.sender === 'user' ? 'text-blue-100' : 'text-gray-400'
+                    }`}>
+                      <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      {msg.sender === 'bot' && (
+                        <div className="flex items-center gap-2">
+                          {showReplayButton === msg.id && (
+                            <button
+                              onClick={() => handleReplay(msg.content, msg.id)}
+                              className={`p-1 rounded hover:bg-white/10 transition-colors ${getPersonaColorClass(activePersona, 'text')}`}
+                              title="Replay message"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Threat Assessment */}
+                {msg.sender === 'bot' && msg.confidenceScore && (
+                  <div className="max-w-[85%]">
+                    <div className={`bg-black/40 backdrop-blur-xl border rounded-xl p-3 shadow-lg transition-all duration-1000 ${
+                      msg.scamDetected && msg.confidenceScore === 100 ? 'border-red-400/50' : 'border-white/10'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white font-black uppercase text-[10px] tracking-[0.1em] flex items-center gap-1">
+                          <Shield className="w-3 h-3" />
+                          Threat Assessment
+                        </span>
+                        <span className={`font-black text-sm ${
+                          msg.scamDetected && msg.confidenceScore === 100 ? 'text-red-400' : getPersonaColorClass(activePersona, 'text')
+                        }`}>
+                          {msg.confidenceScore}%
+                        </span>
+                      </div>
+                      <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-1000 ${
+                            msg.scamDetected && msg.confidenceScore === 100 ? 'bg-red-500' : getPersonaColorClass(activePersona, 'bg')
+                          }`} 
+                          style={{ width: `${msg.confidenceScore}%` }} 
+                        />
+                      </div>
+                      {msg.scamDetected && (
+                        <div className="mt-2 p-2 bg-red-500/20 border border-red-400/30 rounded text-red-200 text-[10px] font-black uppercase flex items-center gap-2">
+                          <AlertTriangle className="w-3 h-3" />
+                          THREAT DETECTED
+                          {msg.scamIndicators && msg.scamIndicators.length > 0 && (
+                            <div className="text-[9px] opacity-80 font-normal normal-case">
+                              {msg.scamIndicators.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map(i => (
+                        <div 
+                          key={i} 
+                          className={`w-1.5 h-1.5 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
+                          style={{ animationDelay: `${i * 150}ms` }} 
+                        />
+                      ))}
+                    </div>
+                    <span className="text-gray-300 font-black uppercase tracking-widest text-[10px] italic">
+                      {activePersona.serviceLabel} analyzing...
+                    </span>
                   </div>
                 </div>
               </div>
-            ))}
-            {loading && <div className="text-center text-gray-500 text-xs animate-pulse">Analyzing...</div>}
+            )}
           </>
         )}
       </div>
@@ -461,22 +578,54 @@ export default function ChatInterface({
       {/* FOOTER */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
         <div className="bg-black/70 rounded-xl border border-white/10 p-3">
+          {/* Recording Status */}
+          {isRecording && (
+            <div className={`mb-2 p-2 border rounded text-center animate-pulse tracking-widest backdrop-blur-xl ${
+              getPersonaColorClass(activePersona, 'bg')
+            }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-[10px] font-black uppercase`}>
+              <div className="flex items-center justify-center gap-2">
+                <Zap className="w-4 h-4" />
+                WALKIE-TALKIE ACTIVE - RECORDING
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-3">
-            <button onClick={handleWalkieTalkieMic} className={`px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gray-800 border-gray-600 text-gray-300'}`}>
+            <button onClick={handleWalkieTalkieMic} className={`
+              px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 shadow-lg backdrop-blur-xl
+              ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 hover:from-gray-500 hover:to-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'}
+            `}>
               {isRecording ? <><MicOff className="w-4 h-4"/> STOP & SEND</> : <><Mic className="w-4 h-4"/> RECORD</>}
             </button>
             <button onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-black text-[10px] uppercase">Sync: {intelligenceSync}%</button>
-            <button onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase">
+            <button onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase relative">
               {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />} Voice
+              {isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse" />}
             </button>
           </div>
+          
           <div className="flex gap-2">
-            <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
-            <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
-            <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
+            <button onClick={() => fileInputRef.current?.click()} className={`
+              p-3 rounded-lg backdrop-blur-xl transition-all
+              ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 hover:bg-gray-700/60 border border-gray-600'}
+            `}><Camera className="w-5 h-5" /></button>
+            <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center backdrop-blur-xl">
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : selectedImage ? `Vision ready: ${selectedImage.name}...` : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10 placeholder-gray-500" disabled={loading || isRecording} />
             </div>
-            <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
+            <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`
+              px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all backdrop-blur-xl
+              ${(input.trim() || selectedImage) && !loading && !isRecording 
+                ? `bg-gradient-to-r ${getPersonaColorClass(activePersona, 'bg')} to-blue-800 text-white hover:shadow-lg border border-white/20` 
+                : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
+              }
+            `}>{loading ? 'PROCESSING' : 'SEND'}</button>
+          </div>
+          
+          <div className="text-center mt-3 pb-1">
+            <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.2em]">
+              LYLO DIGITAL BODYGUARD: ENTERPRISE SECURITY & INTELLIGENCE
+            </p>
           </div>
         </div>
       </div>
