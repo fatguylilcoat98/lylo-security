@@ -164,6 +164,7 @@ function ChatInterface({
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // NEW: Track selected persona
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Visual feedback
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Voice controls
   
@@ -341,28 +342,66 @@ function ChatInterface({
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+      
+      // ANTI-STUTTERING SETTINGS
+      recognition.continuous = false; // Don't continue listening
+      recognition.interimResults = false; // No partial results to prevent "so so so"
+      recognition.maxAlternatives = 1; // Only best result
+      recognition.lang = 'en-US';
       
       recognition.onresult = (event: any) => {
-        let final = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) final += event.results[i][0].transcript + ' ';
+        let finalTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal && result[0].confidence > 0.7) { // Confidence threshold
+            finalTranscript += result[0].transcript + ' ';
+          }
         }
-        if (final.trim()) {
-          transcriptRef.current += final;
-          setInput(prev => prev + final);
+        
+        if (finalTranscript.trim()) {
+          // CLEAN UP TRANSCRIPT - Remove stuttering and repetition
+          const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
+          transcriptRef.current = cleanedTranscript;
+          setInput(cleanedTranscript);
         }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+        transcriptRef.current = '';
       };
 
       recognition.onend = () => {
-        if (isRecordingRef.current) try { recognition.start(); } catch(e){}
+        setIsRecording(false);
+        // Auto-send clean transcript
+        const cleanTranscript = transcriptRef.current.trim();
+        if (cleanTranscript && cleanTranscript.length > 2) {
+          setTimeout(() => handleSend(), 100);
+        }
+        transcriptRef.current = '';
       };
-
+      
       recognitionRef.current = recognition;
       setMicSupported(true);
     }
   }, []);
+
+  // SPEECH CLEANUP FUNCTION - Remove stuttering and repetition
+  const cleanUpSpeech = (text: string): string => {
+    // Remove excessive repetition of words like "so so so I just wanted"
+    let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1'); // Remove 3+ repeated words
+    
+    // Clean up common speech patterns
+    cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, ''); // Remove filler words
+    cleaned = cleaned.replace(/\s+/g, ' '); // Normalize whitespace
+    cleaned = cleaned.replace(/^\s+|\s+$/g, ''); // Trim
+    
+    // Remove excessive "I just wanted to" repetition
+    cleaned = cleaned.replace(/(\b(I just wanted to|so)\b\s*){3,}/gi, 'I wanted to ');
+    
+    return cleaned;
+  };
 
   const handleWalkieTalkieMic = () => {
     if (!micSupported) return alert('Mic not supported');
@@ -528,15 +567,37 @@ function ChatInterface({
     }
   };
 
-  const handleGetFullGuide = async () => {
-    if (!isEliteUser) return alert('Elite access required');
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
-      const data = await res.json();
-      setGuideData(data);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+  // NAVIGATION FUNCTIONS
+  const handleBackToServices = () => {
+    quickStopAllAudio();
+    setMessages([]); // Clear conversation
+    setInput('');
+    setSelectedImage(null);
+    // Stay with current persona but return to service selection screen
+  };
+
+  const handleQuickPersonaSwitch = (persona: PersonaConfig) => {
+    if (!canAccessPersona(persona, userTier)) {
+      alert('Upgrade required for this expert.');
+      return;
+    }
+    
+    quickStopAllAudio();
+    setActivePersona(persona);
+    onPersonaChange(persona);
+    localStorage.setItem('lylo_preferred_persona', persona.id);
+    
+    // Add system message about the switch
+    const switchMsg: Message = {
+      id: Date.now().toString(),
+      content: `Switched to ${persona.serviceLabel}. ${persona.spokenHook.replace('{userName}', userName || 'user')}`,
+      sender: 'bot',
+      timestamp: new Date(),
+      confidenceScore: 100
+    };
+    setMessages(prev => [...prev, switchMsg]);
+    speakText(switchMsg.content);
+    setShowDropdown(false);
   };
 
   // --- RENDER ---
@@ -622,12 +683,61 @@ function ChatInterface({
       {/* MOBILE-OPTIMIZED HEADER */}
       <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
+          
+          {/* LEFT: Back Button (when in chat) OR Settings (when in service grid) */}
           <div className="relative">
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
-              <Settings className="w-5 h-5 text-white" />
-            </button>
+            {messages.length > 0 ? (
+              // BACK TO SERVICES BUTTON
+              <button 
+                onClick={handleBackToServices} 
+                className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all"
+                title="Back to Services"
+              >
+                <div className="w-5 h-5 text-white">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                </div>
+              </button>
+            ) : (
+              // SETTINGS BUTTON (service grid view)
+              <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
+                <Settings className="w-5 h-5 text-white" />
+              </button>
+            )}
+            
+            {/* SETTINGS DROPDOWN */}
             {showDropdown && (
-              <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[200px] shadow-2xl z-[100001]">
+              <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001]">
+                
+                {/* PERSONA SWITCHER (only show in chat mode) */}
+                {messages.length > 0 && (
+                  <div className="mb-4 pb-4 border-b border-white/10">
+                    <h3 className="text-white font-bold text-sm mb-3">Switch Expert</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {getAccessiblePersonas(userTier).slice(0, 6).map(persona => {
+                        const Icon = persona.icon;
+                        const isActive = activePersona.id === persona.id;
+                        return (
+                          <button
+                            key={persona.id}
+                            onClick={() => handleQuickPersonaSwitch(persona)}
+                            className={`p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                              isActive 
+                                ? `${getPersonaColorClass(persona, 'bg')}/20 ${getPersonaColorClass(persona, 'text')} border ${getPersonaColorClass(persona, 'border')}` 
+                                : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                            }`}
+                            disabled={isActive}
+                          >
+                            <Icon className="w-4 h-4" />
+                            <span className="truncate">{persona.serviceLabel.split(' ')[0]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
                 <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95 transition-all">
                   <LogOut className="w-4 h-4"/> 
                   <span className="font-bold text-sm">Exit Protection</span>
@@ -640,7 +750,9 @@ function ChatInterface({
             <h1 className="text-white font-black text-xl tracking-[0.2em]">
               L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
             </h1>
-            <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">Digital Bodyguard</p>
+            <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">
+              {messages.length > 0 ? activePersona.serviceLabel : 'Digital Bodyguard'}
+            </p>
           </div>
           
           <div className="flex items-center gap-2">
@@ -695,7 +807,7 @@ function ChatInterface({
                       className={`
                         relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
                         ${isSelected 
-                          ? `bg-${persona.color}-500/30 border-${persona.color}-400 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse` 
+                          ? `bg-white/20 border-white/60 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse shadow-2xl` 
                           : `bg-black/50 border-white/20 hover:bg-black/70 active:scale-95`
                         }
                         ${getPersonaColorClass(persona, 'glow')}
