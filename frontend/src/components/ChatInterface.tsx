@@ -125,8 +125,22 @@ function ChatInterface({
   currentPersona: initialPersona, userEmail, zoomLevel, onZoomChange, onPersonaChange, onLogout, onUsageUpdate
 }: ChatInterfaceProps) {
   
-  // State
-  const [activePersona, setActivePersona] = useState<PersonaConfig>(initialPersona || PERSONAS[0]);
+  // State - SAFE INITIALIZATION
+  const [activePersona, setActivePersona] = useState<PersonaConfig>(() => {
+    return initialPersona || PERSONAS[0] || {
+      id: 'guardian', 
+      name: 'The Guardian', 
+      serviceLabel: 'SECURITY SCAN', 
+      description: 'Security Lead', 
+      protectiveJob: 'Security Lead', 
+      spokenHook: 'Security protocols active.', 
+      briefing: 'Loading...', 
+      color: 'blue', 
+      requiredTier: 'free' as const, 
+      icon: Shield, 
+      capabilities: []
+    };
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -769,7 +783,7 @@ function ChatInterface({
             </div>
             
             <div className="text-[8px] text-gray-400 uppercase font-bold">
-              {activePersona.serviceLabel.split(' ')[0]}
+              {activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'}
             </div>
           </div>
         </div>
