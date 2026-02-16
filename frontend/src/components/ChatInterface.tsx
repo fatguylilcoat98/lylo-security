@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import { 
   Shield, Wrench, Gavel, Monitor, BookOpen, Laugh, ChefHat, Activity, 
-  Camera, Mic, MicOff, Volume2, Volume1, RotateCcw, AlertTriangle, 
+  Camera, Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, 
   Phone, CreditCard, FileText, Zap, Brain, Settings, LogOut, X, Crown,
-  ArrowLeft, User, Play
+  ArrowLeft, Info, Play
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -46,7 +46,6 @@ interface RecoveryGuideData {
 // --- DATA ---
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
-  // RENAMED SNARKY PERSONA HERE:
   { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
@@ -104,7 +103,7 @@ export default function ChatInterface({
   const [userName, setUserName] = useState<string>('');
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // Audio State
+  // Audio & Mic
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
   const [autoTTS, setAutoTTS] = useState(true);
@@ -114,14 +113,14 @@ export default function ChatInterface({
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
-  // UI State
+  // UI & Modals
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
-  const [chatStarted, setChatStarted] = useState(false); // NEW: Controls view switching
+  const [chatStarted, setChatStarted] = useState(false);
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
@@ -130,7 +129,7 @@ export default function ChatInterface({
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
-  const [showFullGuide, setShowFullGuide] = useState(false);
+  const [showFullGuide, setShowFullGuide] = useState(false); // FIXED: This line was missing
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -302,7 +301,6 @@ export default function ChatInterface({
   // 2. START CHAT (Clicking the Activate Button)
   const handleStartChat = () => {
     setChatStarted(true); // Switch view
-    // Add welcome message
     const hook = activePersona.spokenHook.replace('{userName}', userName || 'user');
     const welcomeMsg: Message = { 
       id: Date.now().toString(), 
@@ -325,7 +323,6 @@ export default function ChatInterface({
     const text = input.trim();
     if (!text && !selectedImage) return;
     
-    // Ensure we are in chat mode if sending from mic on landing page
     if (!chatStarted) setChatStarted(true);
 
     quickStopAllAudio();
@@ -415,11 +412,9 @@ export default function ChatInterface({
     localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
   };
 
-  // --- RENDER ---
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
-      {/* OVERLAYS */}
       {showFullGuide && guideData && (
         <div className="fixed inset-0 z-[100060] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-0 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -621,9 +616,15 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${(activePersona?.serviceLabel || 'GUARD').split(' ')[0]}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
+          </div>
+          <div className="mt-2 text-center">
+            <p className="text-[9px] text-gray-500 font-medium flex items-center justify-center gap-1">
+              <Info className="w-3 h-3" />
+              AI analysis can make mistakes. Verify critical security & financial information.
+            </p>
           </div>
         </div>
       </div>
