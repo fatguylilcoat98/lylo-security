@@ -1,31 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-// SAFE IMPORTS: Swapped specific icons that were causing the #130 Crash
+// SAFE IMPORTS: Replaced risky icons to prevent #130 Crash
 import { 
-  Shield, 
-  Wrench, 
-  Gavel, 
-  Monitor, 
-  BookOpen, 
-  Smile,      // Replaced Laugh
-  Activity,   // Replaced ChefHat
-  Camera, 
-  Mic, 
-  MicOff, 
-  Volume2, 
-  RotateCcw,  // Replaced VolumeX with logic or simpler icon
-  AlertTriangle, 
-  Phone, 
-  CreditCard, 
-  FileText, 
-  Zap, 
-  Settings, 
-  LogOut, 
-  X, 
-  Star,       // Replaced Crown
-  ArrowLeft,
-  Info,
-  Play
+  Shield, Wrench, Gavel, Monitor, BookOpen, Smile, Activity, 
+  Camera, Mic, MicOff, Volume2, RotateCcw, AlertTriangle, 
+  Phone, CreditCard, FileText, Zap, Settings, LogOut, X, Star,
+  ArrowLeft, Info, Play
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -67,16 +47,13 @@ interface RecoveryGuideData {
 // --- DATA ---
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
-  // Swapped Laugh -> Smile
-  { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Smile, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
+  { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use strategic humor to help you handle difficult situations with confidence.', color: 'orange', requiredTier: 'pro', icon: Smile, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
   { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Legal Shield', protectiveJob: 'Legal Shield', spokenHook: 'Legal shield activated. How can I protect your rights today?', briefing: 'I provide legal guidance and protect you from legal scams and exploitation.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Legal scam detection', 'Rights protection guidance'] },
   { id: 'techie', name: 'The Techie', serviceLabel: 'TECH SUPPORT', description: 'Tech Bridge', protectiveJob: 'Tech Bridge', spokenHook: 'Technical support online. Ready to solve your tech challenges.', briefing: 'I provide technology support and protect you from tech support scams.', color: 'purple', requiredTier: 'elite', icon: Monitor, capabilities: ['Device troubleshooting', 'Tech support scam protection', 'Network security'] },
   { id: 'storyteller', name: 'The Storyteller', serviceLabel: 'STORY THERAPY', description: 'Mental Guardian', protectiveJob: 'Mental Guardian', spokenHook: 'Story therapy session initiated.', briefing: 'I create therapeutic stories to support your mental wellness.', color: 'indigo', requiredTier: 'max', icon: BookOpen, capabilities: ['Custom story creation', 'Narrative therapy', 'Mental wellness'] },
-  // Swapped Laugh -> Smile
   { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment mode activated.', briefing: 'I provide professional entertainment to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Smile, capabilities: ['Professional comedy', 'Mood enhancement', 'Stress relief'] },
-  // Swapped ChefHat -> Activity (Safest option)
   { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance active.', briefing: 'I provide expert culinary guidance and protect you from food-related risks.', color: 'red', requiredTier: 'max', icon: Activity, capabilities: ['Recipe creation', 'Food safety protocols', 'Nutrition advice'] },
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
@@ -114,22 +91,13 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
 
 const getAccessiblePersonas = (tier: string) => PERSONAS.filter(p => canAccessPersona(p, tier));
 
-const getTierName = (tier: string) => {
-  switch(tier) {
-    case 'free': return 'Basic Shield';
-    case 'pro': return 'Pro Guardian';
-    case 'elite': return 'Elite Justice';  
-    case 'max': return 'Max Unlimited';
-    default: return 'Unknown';
-  }
-};
-
 // --- MAIN COMPONENT ---
 export default function ChatInterface({ 
   currentPersona: initialPersona, userEmail, zoomLevel, onZoomChange, onPersonaChange, onLogout, onUsageUpdate
 }: ChatInterfaceProps) {
   
   // State
+  // FIXED: Added safe initialization to prevent 'undefined' errors
   const [activePersona, setActivePersona] = useState<PersonaConfig>(initialPersona || PERSONAS[0] || {
     id: 'guardian', 
     name: 'The Guardian', 
@@ -150,7 +118,7 @@ export default function ChatInterface({
   const [userName, setUserName] = useState<string>('');
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // Audio State
+  // Audio & Mic
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
   const [autoTTS, setAutoTTS] = useState(true);
@@ -160,7 +128,7 @@ export default function ChatInterface({
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
-  // UI State
+  // UI & Modals
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -168,7 +136,7 @@ export default function ChatInterface({
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); 
-  const [chatStarted, setChatStarted] = useState(false); 
+  const [chatStarted, setChatStarted] = useState(false); // Controls view switching
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
@@ -177,7 +145,7 @@ export default function ChatInterface({
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
-  const [showFullGuide, setShowFullGuide] = useState(false);
+  const [showFullGuide, setShowFullGuide] = useState(false); // FIXED: Added missing state
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -415,6 +383,7 @@ export default function ChatInterface({
     }
   };
 
+  // FIXED: Added missing function to fix build error
   const handleGetFullGuide = async () => {
     if (!isEliteUser) return alert('Elite access required');
     setLoading(true);
@@ -457,6 +426,12 @@ export default function ChatInterface({
     const newAutoTTS = !autoTTS;
     setAutoTTS(newAutoTTS);
     localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
+  };
+
+  // Safe label getter to prevent "split of undefined" crashes
+  const getSafeLabel = () => {
+    if (!activePersona || !activePersona.serviceLabel) return 'GUARD';
+    return activePersona.serviceLabel.split(' ')[0];
   };
 
   return (
@@ -665,7 +640,7 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${getSafeLabel()}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
