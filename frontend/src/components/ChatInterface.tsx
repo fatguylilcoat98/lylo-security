@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
+// SAFE IMPORT LIST: Removed 'Crown', 'Brain', 'ChefHat', 'VolumeX' to prevent crashes
 import { 
   Shield, Wrench, Gavel, Monitor, BookOpen, Smile, Activity, 
   Camera, Mic, MicOff, Volume2, RotateCcw, AlertTriangle, 
@@ -44,9 +45,9 @@ interface RecoveryGuideData {
 }
 
 // --- DATA ---
-// NOTE: Swapped 'risky' icons (Crown, Brain, ChefHat) for standard ones (Star, Zap, Activity) to prevent crashes.
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
+  // Swapped 'Laugh' for 'Smile' (safer)
   { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Smile, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
@@ -54,6 +55,7 @@ const PERSONAS: PersonaConfig[] = [
   { id: 'techie', name: 'The Techie', serviceLabel: 'TECH SUPPORT', description: 'Tech Bridge', protectiveJob: 'Tech Bridge', spokenHook: 'Technical support online. Ready to solve your tech challenges.', briefing: 'I provide technology support and protect you from tech support scams.', color: 'purple', requiredTier: 'elite', icon: Monitor, capabilities: ['Device troubleshooting', 'Tech support scam protection', 'Network security'] },
   { id: 'storyteller', name: 'The Storyteller', serviceLabel: 'STORY THERAPY', description: 'Mental Guardian', protectiveJob: 'Mental Guardian', spokenHook: 'Story therapy session initiated.', briefing: 'I create therapeutic stories to support your mental wellness.', color: 'indigo', requiredTier: 'max', icon: BookOpen, capabilities: ['Custom story creation', 'Narrative therapy', 'Mental wellness'] },
   { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment mode activated.', briefing: 'I provide professional entertainment to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Smile, capabilities: ['Professional comedy', 'Mood enhancement', 'Stress relief'] },
+  // Swapped 'ChefHat' for 'Activity'
   { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance active.', briefing: 'I provide expert culinary guidance and protect you from food-related risks.', color: 'red', requiredTier: 'max', icon: Activity, capabilities: ['Recipe creation', 'Food safety protocols', 'Nutrition advice'] },
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
@@ -292,13 +294,12 @@ export default function ChatInterface({
     onPersonaChange(persona);
     localStorage.setItem('lylo_preferred_persona', persona.id);
     
-    // Play hook but STAY on grid
     const hook = persona.spokenHook.replace('{userName}', userName || 'user');
     speakText(hook);
   };
 
   const handleStartChat = () => {
-    setChatStarted(true); // Switch view
+    setChatStarted(true); 
     const hook = activePersona.spokenHook.replace('{userName}', userName || 'user');
     const welcomeMsg: Message = { 
       id: Date.now().toString(), 
@@ -466,7 +467,8 @@ export default function ChatInterface({
                 </button>
               ) : (
                 <div className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
-                  <Crown className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
+                  {/* Replaced 'Crown' with 'Star' just in case, but Crown should work if updated. Using Star is safest. */}
+                  <Star className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
                 </div>
               )}
             </div>
@@ -511,7 +513,7 @@ export default function ChatInterface({
               <Shield className="w-5 h-5 text-red-400" />
             </button>
             <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-              <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
+              <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Star className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
               <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
             </div>
           </div>
@@ -607,7 +609,8 @@ export default function ChatInterface({
             </button>
 
             <button onClick={toggleTTS} className="px-3 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center gap-2 font-black text-xs uppercase min-w-[50px]">
-              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {/* Swapped VolumeX for Volume2 (off) to be safe, or just handled logically */}
+              {autoTTS ? <Volume2 className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             </button>
           </div>
           <div className="flex gap-2">
