@@ -233,7 +233,7 @@ export default function ChatInterface({
   
   // --- IDENTITY & PERSONALIZATION ---
   const [userName, setUserName] = useState<string>('');
-  const [hasGivenInitialGreeting, setHasGivenInitialGreeting] = useState(false);
+  // Removed: hasGivenInitialGreeting - no more initial greeting
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
   // --- VOICE & MIC (FIXED TAP-TO-RECORD-TO-SEND) ---
@@ -436,8 +436,7 @@ export default function ChatInterface({
     const savedInstantVoice = localStorage.getItem('lylo_instant_voice');
     if (savedInstantVoice === 'true') setInstantVoice(true);
     
-    const savedGreeting = localStorage.getItem('lylo_initial_greeting');
-    if (savedGreeting === 'true') setHasGivenInitialGreeting(true);
+    // Removed: savedGreeting loading - no more initial greeting functionality
     
     const savedSync = localStorage.getItem('lylo_intelligence_sync');
     if (savedSync) setIntelligenceSync(parseInt(savedSync) || 0);
@@ -473,25 +472,7 @@ export default function ChatInterface({
     }
   };
 
-  // --- MINIMAL INITIAL GREETING ---
-  const giveInitialGreeting = async () => {
-    if (hasGivenInitialGreeting) return;
-    
-    const greetingMessage = "Hello, I'm LYLO. Please select a persona.";
-    await speakText(greetingMessage);
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: greetingMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 100
-    };
-    setMessages(prev => [...prev, botMsg]);
-    
-    setHasGivenInitialGreeting(true);
-    localStorage.setItem('lylo_initial_greeting', 'true');
-  };
+  // Removed: giveInitialGreeting function - no more initial greeting
 
   // --- PERSONA CHANGE WITH INTRODUCTION ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
@@ -1112,103 +1093,7 @@ export default function ChatInterface({
     return userEmail.split('@')[0];
   };
 
-  // --- COMMAND CENTER LANDING (NO CHATGPT BLANK PAGE) ---
-  const CommandCenter = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center py-8">
-      {/* LYLO Logo with Persona-Specific Glow */}
-      <div className={`w-24 h-24 bg-gradient-to-br from-gray-800 to-black rounded-2xl flex items-center justify-center mb-6 shadow-2xl transition-all duration-700 ${getPersonaColorClass(currentPersona, 'border')} ${getPersonaColorClass(currentPersona, 'glow')} border-2`}>
-        <span className="text-white font-black text-3xl tracking-wider">LYLO</span>
-      </div>
-      
-      <h1 className={`text-3xl font-black uppercase tracking-[0.1em] mb-2 ${getPersonaColorClass(currentPersona, 'text')}`}>
-        {currentPersona.name}
-      </h1>
-      <p className="text-gray-400 text-sm font-bold uppercase tracking-[0.1em] mb-1">
-        {currentPersona.protectiveJob}
-      </p>
-      <p className="text-gray-500 text-xs uppercase tracking-[0.2em] font-medium mb-8">
-        {isInStandbyMode ? 'Privacy Mode - Touch Any Button to Activate' : 'Digital Bodyguard Active'}
-      </p>
-      
-      {/* Intelligence Sync Progress - Clickable */}
-      <div className="mb-8 w-full max-w-md cursor-pointer" onClick={handleIntelligenceSyncClick}>
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-white font-bold text-xs uppercase tracking-wider">Intelligence Sync</span>
-          <span className={`font-black text-sm ${getPersonaColorClass(currentPersona, 'text')}`}>{intelligenceSync}%</span>
-        </div>
-        <div className={`bg-gray-800 rounded-full h-3 overflow-hidden border transition-all duration-300 hover:scale-105 ${getPersonaColorClass(currentPersona, 'border')}`}>
-          <div 
-            className={`h-full transition-all duration-500 rounded-full ${getPersonaColorClass(currentPersona, 'bg')}`}
-            style={{ width: `${intelligenceSync}%` }}
-          />
-        </div>
-        <p className="text-gray-500 text-xs mt-1 hover:text-gray-300 transition-colors">Click to sync faster</p>
-      </div>
-
-      {/* 4 Large Action Hub Tiles */}
-      <div className="grid grid-cols-2 gap-6 max-w-2xl w-full px-4">
-        <button
-          onClick={handleSearchEverything}
-          className="bg-gray-900/60 backdrop-blur-xl border border-blue-500/30 rounded-2xl p-8 text-center hover:bg-gray-800/80 transition-all duration-300 group transform hover:scale-105"
-        >
-          <div className="text-5xl mb-4">🔍</div>
-          <h3 className="text-blue-400 font-black text-xl mb-3 uppercase tracking-wider group-hover:text-blue-300">
-            Search Everything
-          </h3>
-          <p className="text-gray-300 text-sm font-medium">
-            Ask me to find anything on the web.
-          </p>
-        </button>
-
-        <button
-          onClick={handleShieldMe}
-          className="bg-gray-900/60 backdrop-blur-xl border border-red-500/30 rounded-2xl p-8 text-center hover:bg-gray-800/80 transition-all duration-300 group transform hover:scale-105"
-        >
-          <div className="text-5xl mb-4">🛡️</div>
-          <h3 className="text-red-400 font-black text-xl mb-3 uppercase tracking-wider group-hover:text-red-300">
-            Shield Me
-          </h3>
-          <p className="text-gray-300 text-sm font-medium">
-            Paste a message here to check for scams.
-          </p>
-        </button>
-
-        <button
-          onClick={handleVisionLink}
-          className="bg-gray-900/60 backdrop-blur-xl border border-green-500/30 rounded-2xl p-8 text-center hover:bg-gray-800/80 transition-all duration-300 group transform hover:scale-105"
-        >
-          <div className="text-5xl mb-4">📸</div>
-          <h3 className="text-green-400 font-black text-xl mb-3 uppercase tracking-wider group-hover:text-green-300">
-            Vision Link
-          </h3>
-          <p className="text-gray-300 text-sm font-medium">
-            Show me a photo of a problem to solve it.
-          </p>
-        </button>
-
-        <button
-          onClick={handleTalkToExpert}
-          className="bg-gray-900/60 backdrop-blur-xl border border-purple-500/30 rounded-2xl p-8 text-center hover:bg-gray-800/80 transition-all duration-300 group transform hover:scale-105"
-        >
-          <div className="text-5xl mb-4">👥</div>
-          <h3 className="text-purple-400 font-black text-xl mb-3 uppercase tracking-wider group-hover:text-purple-300">
-            Talk to Expert
-          </h3>
-          <p className="text-gray-300 text-sm font-medium">
-            Access: {getAccessiblePersonas().length}/10 specialists
-          </p>
-        </button>
-      </div>
-
-      {/* Privacy Shield Status */}
-      <div className="mt-8 flex items-center gap-3">
-        <div className={`w-3 h-3 rounded-full transition-colors ${isInStandbyMode ? 'bg-gray-500' : getPersonaColorClass(currentPersona, 'bg')}`} />
-        <span className="text-gray-400 text-xs font-black uppercase tracking-widest">
-          {isInStandbyMode ? 'Privacy Mode' : 'Protected Mode'}
-        </span>
-      </div>
-    </div>
-  );
+  // Removed: CommandCenter component - not used anymore, replaced with simple message
 
   // --- INTELLIGENCE SYNC MODAL COMPONENT ---
   const IntelligenceSyncModal = () => (
