@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import { 
   Shield, Wrench, Gavel, Monitor, BookOpen, Laugh, ChefHat, Activity, 
-  Camera, Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, 
-  Phone, CreditCard, FileText, Zap, Brain, Settings, LogOut, X, Crown
+  Camera, Mic, MicOff, Volume2, Volume1, RotateCcw, AlertTriangle, 
+  Phone, CreditCard, FileText, Zap, Brain, Settings, LogOut, X, Crown,
+  ArrowLeft, User, Play
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -45,7 +46,8 @@ interface RecoveryGuideData {
 // --- DATA ---
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
-  { id: 'roast', name: 'The Roast Master', serviceLabel: 'MOOD SUPPORT', description: 'Humor Shield', protectiveJob: 'Humor Shield', spokenHook: 'Mood support activated. Let me help lighten the situation.', briefing: 'I use strategic humor to help you handle difficult situations with confidence.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
+  // RENAMED SNARKY PERSONA HERE:
+  { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
   { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Legal Shield', protectiveJob: 'Legal Shield', spokenHook: 'Legal shield activated. How can I protect your rights today?', briefing: 'I provide legal guidance and protect you from legal scams and exploitation.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Legal scam detection', 'Rights protection guidance'] },
@@ -76,7 +78,9 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
 const getPrivacyShieldClass = (persona: PersonaConfig, loading: boolean, messages: Message[]) => {
   if (loading) return 'border-yellow-400 shadow-[0_0_15px_rgba(255,191,0,0.4)] animate-pulse';
   const lastBotMsg = [...messages].reverse().find(m => m.sender === 'bot');
-  if (lastBotMsg?.scamDetected && lastBotMsg?.confidenceScore === 100) return 'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse';
+  if (lastBotMsg?.scamDetected && lastBotMsg?.confidenceScore === 100) {
+    return 'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse';
+  }
   return getPersonaColorClass(persona, 'border') + ' ' + getPersonaColorClass(persona, 'glow');
 };
 
@@ -100,25 +104,24 @@ export default function ChatInterface({
   const [userName, setUserName] = useState<string>('');
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // Audio & Mic
+  // Audio State
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
-  const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
-  const [instantVoice, setInstantVoice] = useState(false);
   const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
-  // UI & Modals
+  // UI State
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
+  const [chatStarted, setChatStarted] = useState(false); // NEW: Controls view switching
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
@@ -127,7 +130,6 @@ export default function ChatInterface({
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
-  const [showScamRecovery, setShowScamRecovery] = useState(false);
   const [showFullGuide, setShowFullGuide] = useState(false);
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
@@ -140,6 +142,7 @@ export default function ChatInterface({
 
   useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
 
+  // Init
   useEffect(() => {
     const init = async () => {
       await loadUserStats();
@@ -189,6 +192,7 @@ export default function ChatInterface({
     } catch (e) { console.error(e); }
   };
 
+  // Audio & Speech
   const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
@@ -219,6 +223,7 @@ export default function ChatInterface({
       }
     } catch (e) { console.log('Using fallback voice'); }
 
+    // Fallback logic
     const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
     speakChunksSequentially(chunks, 0);
   };
@@ -231,6 +236,7 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
+  // Mic
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -251,7 +257,6 @@ export default function ChatInterface({
 
       recognition.onend = () => {
         if (isRecordingRef.current) try { recognition.start(); } catch(e){}
-        else setRecordingState('idle');
       };
 
       recognitionRef.current = recognition;
@@ -270,29 +275,35 @@ export default function ChatInterface({
       quickStopAllAudio();
       isRecordingRef.current = true;
       setIsRecording(true);
-      setRecordingState('recording');
       setInput('');
       transcriptRef.current = '';
       if (recognitionRef.current) try { recognitionRef.current.start(); } catch(e){}
     }
   };
 
-  // --- FIXED PERSONA SWITCH LOGIC ---
-  const handlePersonaChange = async (persona: PersonaConfig) => {
+  // --- ACTIONS ---
+  
+  // 1. SELECT PERSONA (But don't start chat yet)
+  const handlePersonaSelect = (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
       return;
     }
-    
     quickStopAllAudio();
     setActivePersona(persona);
     onPersonaChange(persona);
     localStorage.setItem('lylo_preferred_persona', persona.id);
     
+    // Play hook but STAY on grid
     const hook = persona.spokenHook.replace('{userName}', userName || 'user');
-    await speakText(hook);
-    
-    // CRITICAL FIX: Add message immediately so screen switches from Grid to Chat
+    speakText(hook);
+  };
+
+  // 2. START CHAT (Clicking the Activate Button)
+  const handleStartChat = () => {
+    setChatStarted(true); // Switch view
+    // Add welcome message
+    const hook = activePersona.spokenHook.replace('{userName}', userName || 'user');
     const welcomeMsg: Message = { 
       id: Date.now().toString(), 
       content: hook, 
@@ -301,15 +312,22 @@ export default function ChatInterface({
       confidenceScore: 100 
     };
     setMessages(prev => [...prev, welcomeMsg]);
-    
-    setShowKnowMore(persona.id);
-    setTimeout(() => setShowKnowMore(null), 5000);
+  };
+
+  // 3. GO BACK (Menu Button)
+  const handleBackToGrid = () => {
+    setChatStarted(false);
+    setMessages([]); // Clear chat for fresh start
+    quickStopAllAudio();
   };
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text && !selectedImage) return;
     
+    // Ensure we are in chat mode if sending from mic on landing page
+    if (!chatStarted) setChatStarted(true);
+
     quickStopAllAudio();
     setLoading(true);
     setInput('');
@@ -397,9 +415,11 @@ export default function ChatInterface({
     localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
   };
 
+  // --- RENDER ---
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
+      {/* OVERLAYS */}
       {showFullGuide && guideData && (
         <div className="fixed inset-0 z-[100060] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-0 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -474,61 +494,92 @@ export default function ChatInterface({
       )}
 
       {/* HEADER */}
-      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-3 flex-shrink-0 z-50">
+      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
           <div className="relative">
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg"><Settings className="w-5 h-5 text-white" /></button>
-            {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 border border-white/10 rounded-xl p-3 min-w-[250px] shadow-2xl">
-                <button onClick={onLogout} className="w-full flex items-center gap-2 text-red-400 p-2 hover:bg-white/5 rounded"><LogOut className="w-4 h-4"/> Logout</button>
+            {chatStarted ? (
+              <button onClick={handleBackToGrid} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all flex items-center gap-1 text-white font-bold text-xs">
+                <ArrowLeft className="w-4 h-4" /> MENU
+              </button>
+            ) : (
+              <div className="p-3">
+                <Settings className="w-5 h-5 text-gray-500" />
               </div>
             )}
           </div>
-          <div className="text-center">
-            <h1 className="text-white font-black text-lg tracking-[0.2em]">L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO</h1>
-            <p className="text-gray-500 text-[9px] uppercase tracking-widest">Digital Bodyguard</p>
+          <div className="text-center flex-1">
+            <h1 className="text-white font-black text-xl tracking-[0.2em]">
+              L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
+            </h1>
+            <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">Digital Bodyguard</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCrisisShield(true)} className="p-2 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
+            <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse active:scale-95 transition-all">
+              <Shield className="w-5 h-5 text-red-400" />
+            </button>
             <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-              <div className="text-white font-bold text-xs">{getUserDisplayName()}</div>
-              <div className="text-[9px] text-gray-400 font-black uppercase">Protected</div>
+              <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
+              <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT - SCROLL FIX */}
+      {/* MAIN CONTENT */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '220px' }}>
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center min-h-full p-4 pt-10 overflow-y-auto">
-            <div className={`relative w-20 h-20 bg-black/60 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-4 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
-              <span className="text-white font-black text-2xl tracking-wider">LYLO</span>
-            </div>
-            <h1 className="text-2xl font-bold text-white mb-2 text-center">Digital Bodyguard Services</h1>
-            <p className="text-gray-400 text-sm mb-8 text-center max-w-md">Select a service below to activate your personal security expert.</p>
+        
+        {/* VIEW 1: LANDING GRID (If chat hasn't started) */}
+        {!chatStarted ? (
+          <div className="flex flex-col items-center min-h-full p-4 pt-4 overflow-y-auto">
+            <h1 className="text-lg font-bold text-white mb-2 text-center">Select Your Expert</h1>
             
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-32">
+            {/* LARGE ACTIVATION BUTTON (Only appears when a persona is selected on the grid) */}
+            <div className={`sticky top-0 z-40 w-full max-w-md mb-4 p-4 rounded-xl border border-white/20 backdrop-blur-xl transition-all duration-300 ${getPersonaColorClass(activePersona, 'bg')}/20`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(activePersona, 'border')} border`}>
+                    {React.createElement(activePersona.icon, { className: `w-6 h-6 ${getPersonaColorClass(activePersona, 'text')}` })}
+                  </div>
+                  <div>
+                    <h3 className="text-white font-black text-sm uppercase">{activePersona.serviceLabel}</h3>
+                    <p className="text-gray-300 text-xs">Ready to assist.</p>
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={handleStartChat}
+                className={`w-full py-3 rounded-lg font-black text-sm uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 ${getPersonaColorClass(activePersona, 'bg')} text-white`}
+              >
+                <Play className="w-4 h-4 fill-current" /> ACTIVATE SYSTEM
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-w-6xl w-full pb-32">
               {getAccessiblePersonas(userTier).map(persona => {
                 const Icon = persona.icon;
+                const isSelected = activePersona.id === persona.id;
                 return (
-                  <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-                    className={`group relative p-6 rounded-xl backdrop-blur-xl bg-black/40 border border-white/10 hover:bg-black/60 hover:border-white/20 transition-all duration-300 transform hover:scale-105 ${getPersonaColorClass(persona, 'glow')}`}>
-                    <div className="flex flex-col items-center text-center space-y-3">
-                      <div className={`p-3 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                        <Icon className={`w-8 h-8 ${getPersonaColorClass(persona, 'text')}`} />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-bold text-sm uppercase tracking-wide">{persona.serviceLabel}</h3>
-                        <p className="text-gray-400 text-xs mt-1">{persona.description}</p>
-                      </div>
+                  <button key={persona.id} onClick={() => handlePersonaSelect(persona)}
+                    className={`
+                      relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-200 min-h-[120px] flex flex-col items-center text-center
+                      ${isSelected 
+                        ? `${getPersonaColorClass(persona, 'bg')}/40 ${getPersonaColorClass(persona, 'border')} scale-105 shadow-xl` 
+                        : 'bg-black/50 border-white/10 hover:bg-black/70'
+                      }
+                    `}>
+                    <div className={`p-2 rounded-lg mb-2 ${isSelected ? 'bg-black/40' : 'bg-transparent'}`}>
+                      <Icon className={`w-6 h-6 ${isSelected ? getPersonaColorClass(persona, 'text') : 'text-gray-500'}`} />
                     </div>
+                    <h3 className={`font-bold text-xs uppercase tracking-wide leading-tight ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                      {persona.serviceLabel}
+                    </h3>
                   </button>
                 );
               })}
             </div>
           </div>
         ) : (
+          /* VIEW 2: CHAT INTERFACE (If chat started) */
           <>
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -547,22 +598,30 @@ export default function ChatInterface({
       </div>
 
       {/* FOOTER */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 z-50">
         <div className="bg-black/70 rounded-xl border border-white/10 p-3">
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={handleWalkieTalkieMic} className={`px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gray-800 border-gray-600 text-gray-300'}`}>
-              {isRecording ? <><MicOff className="w-4 h-4"/> STOP & SEND</> : <><Mic className="w-4 h-4"/> RECORD</>}
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <button onClick={handleWalkieTalkieMic} className={`flex-1 py-3 px-3 rounded-lg font-black text-xs uppercase tracking-widest border-2 transition-all flex items-center justify-center gap-2 ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gray-800 border-gray-600 text-gray-300'}`}>
+              {isRecording ? <><MicOff className="w-4 h-4"/> STOP</> : <><Mic className="w-4 h-4"/> RECORD</>}
             </button>
-            <button onClick={cycleFontSize} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-black text-[10px] uppercase">SIZE: {zoomLevel}%</button>
-            <button onClick={toggleTTS} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase">
-              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />} Voice
+            
+            {/* NEW VOICE GENDER TOGGLE */}
+            <button 
+              onClick={() => setVoiceGender(prev => prev === 'male' ? 'female' : 'male')} 
+              className="px-3 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white font-bold text-xs uppercase min-w-[80px]"
+            >
+              {voiceGender === 'male' ? '♂ MALE' : '♀ FEMALE'}
+            </button>
+
+            <button onClick={toggleTTS} className="px-3 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center gap-2 font-black text-xs uppercase min-w-[50px]">
+              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
           </div>
           <div className="flex gap-2">
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
