@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import { 
-  Shield, Wrench, Gavel, Monitor, BookOpen, Laugh, ChefHat, Activity, 
-  Camera, Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, 
-  Phone, CreditCard, FileText, Zap, Brain, Settings, LogOut, X, Crown,
-  ArrowLeft, Info, Play
+  Shield, Wrench, Gavel, Monitor, BookOpen, Smile, Activity, 
+  Camera, Mic, MicOff, Volume2, RotateCcw, AlertTriangle, 
+  Phone, CreditCard, FileText, Zap, Settings, LogOut, X, Star,
+  ArrowLeft, Info, Play, User
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -44,16 +44,17 @@ interface RecoveryGuideData {
 }
 
 // --- DATA ---
+// NOTE: Swapped 'risky' icons (Crown, Brain, ChefHat) for standard ones (Star, Zap, Activity) to prevent crashes.
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
-  { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
+  { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Smile, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
   { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Legal Shield', protectiveJob: 'Legal Shield', spokenHook: 'Legal shield activated. How can I protect your rights today?', briefing: 'I provide legal guidance and protect you from legal scams and exploitation.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Legal scam detection', 'Rights protection guidance'] },
   { id: 'techie', name: 'The Techie', serviceLabel: 'TECH SUPPORT', description: 'Tech Bridge', protectiveJob: 'Tech Bridge', spokenHook: 'Technical support online. Ready to solve your tech challenges.', briefing: 'I provide technology support and protect you from tech support scams.', color: 'purple', requiredTier: 'elite', icon: Monitor, capabilities: ['Device troubleshooting', 'Tech support scam protection', 'Network security'] },
   { id: 'storyteller', name: 'The Storyteller', serviceLabel: 'STORY THERAPY', description: 'Mental Guardian', protectiveJob: 'Mental Guardian', spokenHook: 'Story therapy session initiated.', briefing: 'I create therapeutic stories to support your mental wellness.', color: 'indigo', requiredTier: 'max', icon: BookOpen, capabilities: ['Custom story creation', 'Narrative therapy', 'Mental wellness'] },
-  { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment mode activated.', briefing: 'I provide professional entertainment to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Laugh, capabilities: ['Professional comedy', 'Mood enhancement', 'Stress relief'] },
-  { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance active.', briefing: 'I provide expert culinary guidance and protect you from food-related risks.', color: 'red', requiredTier: 'max', icon: ChefHat, capabilities: ['Recipe creation', 'Food safety protocols', 'Nutrition advice'] },
+  { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment mode activated.', briefing: 'I provide professional entertainment to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Smile, capabilities: ['Professional comedy', 'Mood enhancement', 'Stress relief'] },
+  { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance active.', briefing: 'I provide expert culinary guidance and protect you from food-related risks.', color: 'red', requiredTier: 'max', icon: Activity, capabilities: ['Recipe creation', 'Food safety protocols', 'Nutrition advice'] },
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
 
@@ -129,7 +130,7 @@ export default function ChatInterface({
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
-  const [showFullGuide, setShowFullGuide] = useState(false); // FIXED: This line was missing
+  const [showFullGuide, setShowFullGuide] = useState(false);
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -281,8 +282,6 @@ export default function ChatInterface({
   };
 
   // --- ACTIONS ---
-  
-  // 1. SELECT PERSONA (But don't start chat yet)
   const handlePersonaSelect = (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
@@ -298,7 +297,6 @@ export default function ChatInterface({
     speakText(hook);
   };
 
-  // 2. START CHAT (Clicking the Activate Button)
   const handleStartChat = () => {
     setChatStarted(true); // Switch view
     const hook = activePersona.spokenHook.replace('{userName}', userName || 'user');
@@ -312,7 +310,6 @@ export default function ChatInterface({
     setMessages(prev => [...prev, welcomeMsg]);
   };
 
-  // 3. GO BACK (Menu Button)
   const handleBackToGrid = () => {
     setChatStarted(false);
     setMessages([]); // Clear chat for fresh start
@@ -415,6 +412,7 @@ export default function ChatInterface({
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
+      {/* OVERLAYS */}
       {showFullGuide && guideData && (
         <div className="fixed inset-0 z-[100060] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-0 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -616,7 +614,7 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${(activePersona?.serviceLabel || 'GUARD').split(' ')[0]}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
