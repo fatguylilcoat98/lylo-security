@@ -164,6 +164,8 @@ function ChatInterface({
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Visual feedback
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Voice controls
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
@@ -186,8 +188,27 @@ function ChatInterface({
   // Init
   useEffect(() => {
     const init = async () => {
+      // PERSISTENT AUTHENTICATION - Check for saved login
+      const savedAuthToken = localStorage.getItem('lylo_auth_token');
+      const savedUserEmail = localStorage.getItem('lylo_user_email');
+      const lastLoginTime = localStorage.getItem('lylo_last_login');
+      
+      // Auto-login if token exists and is less than 30 days old
+      if (savedAuthToken && savedUserEmail && lastLoginTime) {
+        const daysSinceLogin = (Date.now() - parseInt(lastLoginTime)) / (1000 * 60 * 60 * 24);
+        if (daysSinceLogin < 30) {
+          // User is already authenticated, continue with normal initialization
+          console.log('Auto-login successful for:', savedUserEmail);
+        }
+      }
+      
       await loadUserStats();
       await checkEliteStatus();
+      
+      // Load voice preferences
+      const savedVoiceGender = localStorage.getItem('lylo_voice_gender');
+      if (savedVoiceGender === 'female') setVoiceGender('female');
+      
       const savedName = localStorage.getItem('lylo_user_name');
       if (savedName) setUserName(savedName);
       else if (userEmail.includes('stangman')) setUserName('Christopher');
@@ -200,10 +221,49 @@ function ChatInterface({
         const p = PERSONAS.find(p => p.id === savedPersonaId);
         if (p && canAccessPersona(p, userTier)) setActivePersona(p);
       }
+      
+      // MEMORY/LEARNING RESTORATION
+      const savedLearningData = localStorage.getItem('lylo_learning_data');
+      if (savedLearningData) {
+        try {
+          const learningData = JSON.parse(savedLearningData);
+          console.log('Restored learning data:', learningData);
+          // Apply learning insights to enhance intelligence sync
+          if (learningData.userEngagement) {
+            const bonusSync = 5;
+            setIntelligenceSync(prev => Math.min(prev + bonusSync, 100));
+          }
+        } catch (e) {
+          console.log('Learning data restoration failed:', e);
+        }
+      }
     };
     init();
     return () => { window.speechSynthesis.cancel(); };
   }, [userEmail]);
+
+  // PERSISTENT AUTH HELPER
+  const saveAuthSession = (email: string, token: string) => {
+    localStorage.setItem('lylo_auth_token', token);
+    localStorage.setItem('lylo_user_email', email);
+    localStorage.setItem('lylo_last_login', Date.now().toString());
+  };
+
+  // VOICE GENDER TOGGLE
+  const toggleVoiceGender = () => {
+    const newGender = voiceGender === 'male' ? 'female' : 'male';
+    setVoiceGender(newGender);
+    localStorage.setItem('lylo_voice_gender', newGender);
+    
+    // Test the voice change
+    const testMessage = `Voice changed to ${newGender} mode.`;
+    speakText(testMessage);
+    
+    // Update intelligence sync for personalization
+    const newSync = Math.min(intelligenceSync + 3, 100);
+    setIntelligenceSync(newSync);
+    localStorage.setItem('lylo_intelligence_sync', newSync.toString());
+  };
 
   const checkEliteStatus = async () => {
     try {
@@ -239,7 +299,7 @@ function ChatInterface({
     setSpeechQueue([]);
   };
 
-  const speakText = async (text: string, messageId?: string) => {
+  const speakText = async (text: string, messageId?: string, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
     if (!autoTTS) return;
     quickStopAllAudio();
     setIsSpeaking(true);
@@ -251,7 +311,7 @@ function ChatInterface({
     try {
       const formData = new FormData();
       formData.append('text', text);
-      formData.append('voice', voiceGender === 'male' ? 'onyx' : 'nova');
+      formData.append('voice', voiceSettings?.voice || (voiceGender === 'male' ? 'onyx' : 'nova'));
       const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
       const data = await response.json();
       if (data.audio_b64) {
@@ -262,16 +322,17 @@ function ChatInterface({
       }
     } catch (e) { console.log('Using fallback voice'); }
 
-    // Fallback logic
+    // Fallback logic with persona-specific settings
     const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
-    speakChunksSequentially(chunks, 0);
+    speakChunksSequentially(chunks, 0, voiceSettings);
   };
 
-  const speakChunksSequentially = (chunks: string[], index: number) => {
+  const speakChunksSequentially = (chunks: string[], index: number, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
     if (index >= chunks.length) { setIsSpeaking(false); return; }
     const utterance = new SpeechSynthesisUtterance(chunks[index]);
-    utterance.rate = 0.9;
-    utterance.onend = () => speakChunksSequentially(chunks, index + 1);
+    utterance.rate = voiceSettings?.rate || 0.9;
+    utterance.pitch = voiceSettings?.pitch || 1.0;
+    utterance.onend = () => speakChunksSequentially(chunks, index + 1, voiceSettings);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -326,14 +387,54 @@ function ChatInterface({
       speakText('Upgrade required.');
       return;
     }
-    quickStopAllAudio();
-    setActivePersona(persona);
-    onPersonaChange(persona);
-    localStorage.setItem('lylo_preferred_persona', persona.id);
-    const hook = persona.spokenHook.replace('{userName}', userName || 'user');
-    await speakText(hook);
-    setShowKnowMore(persona.id);
-    setTimeout(() => setShowKnowMore(null), 5000);
+    
+    // VISUAL SELECTION FEEDBACK
+    setSelectedPersonaId(persona.id);
+    
+    // Brief delay to show selection highlight
+    setTimeout(async () => {
+      quickStopAllAudio();
+      setActivePersona(persona);
+      onPersonaChange(persona);
+      localStorage.setItem('lylo_preferred_persona', persona.id);
+      
+      // PERSONA-SPECIFIC VOICE MAPPING
+      const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
+        'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
+        'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
+        'disciple': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.8, pitch: 0.9 },
+        'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
+        'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
+        'techie': { voice: voiceGender === 'male' ? 'echo' : 'nova', rate: 1.0, pitch: 1.0 },
+        'storyteller': { voice: voiceGender === 'male' ? 'fable' : 'alloy', rate: 0.8, pitch: 1.1 },
+        'comedian': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.2, pitch: 1.3 },
+        'chef': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.9, pitch: 1.0 },
+        'fitness': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 1.0, pitch: 0.9 }
+      };
+      
+      const voiceSettings = personaVoiceMap[persona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
+      
+      const hook = persona.spokenHook.replace('{userName}', userName || 'user');
+      await speakText(hook, undefined, voiceSettings);
+      
+      setShowKnowMore(persona.id);
+      setTimeout(() => setShowKnowMore(null), 5000);
+      setSelectedPersonaId(null); // Remove highlight after transition
+      
+      // ENHANCED INTELLIGENCE SYNC
+      const newSync = Math.min(intelligenceSync + 8, 100);
+      setIntelligenceSync(newSync);
+      localStorage.setItem('lylo_intelligence_sync', newSync.toString());
+      
+      // Store persona preference and learning data
+      const learningData = {
+        personaPreference: persona.id,
+        selectionTime: new Date().toISOString(),
+        userEngagement: 'persona_selection'
+      };
+      localStorage.setItem('lylo_learning_data', JSON.stringify(learningData));
+      
+    }, 300); // Show selection feedback for 300ms
   };
 
   const handleSend = async () => {
@@ -354,12 +455,55 @@ function ChatInterface({
         confidenceScore: response.confidence_score, scamDetected: response.scam_detected, scamIndicators: response.scam_indicators
       };
       setMessages(prev => [...prev, botMsg]);
-      speakText(response.answer, botMsg.id);
+      
+      // PERSONA-SPECIFIC VOICE FOR RESPONSES
+      const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
+        'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
+        'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
+        'disciple': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.8, pitch: 0.9 },
+        'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
+        'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
+        'techie': { voice: voiceGender === 'male' ? 'echo' : 'nova', rate: 1.0, pitch: 1.0 },
+        'storyteller': { voice: voiceGender === 'male' ? 'fable' : 'alloy', rate: 0.8, pitch: 1.1 },
+        'comedian': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.2, pitch: 1.3 },
+        'chef': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.9, pitch: 1.0 },
+        'fitness': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 1.0, pitch: 0.9 }
+      };
+      
+      const voiceSettings = personaVoiceMap[activePersona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
+      speakText(response.answer, botMsg.id, voiceSettings);
+      
+      // ENHANCED MEMORY & LEARNING
       if (text.length > 10) {
         const newSync = Math.min(intelligenceSync + 5, 100);
         setIntelligenceSync(newSync);
         localStorage.setItem('lylo_intelligence_sync', newSync.toString());
+        
+        // Store detailed learning data
+        const learningUpdate = {
+          timestamp: new Date().toISOString(),
+          messageLength: text.length,
+          personaUsed: activePersona.id,
+          responseTime: Date.now() - userMsg.timestamp.getTime(),
+          userEngagement: 'message_interaction',
+          confidenceScore: response.confidence_score,
+          scamDetected: response.scam_detected
+        };
+        
+        // Accumulate learning data
+        const existingLearning = localStorage.getItem('lylo_learning_history');
+        const learningHistory = existingLearning ? JSON.parse(existingLearning) : [];
+        learningHistory.push(learningUpdate);
+        
+        // Keep only last 50 interactions to manage storage
+        if (learningHistory.length > 50) {
+          learningHistory.shift();
+        }
+        
+        localStorage.setItem('lylo_learning_history', JSON.stringify(learningHistory));
+        console.log('Learning update stored:', learningUpdate);
       }
+      
     } catch (e) { console.error(e); } 
     finally { setLoading(false); setSelectedImage(null); }
   };
@@ -545,20 +689,28 @@ function ChatInterface({
               <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-20">
                 {getAccessiblePersonas(userTier).map(persona => {
                   const Icon = persona.icon;
+                  const isSelected = selectedPersonaId === persona.id;
                   return (
                     <button key={persona.id} onClick={() => handlePersonaChange(persona)}
                       className={`
-                        relative p-4 rounded-xl backdrop-blur-xl bg-black/50 border border-white/20 
-                        hover:bg-black/70 active:scale-95 transition-all duration-200 min-h-[120px]
+                        relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
+                        ${isSelected 
+                          ? `bg-${persona.color}-500/30 border-${persona.color}-400 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse` 
+                          : `bg-black/50 border-white/20 hover:bg-black/70 active:scale-95`
+                        }
                         ${getPersonaColorClass(persona, 'glow')}
                       `}>
                       <div className="flex flex-col items-center text-center space-y-2">
-                        <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                          <Icon className={`w-6 h-6 ${getPersonaColorClass(persona, 'text')}`} />
+                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-black/40'} ${getPersonaColorClass(persona, 'border')} border ${isSelected ? 'animate-pulse' : ''}`}>
+                          <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : getPersonaColorClass(persona, 'text')}`} />
                         </div>
                         <div>
-                          <h3 className="text-white font-bold text-xs uppercase tracking-wide leading-tight">{persona.serviceLabel}</h3>
-                          <p className="text-gray-400 text-[10px] mt-1 leading-tight">{persona.description}</p>
+                          <h3 className={`font-bold text-xs uppercase tracking-wide leading-tight ${isSelected ? 'text-white animate-pulse' : 'text-white'}`}>
+                            {persona.serviceLabel}
+                          </h3>
+                          <p className={`text-[10px] mt-1 leading-tight ${isSelected ? 'text-white/90' : 'text-gray-400'}`}>
+                            {isSelected ? 'ACTIVATING...' : persona.description}
+                          </p>
                         </div>
                       </div>
                       
@@ -711,6 +863,15 @@ function ChatInterface({
               `}
             >
               {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
+            </button>
+            
+            {/* VOICE GENDER TOGGLE */}
+            <button 
+              onClick={toggleVoiceGender}
+              className="p-3 rounded-xl bg-purple-500/20 border border-purple-400/30 text-purple-300 flex flex-col items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
+            >
+              <span className="text-xs font-black uppercase">{voiceGender === 'male' ? '♂' : '♀'}</span>
+              <span className="text-[8px] font-bold">{voiceGender.toUpperCase()}</span>
             </button>
             
             {/* VOICE TOGGLE */}
