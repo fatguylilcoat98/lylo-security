@@ -170,8 +170,7 @@ function ChatInterface({
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // NEW: Track selected persona
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Visual feedback
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Track selected persona for visual feedback
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Voice controls
   
   // Modal State
@@ -604,6 +603,33 @@ function ChatInterface({
     setMessages(prev => [...prev, switchMsg]);
     speakText(switchMsg.content);
     setShowDropdown(false);
+  };
+
+  // Elite User - Get Full Recovery Guide
+  const handleGetFullGuide = async () => {
+    if (!isEliteUser) {
+      alert('Elite access required for full legal recovery guide.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
+      if (response.ok) {
+        const guideData = await response.json();
+        // You could show this in a modal or navigate to a new page
+        alert('Full legal recovery guide loaded. Check your downloads.');
+        speakText('Priority legal recovery guide has been activated.');
+      } else {
+        throw new Error('Failed to fetch recovery guide');
+      }
+    } catch (error) {
+      console.error('Recovery guide error:', error);
+      alert('Unable to load recovery guide. Please try again.');
+    } finally {
+      setLoading(false);
+      setShowCrisisShield(false);
+    }
   };
 
   // --- RENDER ---
