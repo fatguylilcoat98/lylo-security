@@ -374,16 +374,27 @@ function ChatInterface({
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
+        isRecordingRef.current = false;
         transcriptRef.current = '';
+        setInput(''); // Clear any partial input
       };
 
       recognition.onend = () => {
         setIsRecording(false);
-        // Auto-send clean transcript
-        const cleanTranscript = transcriptRef.current.trim();
+        isRecordingRef.current = false;
+        
+        // Auto-send clean transcript after a brief delay
+        const cleanTranscript = transcriptRef.current?.trim();
         if (cleanTranscript && cleanTranscript.length > 2) {
-          setTimeout(() => handleSend(), 100);
+          // Small delay to ensure UI updates and prevent conflicts
+          setTimeout(() => {
+            if (!loading) { // Only send if not already processing
+              handleSend();
+            }
+          }, 150);
         }
+        
+        // Clear transcript reference
         transcriptRef.current = '';
       };
       
@@ -411,17 +422,31 @@ function ChatInterface({
   const handleWalkieTalkieMic = () => {
     if (!micSupported) return alert('Mic not supported');
     if (isRecording) {
+      // STOP RECORDING - Let speech recognition onend handle the auto-send
       isRecordingRef.current = false;
       setIsRecording(false);
-      if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e){}
-      setTimeout(() => handleSend(), 200);
+      if (recognitionRef.current) {
+        try { 
+          recognitionRef.current.stop(); // This will trigger onend which auto-sends
+        } catch(e) {
+          console.error('Error stopping recognition:', e);
+        }
+      }
     } else {
+      // START RECORDING
       quickStopAllAudio();
       isRecordingRef.current = true;
       setIsRecording(true);
-      setInput('');
-      transcriptRef.current = '';
-      if (recognitionRef.current) try { recognitionRef.current.start(); } catch(e){}
+      setInput(''); // Clear input field
+      transcriptRef.current = ''; // Clear transcript
+      if (recognitionRef.current) {
+        try { 
+          recognitionRef.current.start(); 
+        } catch(e) {
+          console.error('Error starting recognition:', e);
+          setIsRecording(false);
+        }
+      }
     }
   };
 
