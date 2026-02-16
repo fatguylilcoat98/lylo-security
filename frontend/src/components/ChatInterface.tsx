@@ -10,36 +10,22 @@ const API_URL = 'https://lylo-backend.onrender.com';
 
 // --- TYPES ---
 export interface PersonaConfig {
-  id: string;
-  name: string;
-  serviceLabel: string;
-  description: string;
-  protectiveJob: string;
-  spokenHook: string;
-  briefing: string;
-  color: string;
-  requiredTier: 'free' | 'pro' | 'elite' | 'max';
-  capabilities: string[];
+  id: string; name: string; serviceLabel: string; description: string;
+  protectiveJob: string; spokenHook: string; briefing: string; color: string;
+  requiredTier: 'free' | 'pro' | 'elite' | 'max'; capabilities: string[];
   icon: React.ComponentType<any>;
 }
 
 interface ChatInterfaceProps {
-  currentPersona: PersonaConfig;
-  userEmail: string;
-  zoomLevel: number;
-  onZoomChange: (zoom: number) => void;
-  onPersonaChange: (persona: PersonaConfig) => void;
-  onLogout: () => void;
-  onUsageUpdate?: () => void;
+  currentPersona: PersonaConfig; userEmail: string; zoomLevel: number;
+  onZoomChange: (zoom: number) => void; onPersonaChange: (persona: PersonaConfig) => void;
+  onLogout: () => void; onUsageUpdate?: () => void;
 }
 
 interface RecoveryGuideData {
-  title: string;
-  subtitle: string;
-  immediate_actions: string[];
+  title: string; subtitle: string; immediate_actions: string[];
   recovery_steps: { step: number; title: string; actions: string[] }[];
-  phone_scripts: { bank_script: string; police_script: string };
-  prevention_tips: string[];
+  phone_scripts: { bank_script: string; police_script: string }; prevention_tips: string[];
 }
 
 // --- DATA ---
@@ -56,7 +42,7 @@ const PERSONAS: PersonaConfig[] = [
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
 
-// --- HELPER FUNCTIONS ---
+// --- HELPERS ---
 const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
   const colorMap: any = {
     blue: { border: 'border-blue-400', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]', bg: 'bg-blue-500', text: 'text-blue-400' },
@@ -76,9 +62,7 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
 const getPrivacyShieldClass = (persona: PersonaConfig, loading: boolean, messages: Message[]) => {
   if (loading) return 'border-yellow-400 shadow-[0_0_15px_rgba(255,191,0,0.4)] animate-pulse';
   const lastBotMsg = [...messages].reverse().find(m => m.sender === 'bot');
-  if (lastBotMsg?.scamDetected && lastBotMsg?.confidenceScore === 100) {
-    return 'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse';
-  }
+  if (lastBotMsg?.scamDetected && lastBotMsg?.confidenceScore === 100) return 'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse';
   return getPersonaColorClass(persona, 'border') + ' ' + getPersonaColorClass(persona, 'glow');
 };
 
@@ -88,16 +72,6 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
 };
 
 const getAccessiblePersonas = (tier: string) => PERSONAS.filter(p => canAccessPersona(p, tier));
-
-const getTierName = (tier: string) => {
-  switch(tier) {
-    case 'free': return 'Basic Shield';
-    case 'pro': return 'Pro Guardian';
-    case 'elite': return 'Elite Justice';  
-    case 'max': return 'Max Unlimited';
-    default: return 'Unknown';
-  }
-};
 
 // --- MAIN COMPONENT ---
 export default function ChatInterface({ 
@@ -112,9 +86,10 @@ export default function ChatInterface({
   const [userName, setUserName] = useState<string>('');
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  // Audio State
+  // Audio & Mic
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
+  const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
@@ -122,15 +97,13 @@ export default function ChatInterface({
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
-  // UI State
+  // UI & Modals
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
-  
-  // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(1);
   const [showLimitModal, setShowLimitModal] = useState(false);
@@ -148,7 +121,6 @@ export default function ChatInterface({
 
   useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
 
-  // Init
   useEffect(() => {
     const init = async () => {
       await loadUserStats();
@@ -160,6 +132,9 @@ export default function ChatInterface({
       const savedSync = localStorage.getItem('lylo_intelligence_sync');
       if (savedSync) setIntelligenceSync(parseInt(savedSync));
       
+      const savedVoice = localStorage.getItem('lylo_voice_gender');
+      if (savedVoice) setVoiceGender(savedVoice as any);
+
       const savedPersonaId = localStorage.getItem('lylo_preferred_persona');
       if (savedPersonaId) {
         const p = PERSONAS.find(p => p.id === savedPersonaId);
@@ -173,8 +148,7 @@ export default function ChatInterface({
   const checkEliteStatus = async () => {
     try {
       if (userEmail.toLowerCase().includes("stangman")) {
-           setIsEliteUser(true);
-           setUserTier('max');
+           setIsEliteUser(true); setUserTier('max');
       } else {
         const response = await fetch(`${API_URL}/check-beta-access`, {
           method: 'POST',
@@ -196,7 +170,7 @@ export default function ChatInterface({
     } catch (e) { console.error(e); }
   };
 
-  // Audio & Speech
+  // Audio Logic
   const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
@@ -227,7 +201,6 @@ export default function ChatInterface({
       }
     } catch (e) { console.log('Using fallback voice'); }
 
-    // Fallback logic
     const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
     speakChunksSequentially(chunks, 0);
   };
@@ -240,7 +213,7 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Mic
+  // Mic Logic
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -261,6 +234,7 @@ export default function ChatInterface({
 
       recognition.onend = () => {
         if (isRecordingRef.current) try { recognition.start(); } catch(e){}
+        else setRecordingState('idle');
       };
 
       recognitionRef.current = recognition;
@@ -279,13 +253,14 @@ export default function ChatInterface({
       quickStopAllAudio();
       isRecordingRef.current = true;
       setIsRecording(true);
+      setRecordingState('recording');
       setInput('');
       transcriptRef.current = '';
       if (recognitionRef.current) try { recognitionRef.current.start(); } catch(e){}
     }
   };
 
-  // Logic
+  // Actions
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
@@ -355,6 +330,7 @@ export default function ChatInterface({
       const res = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
       const data = await res.json();
       setGuideData(data);
+      setShowFullGuide(true);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -391,14 +367,12 @@ export default function ChatInterface({
     localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
   };
 
-  // --- RENDER ---
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
-      {/* OVERLAYS */}
       {showCrisisShield && (
         <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl">
+          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl overflow-y-auto max-h-[85vh]">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-red-500/20 rounded-lg"><Shield className="w-6 h-6 text-red-400" /></div>
@@ -414,6 +388,10 @@ export default function ChatInterface({
                   <li>• Call your bank's fraud dept</li>
                   <li>• Screenshot everything</li>
                 </ul>
+              </div>
+              <div className="bg-yellow-500/10 border border-yellow-400/30 rounded-lg p-4">
+                <h3 className="text-yellow-200 font-bold mb-3 flex items-center gap-2"><Phone className="w-4 h-4" /> BANK SCRIPT</h3>
+                <p className="text-yellow-100 text-xs italic">"This is a fraud emergency. I need to report unauthorized access to my account. Connect me to fraud immediately."</p>
               </div>
               {isEliteUser ? (
                 <button onClick={handleGetFullGuide} className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2">
@@ -466,12 +444,17 @@ export default function ChatInterface({
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '200px' }}>
+      {/* MAIN CONTENT - MOBILE SCROLL FIX (padding-top & overflow) */}
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '220px' }}>
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-4 overflow-y-auto pb-20">
-            <h1 className="text-2xl font-bold text-white mb-2 text-center mt-4">Digital Bodyguard Services</h1>
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-20">
+          <div className="flex flex-col items-center min-h-full p-4 pt-10 overflow-y-auto">
+            <div className={`relative w-20 h-20 bg-black/60 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-4 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
+              <span className="text-white font-black text-2xl tracking-wider">LYLO</span>
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2 text-center">Digital Bodyguard Services</h1>
+            <p className="text-gray-400 text-sm mb-8 text-center max-w-md">Select a service below to activate your personal security expert.</p>
+            
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-32">
               {getAccessiblePersonas(userTier).map(persona => {
                 const Icon = persona.icon;
                 return (
