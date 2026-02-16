@@ -289,10 +289,12 @@ export default function ChatInterface({
     localStorage.getItem('userTier') === 'max'
   );
     
+  // --- STATE REFS ---
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const transcriptRef = useRef<string>(''); // Store transcript for immediate sending
 
   // --- PERSONA COLOR MAPPING ---
   const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
@@ -571,19 +573,8 @@ export default function ChatInterface({
     isInStandbyModeRef.current = true;
     setIsInStandbyMode(true);
     
-    const displayName = userName || getUserDisplayName() || 'Friend';
-    const standbyMessage = `${displayName}, I am going on standby to protect your privacy. Touch any button when you need me.`;
-    
-    await speakText(standbyMessage);
-    
-    const botMsg: Message = { 
-      id: Date.now().toString(), 
-      content: standbyMessage, 
-      sender: 'bot', 
-      timestamp: new Date(),
-      confidenceScore: 100
-    };
-    setMessages(prev => [...prev, botMsg]);
+    // SILENT STANDBY: No intrusive speech or messages, just visual indicator change
+    // The UI will show "Privacy Mode" status instead of speaking
   };
 
   const wakeFromStandby = () => {
@@ -689,41 +680,61 @@ export default function ChatInterface({
       const recognition = new SpeechRecognition();
       
       recognition.continuous = false;
-      recognition.interimResults = true;
+      recognition.interimResults = false; // Only final results
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setRecordingState('recording');
+        transcriptRef.current = ''; // Clear previous transcript
+        console.log('Speech recognition started');
       };
       
       recognition.onresult = (event: any) => {
         updateInteractionTime();
+        console.log('Speech recognition result received');
         
         let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
             finalTranscript += result[0].transcript + ' ';
           }
         }
-        if (finalTranscript) {
+        
+        if (finalTranscript.trim()) {
+          console.log('Final transcript:', finalTranscript.trim());
+          transcriptRef.current = finalTranscript.trim();
           setInput(finalTranscript.trim());
         }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
         setIsRecording(false);
         setRecordingState('idle');
+        transcriptRef.current = '';
       };
 
       recognition.onend = () => {
+        console.log('Speech recognition ended, transcript:', transcriptRef.current);
         setRecordingState('processing');
+        
+        // FIXED: Immediate send with transcript
+        const transcript = transcriptRef.current.trim();
+        if (transcript) {
+          console.log('Sending transcript:', transcript);
+          // Update input and send immediately
+          setInput(transcript);
+          handleSendWithText(transcript);
+        } else {
+          console.log('No transcript to send');
+        }
+        
+        // Reset states
         setIsRecording(false);
-        // FIXED: AUTO-SEND AFTER RECORDING STOPS
-        setTimeout(() => {
-          handleSend();
-        }, 300);
+        setRecordingState('idle');
+        transcriptRef.current = '';
       };
       
       recognitionRef.current = recognition;
@@ -836,8 +847,8 @@ export default function ChatInterface({
     }
   };
 
-  const handleSend = async () => {
-    const textToSend = input.trim();
+  // --- FIXED SEND HANDLER WITH TEXT PARAMETER ---
+  const handleSendWithText = async (textToSend: string) => {
     if ((!textToSend && !selectedImage) || loading) return;
 
     updateInteractionTime();
@@ -870,6 +881,85 @@ export default function ChatInterface({
     
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setLoading(true);
+    setIsRecording(false);
+    setRecordingState('idle');
+
+    try {
+      // Add search verbalization for general questions
+      if (isGeneralSearchQuery(textToSend)) {
+        const searchMessage = `I'm searching the web for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
+        const searchMsg: Message = { 
+          id: (Date.now() + 0.5).toString(), 
+          content: searchMessage, 
+          sender: 'bot', 
+          timestamp: new Date(),
+          confidenceScore: 95
+        };
+        setMessages(prev => [...prev, searchMsg]);
+        await speakText(searchMessage);
+      }
+
+      const conversationHistory = messages.slice(-4).map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
+      let personaWithBible = currentPersona.id;
+      if (currentPersona.id === 'disciple') {
+        personaWithBible = `disciple_${bibleVersion}`;
+      }
+
+      const response = await sendChatMessage(
+        textToSend || "Analyze this image", 
+        conversationHistory,
+        personaWithBible,
+        userEmail,
+        selectedImage,
+        language 
+      );
+      
+      const botMsg: Message = { 
+        id: (Date.now() + 1).toString(), 
+        content: response.answer, 
+        sender: 'bot', 
+        timestamp: new Date(),
+        confidenceScore: response.confidence_score,
+        scamDetected: response.scam_detected,
+        scamIndicators: response.scam_indicators || [] 
+      };
+      
+      setMessages(prev => [...prev, botMsg]);
+      
+      // Speak the response if AI voice is enabled
+      await speakText(response.answer);
+      
+      setSelectedImage(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadUserStats();
+      
+      // Update profile based on conversation
+      if (textToSend.length > 10) {
+        incrementIntelligenceSync();
+      }
+      
+    } catch (error) {
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        content: language === 'es' ? "Error de conexión. Por favor intente de nuevo." : "Connection error. Please try again.", 
+        sender: 'bot', 
+        timestamp: new Date() 
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSend = async () => {
+    const textToSend = input.trim();
+    if ((!textToSend && !selectedImage) || loading) return;
+    await handleSendWithText(textToSend);
+  };
     setLoading(true);
     setIsRecording(false);
     setRecordingState('idle');
