@@ -27,7 +27,6 @@ import {
   Crown
 } from 'lucide-react';
 
-// DIRECT CONNECTION TO YOUR BACKEND
 const API_URL = 'https://lylo-backend.onrender.com';
 
 // --- INTERFACES ---
@@ -139,7 +138,7 @@ const PERSONAS: PersonaConfig[] = [
 ];
 
 export default function ChatInterface({ 
-  currentPersona: initialPersona, // Renamed to initialPersona to avoid conflict
+  currentPersona: initialPersona, 
   userEmail, 
   zoomLevel, 
   onZoomChange, 
@@ -148,24 +147,19 @@ export default function ChatInterface({
   onUsageUpdate
 }: ChatInterfaceProps) {
   
-  // --- INTERNAL STATE (Fixes "Every personality is Guardian" bug) ---
+  // --- STATE ---
   const [activePersona, setActivePersona] = useState<PersonaConfig>(initialPersona || PERSONAS[0]);
-
-  // --- CORE STATE ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [lastBotResponse, setLastBotResponse] = useState<string>(''); 
   
   const [userName, setUserName] = useState<string>('');
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
-  const [personaBriefingsShown, setPersonaBriefingsShown] = useState<string[]>([]);
-  const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
-  
   // Mic & Audio
   const [isRecording, setIsRecording] = useState(false);
-  const isRecordingRef = useRef(false);
+  const isRecordingRef = useRef(false); 
+  const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
@@ -182,15 +176,17 @@ export default function ChatInterface({
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
   
-  // Modals
+  // Modals & Briefings
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(1);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
-  const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null); // Added missing state
-  const [showScamRecovery, setShowScamRecovery] = useState(false); // Added missing state
-  const [showFullGuide, setShowFullGuide] = useState(false); // Added missing state
+  const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
+  const [showScamRecovery, setShowScamRecovery] = useState(false);
+  const [showFullGuide, setShowFullGuide] = useState(false);
+  const [personaBriefingsShown, setPersonaBriefingsShown] = useState<string[]>([]);
+  const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -199,8 +195,6 @@ export default function ChatInterface({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const transcriptRef = useRef<string>(''); 
 
-  // --- SYNC PROPS TO STATE ---
-  // If the parent updates the prop, update our local state
   useEffect(() => {
     if (initialPersona) {
       setActivePersona(initialPersona);
@@ -209,7 +203,7 @@ export default function ChatInterface({
 
   // --- HELPERS ---
   const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
-    const colorMap = {
+    const colorMap: any = {
       blue: { border: 'border-blue-400', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]', bg: 'bg-blue-500', text: 'text-blue-400' },
       orange: { border: 'border-orange-400', glow: 'shadow-[0_0_20px_rgba(249,115,22,0.3)]', bg: 'bg-orange-500', text: 'text-orange-400' },
       gold: { border: 'border-yellow-400', glow: 'shadow-[0_0_20px_rgba(234,179,8,0.3)]', bg: 'bg-yellow-500', text: 'text-yellow-400' },
@@ -221,7 +215,7 @@ export default function ChatInterface({
       red: { border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
       green: { border: 'border-green-400', glow: 'shadow-[0_0_20px_rgba(34,197,94,0.3)]', bg: 'bg-green-500', text: 'text-green-400' }
     };
-    return colorMap[persona.color as keyof typeof colorMap]?.[type] || colorMap.blue[type];
+    return colorMap[persona.color]?.[type] || colorMap.blue[type];
   };
 
   const getPrivacyShieldClass = () => {
@@ -238,6 +232,8 @@ export default function ChatInterface({
     return tiers[userTier] >= tiers[persona.requiredTier];
   };
 
+  const getAccessiblePersonas = () => PERSONAS.filter(persona => canAccessPersona(persona));
+
   const getTierName = (tier: string) => {
     switch(tier) {
       case 'free': return 'Basic Shield';
@@ -250,30 +246,28 @@ export default function ChatInterface({
 
   // --- INITIALIZATION ---
   useEffect(() => {
-    initializeLylo();
+    const init = async () => {
+      await loadUserStats();
+      await checkEliteStatus();
+      
+      const savedName = localStorage.getItem('lylo_user_name');
+      if (savedName) setUserName(savedName);
+      
+      const savedSync = localStorage.getItem('lylo_intelligence_sync');
+      if (savedSync) setIntelligenceSync(parseInt(savedSync));
+      
+      const savedVoice = localStorage.getItem('lylo_voice_gender');
+      if (savedVoice) setVoiceGender(savedVoice as any);
+
+      const savedPersonaId = localStorage.getItem('lylo_preferred_persona');
+      if (savedPersonaId) {
+        const p = PERSONAS.find(p => p.id === savedPersonaId);
+        if (p && canAccessPersona(p)) setActivePersona(p);
+      }
+    };
+    init();
     return () => { window.speechSynthesis.cancel(); };
   }, [userEmail]);
-
-  const initializeLylo = async () => {
-    await loadUserStats();
-    await checkEliteStatus();
-    const savedName = localStorage.getItem('lylo_user_name');
-    if (savedName) setUserName(savedName);
-    else if (userEmail.includes('stangman')) setUserName('Christopher');
-    
-    const savedSync = localStorage.getItem('lylo_intelligence_sync');
-    if (savedSync) setIntelligenceSync(parseInt(savedSync));
-    
-    const savedVoice = localStorage.getItem('lylo_voice_gender');
-    if (savedVoice) setVoiceGender(savedVoice as any);
-
-    // Load persisted persona
-    const savedPersonaId = localStorage.getItem('lylo_preferred_persona');
-    if (savedPersonaId) {
-      const p = PERSONAS.find(p => p.id === savedPersonaId);
-      if (p && canAccessPersona(p)) setActivePersona(p);
-    }
-  };
 
   const checkEliteStatus = async () => {
     try {
@@ -387,6 +381,7 @@ export default function ChatInterface({
       quickStopAllAudio();
       isRecordingRef.current = true;
       setIsRecording(true);
+      setRecordingState('recording');
       setInput('');
       transcriptRef.current = '';
       if (recognitionRef.current) try { recognitionRef.current.start(); } catch(e){}
@@ -421,23 +416,18 @@ export default function ChatInterface({
     }
   }, []);
 
-  // --- PERSONA SWITCH LOGIC (FIXED) ---
+  // --- ACTIONS ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona)) {
-      const msg = `${persona.serviceLabel} requires upgrade.`;
-      speakText(msg);
+      speakText('Upgrade required.');
       return;
     }
-    
     quickStopAllAudio();
-    setActivePersona(persona); // Update local state immediately
-    onPersonaChange(persona); // Notify parent (optional)
+    setActivePersona(persona);
+    onPersonaChange(persona);
     localStorage.setItem('lylo_preferred_persona', persona.id);
-    setShowDropdown(false);
-    
     const hook = persona.spokenHook.replace('{userName}', userName || 'user');
     await speakText(hook);
-    setMessages(prev => [...prev, { id: Date.now().toString(), content: hook, sender: 'bot', timestamp: new Date(), confidenceScore: 100 }]);
   };
 
   const handleSend = async () => {
@@ -453,7 +443,6 @@ export default function ChatInterface({
 
     try {
       const history = messages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.content }));
-      // USE activePersona.id HERE to ensure we send the right ID to the backend
       const response = await sendChatMessage(text, history, activePersona.id, userEmail, selectedImage, 'en');
       
       const botMsg: Message = { 
@@ -468,7 +457,6 @@ export default function ChatInterface({
       
       setMessages(prev => [...prev, botMsg]);
       speakText(response.answer, botMsg.id);
-      setLastBotResponse(response.answer);
       
       if (text.length > 10) {
         const newSync = Math.min(intelligenceSync + 5, 100);
@@ -476,190 +464,4 @@ export default function ChatInterface({
         localStorage.setItem('lylo_intelligence_sync', newSync.toString());
       }
     } catch (e) { console.error(e); } 
-    finally { setLoading(false); setSelectedImage(null); }
-  };
-
-  // --- UTILS ---
-  const handleGetFullGuide = async () => {
-    if (!isEliteUser) return alert('Elite access required');
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
-      const data = await res.json();
-      setGuideData(data);
-      setShowFullGuide(true);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
-
-  const getUserDisplayName = () => {
-    if (userName) return userName;
-    if (userEmail.toLowerCase().includes('stangman')) return 'Christopher';
-    return userEmail.split('@')[0];
-  };
-
-  const handleIntelligenceSyncClick = () => {
-    quickStopAllAudio();
-    setShowIntelligenceModal(true);
-  };
-
-  const cycleFontSize = () => {
-    if (zoomLevel < 100) onZoomChange(100);
-    else if (zoomLevel < 125) onZoomChange(125);
-    else onZoomChange(85);
-  };
-
-  const handleCalibrationAnswer = (ans: string) => {
-    if (calibrationStep < 3) setCalibrationStep(p => p + 1);
-    else {
-      setShowIntelligenceModal(false);
-      speakText(`Sync updated. Learning ${ans}.`);
-    }
-  };
-
-  // --- SUB-COMPONENTS ---
-  const CrisisShieldOverlay = () => (
-    <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-      <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-500/20 rounded-lg"><Shield className="w-6 h-6 text-red-400" /></div>
-            <h2 className="text-red-100 font-black text-xl uppercase tracking-wider">Emergency Protocols</h2>
-          </div>
-          <button onClick={() => setShowCrisisShield(false)} className="p-2 hover:bg-white/10 rounded-lg"><X className="w-5 h-5 text-white" /></button>
-        </div>
-        <div className="space-y-4 text-sm">
-          <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4">
-            <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> IMMEDIATE ACTIONS</h3>
-            <ul className="text-red-100 space-y-2 text-xs">
-              <li className="flex items-start gap-2"><CreditCard className="w-4 h-4 mt-0.5 text-red-300" /> <span>STOP all payments immediately</span></li>
-              <li className="flex items-start gap-2"><Phone className="w-4 h-4 mt-0.5 text-red-300" /> <span>Call your bank's fraud dept</span></li>
-              <li className="flex items-start gap-2"><FileText className="w-4 h-4 mt-0.5 text-red-300" /> <span>Screenshot everything</span></li>
-            </ul>
-          </div>
-          {isEliteUser ? (
-            <button onClick={handleGetFullGuide} className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2">
-              <Crown className="w-4 h-4" /> PRIORITY LEGAL ACCESS
-            </button>
-          ) : (
-            <div className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
-              <Crown className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  const ServiceGrid = () => (
-    <div className="flex flex-col items-center justify-center h-full p-4 overflow-y-auto pb-20">
-      <h1 className="text-2xl font-bold text-white mb-2 text-center mt-4">Digital Bodyguard Services</h1>
-      <p className="text-gray-400 text-sm mb-8 text-center max-w-md">Select a service below to activate your personal security expert.</p>
-      
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-20">
-        {getAccessiblePersonas().map(persona => {
-          const Icon = persona.icon;
-          return (
-            <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-              className={`group relative p-6 rounded-xl backdrop-blur-xl bg-black/40 border border-white/10 hover:bg-black/60 hover:border-white/20 transition-all duration-300 transform hover:scale-105 ${getPersonaColorClass(persona, 'glow')}`}>
-              <div className="flex flex-col items-center text-center space-y-3">
-                <div className={`p-3 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                  <Icon className={`w-8 h-8 ${getPersonaColorClass(persona, 'text')}`} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold text-sm uppercase tracking-wide">{persona.serviceLabel}</h3>
-                  <p className="text-gray-400 text-xs mt-1">{persona.description}</p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
-      {showCrisisShield && <CrisisShieldOverlay />}
-      {showIntelligenceModal && (
-        <div className="fixed inset-0 z-[100100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-black/80 p-8 rounded-xl border border-blue-500/50 max-w-md w-full">
-            <h2 className="text-white font-bold mb-4">Intelligence Sync</h2>
-            <p className="text-gray-400 mb-4">Calibrating your bodyguard...</p>
-            {['Fraud', 'Identity', 'Tech'].map(opt => (
-              <button key={opt} onClick={() => handleCalibrationAnswer(opt)} className="w-full p-3 bg-blue-500/20 mb-2 rounded text-white border border-blue-500/30">{opt}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {/* HEADER */}
-      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-3 flex-shrink-0 z-50">
-        <div className="flex items-center justify-between">
-          <div className="relative">
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg"><Settings className="w-5 h-5 text-white" /></button>
-            {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 border border-white/10 rounded-xl p-3 min-w-[250px] shadow-2xl">
-                <button onClick={onLogout} className="w-full flex items-center gap-2 text-red-400 p-2 hover:bg-white/5 rounded"><LogOut className="w-4 h-4"/> Logout</button>
-              </div>
-            )}
-          </div>
-          <div className="text-center">
-            <h1 className="text-white font-black text-lg tracking-[0.2em]">L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO</h1>
-            <p className="text-gray-500 text-[9px] uppercase tracking-widest">Digital Bodyguard</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowCrisisShield(true)} className="p-2 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
-            <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-              <div className="text-white font-bold text-xs">{getUserDisplayName()}</div>
-              <div className="text-[9px] text-gray-400 font-black uppercase">Protected</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CHAT AREA */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '200px' }}>
-        {messages.length === 0 ? <ServiceGrid /> : (
-          <>
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border ${msg.sender === 'user' ? 'bg-blue-500/20 border-blue-400/30' : `bg-black/40 ${getPersonaColorClass(activePersona, 'border')}/30`}`}>
-                  <div className="text-white text-sm font-medium">{msg.content}</div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-400 uppercase font-black">{msg.sender === 'user' ? 'You' : activePersona.name}</span>
-                    {msg.sender === 'bot' && <button onClick={() => handleReplay(msg.content)} className="ml-2 text-gray-400 hover:text-white"><RotateCcw className="w-3 h-3" /></button>}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {loading && <div className="text-center text-gray-500 text-xs animate-pulse">Analyzing...</div>}
-          </>
-        )}
-      </div>
-
-      {/* FOOTER CONTROLS */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
-        <div className="bg-black/70 rounded-xl border border-white/10 p-3">
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={handleWalkieTalkieMic} className={`px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gray-800 border-gray-600 text-gray-300'}`}>
-              {isRecording ? <><MicOff className="w-4 h-4"/> STOP & SEND</> : <><Mic className="w-4 h-4"/> RECORD</>}
-            </button>
-            <button onClick={cycleFontSize} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-black text-[10px] uppercase">SIZE: {zoomLevel}%</button>
-            <button onClick={toggleTTS} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase">
-              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />} Voice
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
-            <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
-            <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
-            </div>
-            <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+    finally { setLoading(false); setSelectedImage
