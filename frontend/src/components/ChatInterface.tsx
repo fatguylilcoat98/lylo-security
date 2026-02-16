@@ -364,29 +364,56 @@ export default function ChatInterface({
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
-      {/* OVERLAYS */}
+      {/* MOBILE-OPTIMIZED OVERLAYS */}
       {showCrisisShield && (
         <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-red-100 font-black text-xl uppercase tracking-wider">Emergency Protocols</h2>
-              <button onClick={() => setShowCrisisShield(false)}><X className="w-5 h-5 text-white" /></button>
+          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="text-red-100 font-black text-lg uppercase tracking-wide">Emergency Protocols</h2>
+              <button onClick={() => setShowCrisisShield(false)} className="p-2 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
+                <X className="w-5 h-5 text-white" />
+              </button>
             </div>
             <div className="space-y-4 text-sm">
               <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4">
-                <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> IMMEDIATE ACTIONS</h3>
-                <ul className="text-red-100 space-y-2 text-xs">
-                  <li>• STOP all payments immediately</li>
-                  <li>• Call your bank's fraud dept</li>
-                  <li>• Screenshot everything</li>
+                <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" /> IMMEDIATE ACTIONS
+                </h3>
+                <ul className="text-red-100 space-y-3 text-sm">
+                  <li className="flex items-start gap-3">
+                    <CreditCard className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
+                    <span>STOP all payments and money transfers immediately</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Phone className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
+                    <span>Call your bank's fraud department right now</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <FileText className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
+                    <span>Screenshot all communications for evidence</span>
+                  </li>
                 </ul>
               </div>
+              
+              <div className="bg-yellow-500/10 border border-yellow-400/30 rounded-lg p-4">
+                <h3 className="text-yellow-200 font-bold mb-3 flex items-center gap-2">
+                  <Phone className="w-4 h-4" />
+                  BANK SCRIPT
+                </h3>
+                <p className="text-yellow-100 text-sm italic leading-relaxed">
+                  "This is a fraud emergency. I need to report unauthorized access to my account and fraudulent transfers. Connect me to your fraud specialist immediately."
+                </p>
+              </div>
+              
               {isEliteUser ? (
-                <button onClick={handleGetFullGuide} className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2">
+                <button 
+                  onClick={handleGetFullGuide} 
+                  className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
                   <Crown className="w-4 h-4" /> PRIORITY LEGAL ACCESS
                 </button>
               ) : (
-                <div className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
+                <div className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
                   <Crown className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
                 </div>
               )}
@@ -397,79 +424,106 @@ export default function ChatInterface({
 
       {showIntelligenceModal && (
         <div className="fixed inset-0 z-[100100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-black/80 p-8 rounded-xl border border-blue-500/50 max-w-md w-full">
-            <h2 className="text-white font-bold mb-4">Intelligence Sync</h2>
-            <p className="text-gray-400 mb-4">Calibrating your bodyguard...</p>
+          <div className="bg-black/80 p-6 rounded-xl border border-blue-500/50 max-w-sm w-full max-h-[80vh] overflow-y-auto">
+            <h2 className="text-white font-bold mb-4 text-lg">Intelligence Sync</h2>
+            <p className="text-gray-400 mb-6 text-base">Calibrating your bodyguard...</p>
             {['Fraud', 'Identity', 'Tech'].map(opt => (
-              <button key={opt} onClick={() => { setShowIntelligenceModal(false); speakText('Updated.'); }} className="w-full p-3 bg-blue-500/20 mb-2 rounded text-white border border-blue-500/30">{opt}</button>
+              <button 
+                key={opt} 
+                onClick={() => { setShowIntelligenceModal(false); speakText('Updated.'); }} 
+                className="w-full p-4 bg-blue-500/20 mb-3 rounded-lg text-white border border-blue-500/30 font-bold active:scale-95 transition-all"
+              >
+                {opt}
+              </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* HEADER */}
-      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-3 flex-shrink-0 z-50">
+      {/* MOBILE-OPTIMIZED HEADER */}
+      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
           <div className="relative">
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg"><Settings className="w-5 h-5 text-white" /></button>
+            <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
+              <Settings className="w-5 h-5 text-white" />
+            </button>
             {showDropdown && (
-              <div className="absolute top-12 left-0 bg-black/95 border border-white/10 rounded-xl p-3 min-w-[250px] shadow-2xl">
-                <button onClick={onLogout} className="w-full flex items-center gap-2 text-red-400 p-2 hover:bg-white/5 rounded"><LogOut className="w-4 h-4"/> Logout</button>
+              <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[200px] shadow-2xl z-[100001]">
+                <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95 transition-all">
+                  <LogOut className="w-4 h-4"/> 
+                  <span className="font-bold text-sm">Exit Protection</span>
+                </button>
               </div>
             )}
           </div>
-          <div className="text-center">
-            <h1 className="text-white font-black text-lg tracking-[0.2em]">L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO</h1>
-            <p className="text-gray-500 text-[9px] uppercase tracking-widest">Digital Bodyguard</p>
+          
+          <div className="text-center flex-1">
+            <h1 className="text-white font-black text-xl tracking-[0.2em]">
+              L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
+            </h1>
+            <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">Digital Bodyguard</p>
           </div>
+          
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCrisisShield(true)} className="p-2 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
+            <button 
+              onClick={() => setShowCrisisShield(true)} 
+              className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse active:scale-95 transition-all"
+            >
+              <Shield className="w-5 h-5 text-red-400" />
+            </button>
             <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-              <div className="text-white font-bold text-xs">{userName || 'User'}</div>
-              <div className="text-[9px] text-gray-400 font-black uppercase">Protected</div>
+              <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
+              <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '200px' }}>
+      {/* MOBILE-OPTIMIZED MAIN CONTENT */}
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 relative backdrop-blur-sm" style={{ paddingBottom: '180px' }}>
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-4 overflow-y-auto pb-20">
-            <div className={`relative w-20 h-20 bg-black/60 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-8 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
-              <span className="text-white font-black text-2xl tracking-wider">LYLO</span>
+          <div className="flex flex-col items-center justify-center h-full p-4 pb-32">
+            <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mb-6 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
+              <span className="text-white font-black text-lg tracking-wider">LYLO</span>
               {/* Live Status Animation */}
               {(loading || isSpeaking) && (
-                <div className="absolute -inset-2 rounded-2xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
+                <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
                 </div>
               )}
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2 text-center mt-4">Digital Bodyguard Services</h1>
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-20">
-              {getAccessiblePersonas(userTier).map(persona => {
+            <h1 className="text-xl font-bold text-white mb-1 text-center">Digital Bodyguard</h1>
+            <p className="text-gray-400 text-sm mb-6 text-center">Tap a service to activate your expert</p>
+            
+            {/* MOBILE-OPTIMIZED SERVICE GRID */}
+            <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+              {getAccessiblePersonas(userTier).slice(0, 8).map(persona => {
                 const Icon = persona.icon;
                 return (
                   <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-                    className={`group relative p-6 rounded-xl backdrop-blur-xl bg-black/40 border border-white/10 hover:bg-black/60 hover:border-white/20 transition-all duration-300 transform hover:scale-105 ${getPersonaColorClass(persona, 'glow')}`}>
-                    <div className="flex flex-col items-center text-center space-y-3">
-                      <div className={`p-3 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                        <Icon className={`w-8 h-8 ${getPersonaColorClass(persona, 'text')}`} />
+                    className={`
+                      relative p-4 rounded-xl backdrop-blur-xl bg-black/50 border border-white/20 
+                      hover:bg-black/70 active:scale-95 transition-all duration-200 min-h-[120px]
+                      ${getPersonaColorClass(persona, 'glow')}
+                    `}>
+                    <div className="flex flex-col items-center text-center space-y-2">
+                      <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
+                        <Icon className={`w-6 h-6 ${getPersonaColorClass(persona, 'text')}`} />
                       </div>
                       <div>
-                        <h3 className="text-white font-bold text-sm uppercase tracking-wide">{persona.serviceLabel}</h3>
-                        <p className="text-gray-400 text-xs mt-1">{persona.description}</p>
+                        <h3 className="text-white font-bold text-xs uppercase tracking-wide leading-tight">{persona.serviceLabel}</h3>
+                        <p className="text-gray-400 text-[10px] mt-1 leading-tight">{persona.description}</p>
                       </div>
                     </div>
                     
                     {/* Tier Badge */}
                     {persona.requiredTier !== 'free' && (
-                      <div className={`absolute -top-2 -right-2 px-2 py-1 rounded-full text-xs font-bold ${
+                      <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                         persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
                         persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
                         'bg-blue-500 text-white'
                       }`}>
-                        {persona.requiredTier.toUpperCase()}
+                        {persona.requiredTier.slice(0,3).toUpperCase()}
                       </div>
                     )}
                   </button>
@@ -482,25 +536,25 @@ export default function ChatInterface({
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
                 <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all relative ${
+                  <div className={`max-w-[90%] p-4 rounded-xl backdrop-blur-xl border transition-all ${
                     msg.sender === 'user' 
                       ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' 
                       : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border`
                   }`}>
-                    <div className="leading-relaxed font-medium">{msg.content}</div>
-                    <div className={`text-[10px] mt-2 opacity-70 font-black uppercase tracking-wider flex items-center justify-between ${
+                    <div className="leading-relaxed font-medium text-base">{msg.content}</div>
+                    <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wide flex items-center justify-between ${
                       msg.sender === 'user' ? 'text-blue-100' : 'text-gray-400'
                     }`}>
                       <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       {msg.sender === 'bot' && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           {showReplayButton === msg.id && (
                             <button
                               onClick={() => handleReplay(msg.content, msg.id)}
-                              className={`p-1 rounded hover:bg-white/10 transition-colors ${getPersonaColorClass(activePersona, 'text')}`}
+                              className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${getPersonaColorClass(activePersona, 'text')} active:scale-95`}
                               title="Replay message"
                             >
-                              <RotateCcw className="w-3 h-3" />
+                              <RotateCcw className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -509,24 +563,24 @@ export default function ChatInterface({
                   </div>
                 </div>
                 
-                {/* Threat Assessment */}
+                {/* MOBILE-OPTIMIZED Threat Assessment */}
                 {msg.sender === 'bot' && msg.confidenceScore && (
-                  <div className="max-w-[85%]">
-                    <div className={`bg-black/40 backdrop-blur-xl border rounded-xl p-3 shadow-lg transition-all duration-1000 ${
+                  <div className="max-w-[90%]">
+                    <div className={`bg-black/50 backdrop-blur-xl border rounded-xl p-4 shadow-lg transition-all duration-1000 ${
                       msg.scamDetected && msg.confidenceScore === 100 ? 'border-red-400/50' : 'border-white/10'
                     }`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-white font-black uppercase text-[10px] tracking-[0.1em] flex items-center gap-1">
-                          <Shield className="w-3 h-3" />
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-white font-black uppercase text-xs tracking-wide flex items-center gap-2">
+                          <Shield className="w-4 h-4" />
                           Threat Assessment
                         </span>
-                        <span className={`font-black text-sm ${
+                        <span className={`font-black text-base ${
                           msg.scamDetected && msg.confidenceScore === 100 ? 'text-red-400' : getPersonaColorClass(activePersona, 'text')
                         }`}>
                           {msg.confidenceScore}%
                         </span>
                       </div>
-                      <div className="bg-gray-800/50 rounded-full h-2 overflow-hidden">
+                      <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
                         <div 
                           className={`h-full transition-all duration-1000 ${
                             msg.scamDetected && msg.confidenceScore === 100 ? 'bg-red-500' : getPersonaColorClass(activePersona, 'bg')
@@ -535,11 +589,11 @@ export default function ChatInterface({
                         />
                       </div>
                       {msg.scamDetected && (
-                        <div className="mt-2 p-2 bg-red-500/20 border border-red-400/30 rounded text-red-200 text-[10px] font-black uppercase flex items-center gap-2">
-                          <AlertTriangle className="w-3 h-3" />
+                        <div className="mt-3 p-3 bg-red-500/20 border border-red-400/30 rounded-lg text-red-200 text-xs font-bold uppercase flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" />
                           THREAT DETECTED
                           {msg.scamIndicators && msg.scamIndicators.length > 0 && (
-                            <div className="text-[9px] opacity-80 font-normal normal-case">
+                            <div className="text-xs opacity-80 font-normal normal-case ml-2">
                               {msg.scamIndicators.join(', ')}
                             </div>
                           )}
@@ -553,18 +607,18 @@ export default function ChatInterface({
             
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-3 rounded-xl">
-                  <div className="flex items-center gap-2">
+                <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-4 rounded-xl">
+                  <div className="flex items-center gap-3">
                     <div className="flex gap-1">
                       {[0, 1, 2].map(i => (
                         <div 
                           key={i} 
-                          className={`w-1.5 h-1.5 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
+                          className={`w-2 h-2 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
                           style={{ animationDelay: `${i * 150}ms` }} 
                         />
                       ))}
                     </div>
-                    <span className="text-gray-300 font-black uppercase tracking-widest text-[10px] italic">
+                    <span className="text-gray-300 font-bold uppercase tracking-wide text-xs">
                       {activePersona.serviceLabel} analyzing...
                     </span>
                   </div>
@@ -575,14 +629,14 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* FOOTER */}
+      {/* MOBILE-OPTIMIZED FOOTER */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
-        <div className="bg-black/70 rounded-xl border border-white/10 p-3">
+        <div className="bg-black/70 rounded-xl border border-white/10 p-4">
           {/* Recording Status */}
           {isRecording && (
-            <div className={`mb-2 p-2 border rounded text-center animate-pulse tracking-widest backdrop-blur-xl ${
+            <div className={`mb-3 p-3 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
               getPersonaColorClass(activePersona, 'bg')
-            }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-[10px] font-black uppercase`}>
+            }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-xs font-black uppercase tracking-wide`}>
               <div className="flex items-center justify-center gap-2">
                 <Zap className="w-4 h-4" />
                 WALKIE-TALKIE ACTIVE - RECORDING
@@ -590,42 +644,96 @@ export default function ChatInterface({
             </div>
           )}
 
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={handleWalkieTalkieMic} className={`
-              px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 shadow-lg backdrop-blur-xl
-              ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 hover:from-gray-500 hover:to-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'}
-            `}>
-              {isRecording ? <><MicOff className="w-4 h-4"/> STOP & SEND</> : <><Mic className="w-4 h-4"/> RECORD</>}
+          {/* LARGE MOBILE-FRIENDLY CONTROLS */}
+          <div className="flex items-center justify-between mb-4 gap-2">
+            {/* PROMINENT MIC BUTTON */}
+            <button 
+              onClick={handleWalkieTalkieMic} 
+              className={`
+                flex-1 py-4 px-4 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[60px]
+                ${isRecording 
+                  ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' 
+                  : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:from-gray-700 active:to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                }
+              `}
+            >
+              {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> RECORD</>}
             </button>
-            <button onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-black text-[10px] uppercase">Sync: {intelligenceSync}%</button>
-            <button onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase relative">
-              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />} Voice
-              {isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse" />}
+            
+            {/* VOICE TOGGLE */}
+            <button 
+              onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} 
+              className="p-4 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[60px] min-h-[60px] active:scale-95 transition-all"
+            >
+              {autoTTS ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />}
             </button>
           </div>
           
-          <div className="flex gap-2">
+          {/* INPUT ROW */}
+          <div className="flex gap-3 items-end">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
-            <button onClick={() => fileInputRef.current?.click()} className={`
-              p-3 rounded-lg backdrop-blur-xl transition-all
-              ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 hover:bg-gray-700/60 border border-gray-600'}
-            `}><Camera className="w-5 h-5" /></button>
-            <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center backdrop-blur-xl">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : selectedImage ? `Vision ready: ${selectedImage.name}...` : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10 placeholder-gray-500" disabled={loading || isRecording} />
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              className={`
+                p-3 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[50px] min-h-[50px] flex items-center justify-center
+                ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}
+              `}
+            >
+              <Camera className="w-5 h-5" />
+            </button>
+            
+            <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-4 py-3 backdrop-blur-xl min-h-[50px] flex items-center">
+              <input 
+                value={input} 
+                onChange={e => setInput(e.target.value)} 
+                onKeyDown={handleKeyPress} 
+                placeholder={
+                  isRecording ? "Listening..." : 
+                  selectedImage ? `Vision ready...` : 
+                  `Ask ${activePersona.serviceLabel}...`
+                } 
+                className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
+                disabled={loading || isRecording}
+                style={{ fontSize: '16px' }} // Prevents zoom on iOS
+              />
             </div>
-            <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`
-              px-6 py-3 rounded-lg font-black text-sm uppercase tracking-[0.1em] transition-all backdrop-blur-xl
-              ${(input.trim() || selectedImage) && !loading && !isRecording 
-                ? `bg-gradient-to-r ${getPersonaColorClass(activePersona, 'bg')} to-blue-800 text-white hover:shadow-lg border border-white/20` 
-                : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
-              }
-            `}>{loading ? 'PROCESSING' : 'SEND'}</button>
+            
+            <button 
+              onClick={handleSend} 
+              disabled={loading || (!input.trim() && !selectedImage) || isRecording} 
+              className={`
+                px-4 py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all backdrop-blur-xl min-w-[70px] min-h-[50px] active:scale-95
+                ${(input.trim() || selectedImage) && !loading && !isRecording 
+                  ? `${getPersonaColorClass(activePersona, 'bg')} text-white border border-white/20` 
+                  : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
+                }
+              `}
+            >
+              {loading ? 'SEND' : 'SEND'}
+            </button>
           </div>
           
-          <div className="text-center mt-3 pb-1">
-            <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.2em]">
-              LYLO DIGITAL BODYGUARD: ENTERPRISE SECURITY & INTELLIGENCE
-            </p>
+          {/* ADDITIONAL CONTROLS */}
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
+            <button 
+              onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} 
+              className="px-3 py-2 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
+            >
+              Sync: {intelligenceSync}%
+            </button>
+            
+            <div className="text-center flex-1">
+              <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">
+                LYLO DIGITAL BODYGUARD
+              </p>
+            </div>
+            
+            <div className="text-right">
+              <div className="text-[8px] text-gray-400 uppercase font-bold">
+                {activePersona.serviceLabel}
+              </div>
+            </div>
           </div>
         </div>
       </div>
