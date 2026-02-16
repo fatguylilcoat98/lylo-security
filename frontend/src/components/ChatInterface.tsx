@@ -128,7 +128,7 @@ export default function ChatInterface({
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
   const [showScamRecovery, setShowScamRecovery] = useState(false);
-  const [showFullGuide, setShowFullGuide] = useState(false); // FIXED: Added missing state
+  const [showFullGuide, setShowFullGuide] = useState(false);
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -277,17 +277,31 @@ export default function ChatInterface({
     }
   };
 
+  // --- FIXED PERSONA SWITCH LOGIC ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
       return;
     }
+    
     quickStopAllAudio();
     setActivePersona(persona);
     onPersonaChange(persona);
     localStorage.setItem('lylo_preferred_persona', persona.id);
+    
     const hook = persona.spokenHook.replace('{userName}', userName || 'user');
     await speakText(hook);
+    
+    // CRITICAL FIX: Add message immediately so screen switches from Grid to Chat
+    const welcomeMsg: Message = { 
+      id: Date.now().toString(), 
+      content: hook, 
+      sender: 'bot', 
+      timestamp: new Date(), 
+      confidenceScore: 100 
+    };
+    setMessages(prev => [...prev, welcomeMsg]);
+    
     setShowKnowMore(persona.id);
     setTimeout(() => setShowKnowMore(null), 5000);
   };
@@ -484,7 +498,7 @@ export default function ChatInterface({
         </div>
       </div>
 
-      {/* MAIN CONTENT - MOBILE SCROLL FIX (padding-top & overflow) */}
+      {/* MAIN CONTENT - SCROLL FIX */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '220px' }}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center min-h-full p-4 pt-10 overflow-y-auto">
@@ -548,7 +562,7 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
