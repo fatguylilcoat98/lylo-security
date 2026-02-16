@@ -480,7 +480,14 @@ export default function ChatInterface({
       </div>
 
       {/* MOBILE-OPTIMIZED MAIN CONTENT */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative backdrop-blur-sm">
+      <div 
+        ref={chatContainerRef} 
+        className="flex-1 overflow-y-auto relative backdrop-blur-sm"
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain'
+        }}
+      >
         {messages.length === 0 ? (
           <div className="min-h-full flex flex-col">
             {/* HEADER SECTION - Fixed at top */}
@@ -499,8 +506,8 @@ export default function ChatInterface({
             </div>
             
             {/* SERVICE GRID - Scrollable content */}
-            <div className="flex-1 px-4" style={{ paddingBottom: '180px' }}>
-              <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-8">
+            <div className="flex-1 px-4" style={{ paddingBottom: '400px' }}>
+              <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-20">
                 {getAccessiblePersonas(userTier).map(persona => {
                   const Icon = persona.icon;
                   return (
@@ -533,11 +540,17 @@ export default function ChatInterface({
                     </button>
                   );
                 })}
+                {/* Extra spacing to ensure footer clearance */}
+                <div className="col-span-2 h-16 flex items-center justify-center">
+                  <div className="text-gray-600 text-xs font-bold uppercase tracking-widest">
+                    {getAccessiblePersonas(userTier).length} Services Available
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '180px' }}>
+          <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '400px' }}>
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
                 <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
