@@ -480,58 +480,64 @@ export default function ChatInterface({
       </div>
 
       {/* MOBILE-OPTIMIZED MAIN CONTENT */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 relative backdrop-blur-sm" style={{ paddingBottom: '180px' }}>
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative backdrop-blur-sm">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-4 pb-32">
-            <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mb-6 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
-              <span className="text-white font-black text-lg tracking-wider">LYLO</span>
-              {/* Live Status Animation */}
-              {(loading || isSpeaking) && (
-                <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
-                </div>
-              )}
+          <div className="min-h-full flex flex-col">
+            {/* HEADER SECTION - Fixed at top */}
+            <div className="flex-shrink-0 text-center pt-4 pb-3 px-4">
+              <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mx-auto mb-3 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
+                <span className="text-white font-black text-lg tracking-wider">LYLO</span>
+                {/* Live Status Animation */}
+                {(loading || isSpeaking) && (
+                  <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
+                  </div>
+                )}
+              </div>
+              <h1 className="text-xl font-bold text-white mb-1">Digital Bodyguard</h1>
+              <p className="text-gray-400 text-sm">Tap a service to activate your expert</p>
             </div>
-            <h1 className="text-xl font-bold text-white mb-1 text-center">Digital Bodyguard</h1>
-            <p className="text-gray-400 text-sm mb-6 text-center">Tap a service to activate your expert</p>
             
-            {/* MOBILE-OPTIMIZED SERVICE GRID */}
-            <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-              {getAccessiblePersonas(userTier).slice(0, 8).map(persona => {
-                const Icon = persona.icon;
-                return (
-                  <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-                    className={`
-                      relative p-4 rounded-xl backdrop-blur-xl bg-black/50 border border-white/20 
-                      hover:bg-black/70 active:scale-95 transition-all duration-200 min-h-[120px]
-                      ${getPersonaColorClass(persona, 'glow')}
-                    `}>
-                    <div className="flex flex-col items-center text-center space-y-2">
-                      <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                        <Icon className={`w-6 h-6 ${getPersonaColorClass(persona, 'text')}`} />
+            {/* SERVICE GRID - Scrollable content */}
+            <div className="flex-1 px-4" style={{ paddingBottom: '180px' }}>
+              <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-8">
+                {getAccessiblePersonas(userTier).map(persona => {
+                  const Icon = persona.icon;
+                  return (
+                    <button key={persona.id} onClick={() => handlePersonaChange(persona)}
+                      className={`
+                        relative p-4 rounded-xl backdrop-blur-xl bg-black/50 border border-white/20 
+                        hover:bg-black/70 active:scale-95 transition-all duration-200 min-h-[120px]
+                        ${getPersonaColorClass(persona, 'glow')}
+                      `}>
+                      <div className="flex flex-col items-center text-center space-y-2">
+                        <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
+                          <Icon className={`w-6 h-6 ${getPersonaColorClass(persona, 'text')}`} />
+                        </div>
+                        <div>
+                          <h3 className="text-white font-bold text-xs uppercase tracking-wide leading-tight">{persona.serviceLabel}</h3>
+                          <p className="text-gray-400 text-[10px] mt-1 leading-tight">{persona.description}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-white font-bold text-xs uppercase tracking-wide leading-tight">{persona.serviceLabel}</h3>
-                        <p className="text-gray-400 text-[10px] mt-1 leading-tight">{persona.description}</p>
-                      </div>
-                    </div>
-                    
-                    {/* Tier Badge */}
-                    {persona.requiredTier !== 'free' && (
-                      <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                        persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
-                        persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
-                        'bg-blue-500 text-white'
-                      }`}>
-                        {persona.requiredTier.slice(0,3).toUpperCase()}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+                      
+                      {/* Tier Badge */}
+                      {persona.requiredTier !== 'free' && (
+                        <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                          persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
+                          persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
+                          'bg-blue-500 text-white'
+                        }`}>
+                          {persona.requiredTier === 'elite' ? 'ELI' : persona.requiredTier.slice(0,3).toUpperCase()}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         ) : (
+          <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '180px' }}>
           <>
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
@@ -629,41 +635,41 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* MOBILE-OPTIMIZED FOOTER */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
-        <div className="bg-black/70 rounded-xl border border-white/10 p-4">
+      {/* MOBILE-OPTIMIZED FOOTER - Reduced height */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 z-50">
+        <div className="bg-black/70 rounded-xl border border-white/10 p-3">
           {/* Recording Status */}
           {isRecording && (
-            <div className={`mb-3 p-3 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
+            <div className={`mb-2 p-2 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
               getPersonaColorClass(activePersona, 'bg')
             }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-xs font-black uppercase tracking-wide`}>
               <div className="flex items-center justify-center gap-2">
                 <Zap className="w-4 h-4" />
-                WALKIE-TALKIE ACTIVE - RECORDING
+                RECORDING
               </div>
             </div>
           )}
 
           {/* LARGE MOBILE-FRIENDLY CONTROLS */}
-          <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="flex items-center justify-between mb-3 gap-2">
             {/* PROMINENT MIC BUTTON */}
             <button 
               onClick={handleWalkieTalkieMic} 
               className={`
-                flex-1 py-4 px-4 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[60px]
+                flex-1 py-3 px-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[50px]
                 ${isRecording 
                   ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' 
                   : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:from-gray-700 active:to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
                 }
               `}
             >
-              {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> RECORD</>}
+              {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
             </button>
             
             {/* VOICE TOGGLE */}
             <button 
               onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} 
-              className="p-4 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[60px] min-h-[60px] active:scale-95 transition-all"
+              className="p-3 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
             >
               {autoTTS ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />}
@@ -671,19 +677,19 @@ export default function ChatInterface({
           </div>
           
           {/* INPUT ROW */}
-          <div className="flex gap-3 items-end">
+          <div className="flex gap-2 items-end">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
             <button 
               onClick={() => fileInputRef.current?.click()} 
               className={`
-                p-3 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[50px] min-h-[50px] flex items-center justify-center
+                p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center
                 ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}
               `}
             >
-              <Camera className="w-5 h-5" />
+              <Camera className="w-4 h-4" />
             </button>
             
-            <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-4 py-3 backdrop-blur-xl min-h-[50px] flex items-center">
+            <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
               <input 
                 value={input} 
                 onChange={e => setInput(e.target.value)} 
@@ -703,36 +709,34 @@ export default function ChatInterface({
               onClick={handleSend} 
               disabled={loading || (!input.trim() && !selectedImage) || isRecording} 
               className={`
-                px-4 py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all backdrop-blur-xl min-w-[70px] min-h-[50px] active:scale-95
+                px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all backdrop-blur-xl min-w-[60px] min-h-[40px] active:scale-95
                 ${(input.trim() || selectedImage) && !loading && !isRecording 
                   ? `${getPersonaColorClass(activePersona, 'bg')} text-white border border-white/20` 
                   : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
                 }
               `}
             >
-              {loading ? 'SEND' : 'SEND'}
+              SEND
             </button>
           </div>
           
-          {/* ADDITIONAL CONTROLS */}
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
+          {/* BOTTOM STATUS - Compact */}
+          <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
             <button 
               onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} 
-              className="px-3 py-2 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
+              className="px-2 py-1 rounded-md bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
             >
-              Sync: {intelligenceSync}%
+              {intelligenceSync}%
             </button>
             
-            <div className="text-center flex-1">
+            <div className="text-center">
               <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">
-                LYLO DIGITAL BODYGUARD
+                LYLO BODYGUARD
               </p>
             </div>
             
-            <div className="text-right">
-              <div className="text-[8px] text-gray-400 uppercase font-bold">
-                {activePersona.serviceLabel}
-              </div>
+            <div className="text-[8px] text-gray-400 uppercase font-bold">
+              {activePersona.serviceLabel.split(' ')[0]}
             </div>
           </div>
         </div>
