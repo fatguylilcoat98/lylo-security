@@ -10,22 +10,36 @@ const API_URL = 'https://lylo-backend.onrender.com';
 
 // --- TYPES ---
 export interface PersonaConfig {
-  id: string; name: string; serviceLabel: string; description: string;
-  protectiveJob: string; spokenHook: string; briefing: string; color: string;
-  requiredTier: 'free' | 'pro' | 'elite' | 'max'; capabilities: string[];
+  id: string;
+  name: string;
+  serviceLabel: string;
+  description: string;
+  protectiveJob: string;
+  spokenHook: string;
+  briefing: string;
+  color: string;
+  requiredTier: 'free' | 'pro' | 'elite' | 'max';
+  capabilities: string[];
   icon: React.ComponentType<any>;
 }
 
 interface ChatInterfaceProps {
-  currentPersona: PersonaConfig; userEmail: string; zoomLevel: number;
-  onZoomChange: (zoom: number) => void; onPersonaChange: (persona: PersonaConfig) => void;
-  onLogout: () => void; onUsageUpdate?: () => void;
+  currentPersona: PersonaConfig;
+  userEmail: string;
+  zoomLevel: number;
+  onZoomChange: (zoom: number) => void;
+  onPersonaChange: (persona: PersonaConfig) => void;
+  onLogout: () => void;
+  onUsageUpdate?: () => void;
 }
 
 interface RecoveryGuideData {
-  title: string; subtitle: string; immediate_actions: string[];
+  title: string;
+  subtitle: string;
+  immediate_actions: string[];
   recovery_steps: { step: number; title: string; actions: string[] }[];
-  phone_scripts: { bank_script: string; police_script: string }; prevention_tips: string[];
+  phone_scripts: { bank_script: string; police_script: string };
+  prevention_tips: string[];
 }
 
 // --- DATA ---
@@ -42,7 +56,7 @@ const PERSONAS: PersonaConfig[] = [
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
 
-// --- HELPERS ---
+// --- HELPER FUNCTIONS ---
 const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
   const colorMap: any = {
     blue: { border: 'border-blue-400', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]', bg: 'bg-blue-500', text: 'text-blue-400' },
@@ -93,6 +107,7 @@ export default function ChatInterface({
   const [autoTTS, setAutoTTS] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
+  const [instantVoice, setInstantVoice] = useState(false);
   const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
@@ -104,12 +119,16 @@ export default function ChatInterface({
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
+  
+  // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(1);
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
   const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
+  const [showScamRecovery, setShowScamRecovery] = useState(false);
+  const [showFullGuide, setShowFullGuide] = useState(false); // FIXED: Added missing state
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -170,7 +189,6 @@ export default function ChatInterface({
     } catch (e) { console.error(e); }
   };
 
-  // Audio Logic
   const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
@@ -213,7 +231,6 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Mic Logic
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -260,7 +277,6 @@ export default function ChatInterface({
     }
   };
 
-  // Actions
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
@@ -370,6 +386,30 @@ export default function ChatInterface({
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
+      {showFullGuide && guideData && (
+        <div className="fixed inset-0 z-[100060] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-0 max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-gray-800/50">
+              <div>
+                <h2 className="text-xl font-black text-white uppercase tracking-wider">{guideData.title}</h2>
+                <p className="text-yellow-500 text-xs font-bold">{guideData.subtitle}</p>
+              </div>
+              <button onClick={() => setShowFullGuide(false)} className="p-2 hover:bg-white/10 rounded-lg"><X className="w-5 h-5 text-white" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-6">
+               {guideData.recovery_steps.map(step => (
+                 <div key={step.step} className="mb-4">
+                   <h3 className="text-white font-bold mb-2">Step {step.step}: {step.title}</h3>
+                   <ul className="list-disc pl-5 space-y-1">
+                     {step.actions.map((act, i) => <li key={i} className="text-gray-400 text-sm">{act}</li>)}
+                   </ul>
+                 </div>
+               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCrisisShield && (
         <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl overflow-y-auto max-h-[85vh]">
@@ -508,7 +548,7 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
