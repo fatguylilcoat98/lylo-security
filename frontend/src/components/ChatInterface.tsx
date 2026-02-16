@@ -168,6 +168,10 @@ export default function ChatInterface({
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [instantVoice, setInstantVoice] = useState(false);
   
+  // *** FIXED: ADDED MISSING STATE VARIABLES HERE ***
+  const [speechQueue, setSpeechQueue] = useState<string[]>([]);
+  const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
+  
   // --- UI STATE ---
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
