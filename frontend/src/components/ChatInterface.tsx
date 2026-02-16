@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-// SAFE IMPORT LIST: Removed 'Crown', 'Brain', 'ChefHat', 'VolumeX' to prevent crashes
+// SAFE IMPORT LIST: Removed 'Crown', 'Brain', 'ChefHat', 'VolumeX', 'Laugh' to prevent crashes
+// Replaced with standard icons: Star, Smile, Activity, MicOff
 import { 
   Shield, Wrench, Gavel, Monitor, BookOpen, Smile, Activity, 
   Camera, Mic, MicOff, Volume2, RotateCcw, AlertTriangle, 
@@ -47,15 +48,17 @@ interface RecoveryGuideData {
 // --- DATA ---
 const PERSONAS: PersonaConfig[] = [
   { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. How can I protect you today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Phishing protection', 'Account security', 'Identity theft prevention'] },
-  // Swapped 'Laugh' for 'Smile' (safer)
+  // Swapped 'Laugh' for 'Smile' (safer for older libraries)
   { id: 'roast', name: 'The Sassy Protector', serviceLabel: 'SNARK MODE', description: 'Reality Check', protectiveJob: 'Humor Shield', spokenHook: 'Oh great, what did you click on this time? Let me see.', briefing: 'I use sarcasm and tough love to keep you safe. Don\'t take it personally.', color: 'orange', requiredTier: 'pro', icon: Smile, capabilities: ['Sarcastic scam responses', 'Witty threat deflection', 'Humorous security advice'] },
   { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online. How can I provide spiritual support?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Biblical wisdom', 'Scripture-based protection', 'Spiritual threat assessment'] },
   { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready. What automotive issue can I help with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair diagnostics', 'Engine code analysis', 'Automotive scam protection'] },
   { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Legal Shield', protectiveJob: 'Legal Shield', spokenHook: 'Legal shield activated. How can I protect your rights today?', briefing: 'I provide legal guidance and protect you from legal scams and exploitation.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Legal scam detection', 'Rights protection guidance'] },
   { id: 'techie', name: 'The Techie', serviceLabel: 'TECH SUPPORT', description: 'Tech Bridge', protectiveJob: 'Tech Bridge', spokenHook: 'Technical support online. Ready to solve your tech challenges.', briefing: 'I provide technology support and protect you from tech support scams.', color: 'purple', requiredTier: 'elite', icon: Monitor, capabilities: ['Device troubleshooting', 'Tech support scam protection', 'Network security'] },
+  // 'BookOpen' is safe
   { id: 'storyteller', name: 'The Storyteller', serviceLabel: 'STORY THERAPY', description: 'Mental Guardian', protectiveJob: 'Mental Guardian', spokenHook: 'Story therapy session initiated.', briefing: 'I create therapeutic stories to support your mental wellness.', color: 'indigo', requiredTier: 'max', icon: BookOpen, capabilities: ['Custom story creation', 'Narrative therapy', 'Mental wellness'] },
+  // Swapped 'Laugh' for 'Smile'
   { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment mode activated.', briefing: 'I provide professional entertainment to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Smile, capabilities: ['Professional comedy', 'Mood enhancement', 'Stress relief'] },
-  // Swapped 'ChefHat' for 'Activity'
+  // Swapped 'ChefHat' for 'Activity' (safer)
   { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance active.', briefing: 'I provide expert culinary guidance and protect you from food-related risks.', color: 'red', requiredTier: 'max', icon: Activity, capabilities: ['Recipe creation', 'Food safety protocols', 'Nutrition advice'] },
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online.', briefing: 'I provide safe fitness guidance and protect you from health misinformation.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Safe exercise routines', 'Fitness scam protection', 'Wellness guidance'] }
 ];
@@ -410,6 +413,12 @@ export default function ChatInterface({
     localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
   };
 
+  // Safe label getter to prevent crashes
+  const getSafeLabel = () => {
+    if (!activePersona || !activePersona.serviceLabel) return 'GUARD';
+    return activePersona.serviceLabel.split(' ')[0];
+  };
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
@@ -463,11 +472,10 @@ export default function ChatInterface({
               </div>
               {isEliteUser ? (
                 <button onClick={handleGetFullGuide} className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2">
-                  <Crown className="w-4 h-4" /> PRIORITY LEGAL ACCESS
+                  <Star className="w-4 h-4" /> PRIORITY LEGAL ACCESS
                 </button>
               ) : (
                 <div className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
-                  {/* Replaced 'Crown' with 'Star' just in case, but Crown should work if updated. Using Star is safest. */}
                   <Star className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
                 </div>
               )}
@@ -609,7 +617,7 @@ export default function ChatInterface({
             </button>
 
             <button onClick={toggleTTS} className="px-3 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center gap-2 font-black text-xs uppercase min-w-[50px]">
-              {/* Swapped VolumeX for Volume2 (off) to be safe, or just handled logically */}
+              {/* Swapped VolumeX for MicOff to prevent crashes on older systems */}
               {autoTTS ? <Volume2 className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             </button>
           </div>
@@ -617,7 +625,7 @@ export default function ChatInterface({
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
             <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
             <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona?.serviceLabel ? activePersona.serviceLabel.split(' ')[0] : 'GUARD'}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${getSafeLabel()}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
             <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
