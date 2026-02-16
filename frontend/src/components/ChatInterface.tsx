@@ -329,7 +329,6 @@ export default function ChatInterface({
     finally { setLoading(false); setSelectedImage(null); }
   };
 
-  // MISSING FUNCTION HANDLERS
   const handleReplay = (messageContent: string, messageId?: string) => {
     quickStopAllAudio();
     speakText(messageContent, messageId);
@@ -360,60 +359,68 @@ export default function ChatInterface({
     finally { setLoading(false); }
   };
 
+  const getUserDisplayName = () => {
+    if (userName) return userName;
+    if (userEmail.toLowerCase().includes('stangman')) return 'Christopher';
+    return userEmail.split('@')[0];
+  };
+
+  const handleIntelligenceSyncClick = () => {
+    quickStopAllAudio();
+    setShowIntelligenceModal(true);
+  };
+
+  const cycleFontSize = () => {
+    if (zoomLevel < 100) onZoomChange(100);
+    else if (zoomLevel < 125) onZoomChange(125);
+    else onZoomChange(85);
+  };
+
+  const handleCalibrationAnswer = (ans: string) => {
+    if (calibrationStep < 3) setCalibrationStep(p => p + 1);
+    else {
+      setShowIntelligenceModal(false);
+      speakText(`Sync updated.`);
+    }
+  };
+
+  const toggleTTS = () => {
+    quickStopAllAudio();
+    const newAutoTTS = !autoTTS;
+    setAutoTTS(newAutoTTS);
+    localStorage.setItem('lylo_auto_tts', newAutoTTS.toString());
+  };
+
   // --- RENDER ---
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
       
-      {/* MOBILE-OPTIMIZED OVERLAYS */}
+      {/* OVERLAYS */}
       {showCrisisShield && (
         <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-red-100 font-black text-lg uppercase tracking-wide">Emergency Protocols</h2>
-              <button onClick={() => setShowCrisisShield(false)} className="p-2 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
-                <X className="w-5 h-5 text-white" />
-              </button>
+          <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-6 max-w-lg w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/20 rounded-lg"><Shield className="w-6 h-6 text-red-400" /></div>
+                <h2 className="text-red-100 font-black text-xl uppercase tracking-wider">Emergency Protocols</h2>
+              </div>
+              <button onClick={() => setShowCrisisShield(false)} className="p-2 hover:bg-white/10 rounded-lg"><X className="w-5 h-5 text-white" /></button>
             </div>
             <div className="space-y-4 text-sm">
               <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4">
-                <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" /> IMMEDIATE ACTIONS
-                </h3>
-                <ul className="text-red-100 space-y-3 text-sm">
-                  <li className="flex items-start gap-3">
-                    <CreditCard className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-                    <span>STOP all payments and money transfers immediately</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Phone className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-                    <span>Call your bank's fraud department right now</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <FileText className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-                    <span>Screenshot all communications for evidence</span>
-                  </li>
+                <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> IMMEDIATE ACTIONS</h3>
+                <ul className="text-red-100 space-y-2 text-xs">
+                  <li>• STOP all payments immediately</li>
+                  <li>• Call your bank's fraud dept</li>
+                  <li>• Screenshot everything</li>
                 </ul>
               </div>
-              
-              <div className="bg-yellow-500/10 border border-yellow-400/30 rounded-lg p-4">
-                <h3 className="text-yellow-200 font-bold mb-3 flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  BANK SCRIPT
-                </h3>
-                <p className="text-yellow-100 text-sm italic leading-relaxed">
-                  "This is a fraud emergency. I need to report unauthorized access to my account and fraudulent transfers. Connect me to your fraud specialist immediately."
-                </p>
-              </div>
-              
               {isEliteUser ? (
-                <button 
-                  onClick={handleGetFullGuide} 
-                  className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
+                <button onClick={handleGetFullGuide} className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2">
                   <Crown className="w-4 h-4" /> PRIORITY LEGAL ACCESS
                 </button>
               ) : (
-                <div className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
+                <div className="w-full py-3 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
                   <Crown className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
                 </div>
               )}
@@ -424,332 +431,103 @@ export default function ChatInterface({
 
       {showIntelligenceModal && (
         <div className="fixed inset-0 z-[100100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="bg-black/80 p-6 rounded-xl border border-blue-500/50 max-w-sm w-full max-h-[80vh] overflow-y-auto">
-            <h2 className="text-white font-bold mb-4 text-lg">Intelligence Sync</h2>
-            <p className="text-gray-400 mb-6 text-base">Calibrating your bodyguard...</p>
+          <div className="bg-black/80 p-8 rounded-xl border border-blue-500/50 max-w-md w-full">
+            <h2 className="text-white font-bold mb-4">Intelligence Sync</h2>
+            <p className="text-gray-400 mb-4">Calibrating your bodyguard...</p>
             {['Fraud', 'Identity', 'Tech'].map(opt => (
-              <button 
-                key={opt} 
-                onClick={() => { setShowIntelligenceModal(false); speakText('Updated.'); }} 
-                className="w-full p-4 bg-blue-500/20 mb-3 rounded-lg text-white border border-blue-500/30 font-bold active:scale-95 transition-all"
-              >
-                {opt}
-              </button>
+              <button key={opt} onClick={() => handleCalibrationAnswer(opt)} className="w-full p-3 bg-blue-500/20 mb-2 rounded text-white border border-blue-500/30">{opt}</button>
             ))}
           </div>
         </div>
       )}
 
-      {/* MOBILE-OPTIMIZED HEADER */}
-      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
+      {/* HEADER */}
+      <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-3 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
           <div className="relative">
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
-              <Settings className="w-5 h-5 text-white" />
-            </button>
+            <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg"><Settings className="w-5 h-5 text-white" /></button>
             {showDropdown && (
-              <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[200px] shadow-2xl z-[100001]">
-                <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95 transition-all">
-                  <LogOut className="w-4 h-4"/> 
-                  <span className="font-bold text-sm">Exit Protection</span>
-                </button>
+              <div className="absolute top-12 left-0 bg-black/95 border border-white/10 rounded-xl p-3 min-w-[250px] shadow-2xl">
+                <button onClick={onLogout} className="w-full flex items-center gap-2 text-red-400 p-2 hover:bg-white/5 rounded"><LogOut className="w-4 h-4"/> Logout</button>
               </div>
             )}
           </div>
-          
-          <div className="text-center flex-1">
-            <h1 className="text-white font-black text-xl tracking-[0.2em]">
-              L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
-            </h1>
-            <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">Digital Bodyguard</p>
+          <div className="text-center">
+            <h1 className="text-white font-black text-lg tracking-[0.2em]">L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO</h1>
+            <p className="text-gray-500 text-[9px] uppercase tracking-widest">Digital Bodyguard</p>
           </div>
-          
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowCrisisShield(true)} 
-              className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse active:scale-95 transition-all"
-            >
-              <Shield className="w-5 h-5 text-red-400" />
-            </button>
+            <button onClick={() => setShowCrisisShield(true)} className="p-2 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
             <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-              <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
-              <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
+              <div className="text-white font-bold text-xs">{getUserDisplayName()}</div>
+              <div className="text-[9px] text-gray-400 font-black uppercase">Protected</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* MOBILE-OPTIMIZED MAIN CONTENT */}
-      <div 
-        ref={chatContainerRef} 
-        className="flex-1 overflow-y-auto relative backdrop-blur-sm"
-        style={{ 
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain'
-        }}
-      >
+      {/* MAIN CONTENT */}
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative backdrop-blur-sm" style={{ paddingBottom: '200px' }}>
         {messages.length === 0 ? (
-          <div className="min-h-full flex flex-col">
-            {/* HEADER SECTION - Fixed at top */}
-            <div className="flex-shrink-0 text-center pt-4 pb-3 px-4">
-              <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mx-auto mb-3 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
-                <span className="text-white font-black text-lg tracking-wider">LYLO</span>
-                {/* Live Status Animation */}
-                {(loading || isSpeaking) && (
-                  <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
-                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
-                  </div>
-                )}
-              </div>
-              <h1 className="text-xl font-bold text-white mb-1">Digital Bodyguard</h1>
-              <p className="text-gray-400 text-sm">Tap a service to activate your expert</p>
-            </div>
-            
-            {/* SERVICE GRID - Scrollable content */}
-            <div className="flex-1 px-4" style={{ paddingBottom: '400px' }}>
-              <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-20">
-                {getAccessiblePersonas(userTier).map(persona => {
-                  const Icon = persona.icon;
-                  return (
-                    <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-                      className={`
-                        relative p-4 rounded-xl backdrop-blur-xl bg-black/50 border border-white/20 
-                        hover:bg-black/70 active:scale-95 transition-all duration-200 min-h-[120px]
-                        ${getPersonaColorClass(persona, 'glow')}
-                      `}>
-                      <div className="flex flex-col items-center text-center space-y-2">
-                        <div className={`p-2 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
-                          <Icon className={`w-6 h-6 ${getPersonaColorClass(persona, 'text')}`} />
-                        </div>
-                        <div>
-                          <h3 className="text-white font-bold text-xs uppercase tracking-wide leading-tight">{persona.serviceLabel}</h3>
-                          <p className="text-gray-400 text-[10px] mt-1 leading-tight">{persona.description}</p>
-                        </div>
+          <div className="flex flex-col items-center justify-center h-full p-4 overflow-y-auto pb-20">
+            <h1 className="text-2xl font-bold text-white mb-2 text-center mt-4">Digital Bodyguard Services</h1>
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-6xl w-full pb-20">
+              {getAccessiblePersonas(userTier).map(persona => {
+                const Icon = persona.icon;
+                return (
+                  <button key={persona.id} onClick={() => handlePersonaChange(persona)}
+                    className={`group relative p-6 rounded-xl backdrop-blur-xl bg-black/40 border border-white/10 hover:bg-black/60 hover:border-white/20 transition-all duration-300 transform hover:scale-105 ${getPersonaColorClass(persona, 'glow')}`}>
+                    <div className="flex flex-col items-center text-center space-y-3">
+                      <div className={`p-3 rounded-lg bg-black/40 ${getPersonaColorClass(persona, 'border')} border`}>
+                        <Icon className={`w-8 h-8 ${getPersonaColorClass(persona, 'text')}`} />
                       </div>
-                      
-                      {/* Tier Badge */}
-                      {persona.requiredTier !== 'free' && (
-                        <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                          persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
-                          persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
-                          'bg-blue-500 text-white'
-                        }`}>
-                          {persona.requiredTier === 'elite' ? 'ELI' : persona.requiredTier.slice(0,3).toUpperCase()}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-                {/* Extra spacing to ensure footer clearance */}
-                <div className="col-span-2 h-16 flex items-center justify-center">
-                  <div className="text-gray-600 text-xs font-bold uppercase tracking-widest">
-                    {getAccessiblePersonas(userTier).length} Services Available
-                  </div>
-                </div>
-              </div>
+                      <div>
+                        <h3 className="text-white font-bold text-sm uppercase tracking-wide">{persona.serviceLabel}</h3>
+                        <p className="text-gray-400 text-xs mt-1">{persona.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : (
-          <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '400px' }}>
+          <>
             {messages.map((msg) => (
-              <div key={msg.id} className="space-y-2">
-                <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[90%] p-4 rounded-xl backdrop-blur-xl border transition-all ${
-                    msg.sender === 'user' 
-                      ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' 
-                      : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border`
-                  }`}>
-                    <div className="leading-relaxed font-medium text-base">{msg.content}</div>
-                    <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wide flex items-center justify-between ${
-                      msg.sender === 'user' ? 'text-blue-100' : 'text-gray-400'
-                    }`}>
-                      <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      {msg.sender === 'bot' && (
-                        <div className="flex items-center gap-3">
-                          {showReplayButton === msg.id && (
-                            <button
-                              onClick={() => handleReplay(msg.content, msg.id)}
-                              className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${getPersonaColorClass(activePersona, 'text')} active:scale-95`}
-                              title="Replay message"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border ${msg.sender === 'user' ? 'bg-blue-500/20 border-blue-400/30' : `bg-black/40 ${getPersonaColorClass(activePersona, 'border')}/30`}`}>
+                  <div className="text-white text-sm font-medium">{msg.content}</div>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-[10px] text-gray-400 uppercase font-black">{msg.sender === 'user' ? 'You' : activePersona.name}</span>
+                    {msg.sender === 'bot' && <button onClick={() => handleReplay(msg.content)} className="ml-2 text-gray-400 hover:text-white"><RotateCcw className="w-3 h-3" /></button>}
                   </div>
                 </div>
-                
-                {/* MOBILE-OPTIMIZED Threat Assessment */}
-                {msg.sender === 'bot' && msg.confidenceScore && (
-                  <div className="max-w-[90%]">
-                    <div className={`bg-black/50 backdrop-blur-xl border rounded-xl p-4 shadow-lg transition-all duration-1000 ${
-                      msg.scamDetected && msg.confidenceScore === 100 ? 'border-red-400/50' : 'border-white/10'
-                    }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-white font-black uppercase text-xs tracking-wide flex items-center gap-2">
-                          <Shield className="w-4 h-4" />
-                          Threat Assessment
-                        </span>
-                        <span className={`font-black text-base ${
-                          msg.scamDetected && msg.confidenceScore === 100 ? 'text-red-400' : getPersonaColorClass(activePersona, 'text')
-                        }`}>
-                          {msg.confidenceScore}%
-                        </span>
-                      </div>
-                      <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-1000 ${
-                            msg.scamDetected && msg.confidenceScore === 100 ? 'bg-red-500' : getPersonaColorClass(activePersona, 'bg')
-                          }`} 
-                          style={{ width: `${msg.confidenceScore}%` }} 
-                        />
-                      </div>
-                      {msg.scamDetected && (
-                        <div className="mt-3 p-3 bg-red-500/20 border border-red-400/30 rounded-lg text-red-200 text-xs font-bold uppercase flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4" />
-                          THREAT DETECTED
-                          {msg.scamIndicators && msg.scamIndicators.length > 0 && (
-                            <div className="text-xs opacity-80 font-normal normal-case ml-2">
-                              {msg.scamIndicators.join(', ')}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
-            
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-4 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1">
-                      {[0, 1, 2].map(i => (
-                        <div 
-                          key={i} 
-                          className={`w-2 h-2 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
-                          style={{ animationDelay: `${i * 150}ms` }} 
-                        />
-                      ))}
-                    </div>
-                    <span className="text-gray-300 font-bold uppercase tracking-wide text-xs">
-                      {activePersona.serviceLabel} analyzing...
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            {loading && <div className="text-center text-gray-500 text-xs animate-pulse">Analyzing...</div>}
+          </>
         )}
       </div>
 
-      {/* MOBILE-OPTIMIZED FOOTER - Reduced height */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 z-50">
+      {/* FOOTER */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
         <div className="bg-black/70 rounded-xl border border-white/10 p-3">
-          {/* Recording Status */}
-          {isRecording && (
-            <div className={`mb-2 p-2 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
-              getPersonaColorClass(activePersona, 'bg')
-            }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-xs font-black uppercase tracking-wide`}>
-              <div className="flex items-center justify-center gap-2">
-                <Zap className="w-4 h-4" />
-                RECORDING
-              </div>
-            </div>
-          )}
-
-          {/* LARGE MOBILE-FRIENDLY CONTROLS */}
-          <div className="flex items-center justify-between mb-3 gap-2">
-            {/* PROMINENT MIC BUTTON */}
-            <button 
-              onClick={handleWalkieTalkieMic} 
-              className={`
-                flex-1 py-3 px-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[50px]
-                ${isRecording 
-                  ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' 
-                  : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:from-gray-700 active:to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
-                }
-              `}
-            >
-              {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={handleWalkieTalkieMic} className={`px-4 py-3 rounded-lg font-black text-[10px] uppercase tracking-widest border-2 transition-all flex items-center gap-2 ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gray-800 border-gray-600 text-gray-300'}`}>
+              {isRecording ? <><MicOff className="w-4 h-4"/> STOP & SEND</> : <><Mic className="w-4 h-4"/> RECORD</>}
             </button>
-            
-            {/* VOICE TOGGLE */}
-            <button 
-              onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} 
-              className="p-3 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
-            >
-              {autoTTS ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />}
+            <button onClick={cycleFontSize} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-blue-400/30 text-blue-400 font-black text-[10px] uppercase">SIZE: {zoomLevel}%</button>
+            <button onClick={toggleTTS} className="px-4 py-3 rounded-lg bg-gray-800/60 border border-gray-600 text-white flex items-center gap-2 font-black text-[10px] uppercase">
+              {autoTTS ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />} Voice
             </button>
           </div>
-          
-          {/* INPUT ROW */}
-          <div className="flex gap-2 items-end">
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
-            <button 
-              onClick={() => fileInputRef.current?.click()} 
-              className={`
-                p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center
-                ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}
-              `}
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-            
-            <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
-              <input 
-                value={input} 
-                onChange={e => setInput(e.target.value)} 
-                onKeyDown={handleKeyPress} 
-                placeholder={
-                  isRecording ? "Listening..." : 
-                  selectedImage ? `Vision ready...` : 
-                  `Ask ${activePersona.serviceLabel}...`
-                } 
-                className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
-                disabled={loading || isRecording}
-                style={{ fontSize: '16px' }} // Prevents zoom on iOS
-              />
+          <div className="flex gap-2">
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleImageSelect} />
+            <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-gray-800 rounded-lg"><Camera className="w-5 h-5 text-gray-400" /></button>
+            <div className="flex-1 bg-black/60 rounded-lg border border-white/10 px-3 flex items-center">
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyPress} placeholder={isRecording ? "Listening..." : `Ask ${activePersona.serviceLabel}...`} className="bg-transparent w-full text-white text-sm focus:outline-none h-10" />
             </div>
-            
-            <button 
-              onClick={handleSend} 
-              disabled={loading || (!input.trim() && !selectedImage) || isRecording} 
-              className={`
-                px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all backdrop-blur-xl min-w-[60px] min-h-[40px] active:scale-95
-                ${(input.trim() || selectedImage) && !loading && !isRecording 
-                  ? `${getPersonaColorClass(activePersona, 'bg')} text-white border border-white/20` 
-                  : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
-                }
-              `}
-            >
-              SEND
-            </button>
-          </div>
-          
-          {/* BOTTOM STATUS - Compact */}
-          <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
-            <button 
-              onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} 
-              className="px-2 py-1 rounded-md bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
-            >
-              {intelligenceSync}%
-            </button>
-            
-            <div className="text-center">
-              <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">
-                LYLO BODYGUARD
-              </p>
-            </div>
-            
-            <div className="text-[8px] text-gray-400 uppercase font-bold">
-              {activePersona.serviceLabel.split(' ')[0]}
-            </div>
+            <button onClick={handleSend} className="p-3 bg-blue-600 rounded-lg font-bold text-xs">SEND</button>
           </div>
         </div>
       </div>
