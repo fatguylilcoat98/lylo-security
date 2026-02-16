@@ -538,7 +538,6 @@ export default function ChatInterface({
           </div>
         ) : (
           <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '180px' }}>
-          <>
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
                 <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -631,7 +630,7 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
 
