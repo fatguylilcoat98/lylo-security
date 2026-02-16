@@ -233,7 +233,7 @@ export default function ChatInterface({
   
   // --- IDENTITY & PERSONALIZATION ---
   const [userName, setUserName] = useState<string>('');
-  // Removed: hasGivenInitialGreeting - no more initial greeting
+  const [hasGivenInitialGreeting, setHasGivenInitialGreeting] = useState(false);
   const [intelligenceSync, setIntelligenceSync] = useState(0);
   
   // --- VOICE & MIC (FIXED TAP-TO-RECORD-TO-SEND) ---
@@ -245,12 +245,6 @@ export default function ChatInterface({
   const [instantVoice, setInstantVoice] = useState(false);
   const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
-  
-  // --- TIMEOUT LOOP FIX: USE REFS ---
-  const lastInteractionTimeRef = useRef(Date.now());
-  // Removed: standby timer functionality
-  
-  // Removed: isInStandbyMode state 
   
   // --- UI STATE ---
   const [showDropdown, setShowDropdown] = useState(false);
@@ -402,7 +396,6 @@ export default function ChatInterface({
   useEffect(() => {
     initializeLylo();
     return () => {
-      // Removed: standby timer cleanup
       // Cleanup speech synthesis
       window.speechSynthesis.cancel();
     };
@@ -413,7 +406,6 @@ export default function ChatInterface({
     await checkEliteStatus();
     loadSavedPreferences();
     detectUserName();
-    // Removed: startPrivacyShieldMonitoring() - no more timeout/standby functionality
     
     // Load saved persona preference
     const savedPersona = localStorage.getItem('lylo_preferred_persona');
@@ -423,7 +415,11 @@ export default function ChatInterface({
         onPersonaChange(persona);
       }
     }
-    // Removed: Initial greeting functionality
+    
+    // MINIMAL INITIAL GREETING
+    if (!hasGivenInitialGreeting) {
+      setTimeout(() => giveInitialGreeting(), 1000);
+    }
   };
 
   const loadSavedPreferences = () => {
@@ -436,7 +432,8 @@ export default function ChatInterface({
     const savedInstantVoice = localStorage.getItem('lylo_instant_voice');
     if (savedInstantVoice === 'true') setInstantVoice(true);
     
-    // Removed: savedGreeting loading - no more initial greeting functionality
+    const savedGreeting = localStorage.getItem('lylo_initial_greeting');
+    if (savedGreeting === 'true') setHasGivenInitialGreeting(true);
     
     const savedSync = localStorage.getItem('lylo_intelligence_sync');
     if (savedSync) setIntelligenceSync(parseInt(savedSync) || 0);
@@ -472,7 +469,25 @@ export default function ChatInterface({
     }
   };
 
-  // Removed: giveInitialGreeting function - no more initial greeting
+  // --- MINIMAL INITIAL GREETING ---
+  const giveInitialGreeting = async () => {
+    if (hasGivenInitialGreeting) return;
+    
+    const greetingMessage = "Hello, I'm LYLO. Please select a persona.";
+    await speakText(greetingMessage);
+    
+    const botMsg: Message = { 
+      id: Date.now().toString(), 
+      content: greetingMessage, 
+      sender: 'bot', 
+      timestamp: new Date(),
+      confidenceScore: 100
+    };
+    setMessages(prev => [...prev, botMsg]);
+    
+    setHasGivenInitialGreeting(true);
+    localStorage.setItem('lylo_initial_greeting', 'true');
+  };
 
   // --- PERSONA CHANGE WITH INTRODUCTION ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
@@ -522,8 +537,6 @@ export default function ChatInterface({
     setIntelligenceSync(newSync);
     localStorage.setItem('lylo_intelligence_sync', newSync.toString());
   };
-
-  // Removed: All privacy shield/standby monitoring functions
 
   // --- ENHANCED AUDIO FUNCTIONS WITH QUEUE ---
   const quickStopAllAudio = () => {
@@ -608,29 +621,25 @@ export default function ChatInterface({
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- FIXED WALKIE-TALKIE SPEECH RECOGNITION ---
+  // --- FIXED WALKIE-TALKIE SPEECH RECOGNITION (CONSTANT RECORDING) ---
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false;
-      recognition.interimResults = false; // Only final results
+      recognition.continuous = true; // CHANGED: True for constant recording
+      recognition.interimResults = true; // CHANGED: True so we see what we're saying
       recognition.lang = language === 'es' ? 'es-MX' : 'en-US'; 
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setRecordingState('recording');
-        transcriptRef.current = ''; // Clear previous transcript
         console.log('Speech recognition started');
       };
       
       recognition.onresult = (event: any) => {
-        // Removed: updateInteractionTime() call
-        console.log('Speech recognition result received');
-        
         let finalTranscript = '';
-        for (let i = 0; i < event.results.length; i++) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
           if (result.isFinal) {
             finalTranscript += result[0].transcript + ' ';
@@ -638,38 +647,27 @@ export default function ChatInterface({
         }
         
         if (finalTranscript.trim()) {
-          console.log('Final transcript:', finalTranscript.trim());
-          transcriptRef.current = finalTranscript.trim();
-          setInput(finalTranscript.trim());
+          // Append new final text to existing input
+          setInput(prev => prev + finalTranscript);
+          transcriptRef.current += finalTranscript; 
         }
       };
 
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
-        setRecordingState('idle');
-        transcriptRef.current = '';
+        if (isRecording) {
+            // Try to restart if error occurs while supposed to be recording
+             try { recognition.start(); } catch(e) {}
+        }
       };
 
       recognition.onend = () => {
-        console.log('Speech recognition ended, transcript:', transcriptRef.current);
-        setRecordingState('processing');
-        
-        // FIXED: Immediate send with transcript
-        const transcript = transcriptRef.current.trim();
-        if (transcript) {
-          console.log('Sending transcript:', transcript);
-          // Update input and send immediately
-          setInput(transcript);
-          handleSendWithText(transcript);
+        // If we are still supposed to be recording (user didn't click stop), restart
+        if (isRecording) {
+             try { recognition.start(); } catch(e) {}
         } else {
-          console.log('No transcript to send');
+            setRecordingState('idle');
         }
-        
-        // Reset states
-        setIsRecording(false);
-        setRecordingState('idle');
-        transcriptRef.current = '';
       };
       
       recognitionRef.current = recognition;
@@ -677,7 +675,7 @@ export default function ChatInterface({
     } else {
       setMicSupported(false);
     }
-  }, [language]);
+  }, [language, isRecording]);
 
   // --- USER INTERFACE HANDLERS ---
   useEffect(() => {
@@ -733,33 +731,30 @@ export default function ChatInterface({
       return;
     }
     
-    // Removed: updateInteractionTime() call
-    
     if (isRecording) {
-      // STOP RECORDING: This will trigger onend which auto-sends
+      // STOP & AUTO SEND
+      setIsRecording(false);
       const recognition = recognitionRef.current;
       if (recognition) {
-        try { 
-          recognition.stop(); 
-        } catch (e) {}
+        try { recognition.stop(); } catch (e) {}
       }
-      setIsRecording(false);
+      // Give a tiny delay to ensure final transcript is captured then send
+      setTimeout(() => {
+          handleSend();
+      }, 200);
     } else {
-      // START RECORDING: Begin tap-to-record
+      // START RECORDING CONSTANTLY
       quickStopAllAudio(); // FULL STOP RULE
       setIsRecording(true);
-      setRecordingState('recording');
+      setInput(''); // Clear input for new recording
+      transcriptRef.current = '';
       
-      // Removed: wakeFromStandby call
-      
-      // Start recognition
       const recognition = recognitionRef.current;
       if (recognition) {
         try { 
           recognition.start(); 
         } catch(e) { 
           setIsRecording(false);
-          setRecordingState('idle'); 
         }
       }
     }
@@ -775,7 +770,6 @@ export default function ChatInterface({
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedImage(e.target.files[0]);
-      // Removed: updateInteractionTime() call
       quickStopAllAudio(); // FULL STOP RULE
     }
   };
@@ -784,7 +778,6 @@ export default function ChatInterface({
   const handleSendWithText = async (textToSend: string) => {
     if ((!textToSend && !selectedImage) || loading) return;
 
-    // Removed: updateInteractionTime() call
     quickStopAllAudio(); // FULL STOP RULE
 
     // Check for name in user input
@@ -815,13 +808,12 @@ export default function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
-    setIsRecording(false);
-    setRecordingState('idle');
+    // Explicitly do not change recording state here as this might be called by other triggers, but for mic flow handleWalkieTalkieMic handles state
 
     try {
       // Add search verbalization for general questions
       if (isGeneralSearchQuery(textToSend)) {
-        const searchMessage = `I'm searching the web for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
+        const searchMessage = `I'm searching for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
         const searchMsg: Message = { 
           id: (Date.now() + 0.5).toString(), 
           content: searchMessage, 
@@ -845,10 +837,10 @@ export default function ChatInterface({
 
       const response = await sendChatMessage(
         textToSend || "Analyze this image", 
-        conversationHistory,
-        personaWithBible,
-        userEmail,
-        selectedImage,
+        conversationHistory, 
+        personaWithBible, 
+        userEmail, 
+        selectedImage, 
         language 
       );
       
@@ -892,79 +884,6 @@ export default function ChatInterface({
     const textToSend = input.trim();
     if ((!textToSend && !selectedImage) || loading) return;
     await handleSendWithText(textToSend);
-  };
-    setLoading(true);
-    setIsRecording(false);
-    setRecordingState('idle');
-
-    try {
-      // Add search verbalization for general questions
-      if (isGeneralSearchQuery(textToSend)) {
-        const searchMessage = `I'm searching for ${textToSend.toLowerCase()} specifically for you now, ${userName || 'friend'}.`;
-        const searchMsg: Message = { 
-          id: (Date.now() + 0.5).toString(), 
-          content: searchMessage, 
-          sender: 'bot', 
-          timestamp: new Date(),
-          confidenceScore: 95
-        };
-        setMessages(prev => [...prev, searchMsg]);
-        await speakText(searchMessage);
-      }
-
-      const conversationHistory = messages.slice(-2).map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      }));
-
-      let personaWithBible = currentPersona.id;
-      if (currentPersona.id === 'disciple') {
-        personaWithBible = `disciple_${bibleVersion}`;
-      }
-
-      const response = await sendChatMessage(
-        textToSend || "Analyze this image", 
-        conversationHistory,
-        personaWithBible,
-        userEmail,
-        selectedImage,
-        language 
-      );
-      
-      const botMsg: Message = { 
-        id: (Date.now() + 1).toString(), 
-        content: response.answer, 
-        sender: 'bot', 
-        timestamp: new Date(),
-        confidenceScore: response.confidence_score,
-        scamDetected: response.scam_detected,
-        scamIndicators: response.scam_indicators || [] 
-      };
-      
-      setMessages(prev => [...prev, botMsg]);
-      
-      // Speak the response if AI voice is enabled
-      await speakText(response.answer);
-      
-      setSelectedImage(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await loadUserStats();
-      
-      // Update profile based on conversation
-      if (textToSend.length > 10) {
-        incrementIntelligenceSync();
-      }
-      
-    } catch (error) {
-      setMessages(prev => [...prev, { 
-        id: Date.now().toString(), 
-        content: language === 'es' ? "Error de conexión. Por favor intente de nuevo." : "Connection error. Please try again.", 
-        sender: 'bot', 
-        timestamp: new Date() 
-      }]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // --- UTILITY FUNCTIONS ---
@@ -1026,9 +945,6 @@ export default function ChatInterface({
     }
     setShowScamRecovery(true);
   };
-
-  // --- COMMAND CENTER ACTION HUB HANDLERS ---
-  // Removed: handleSearchEverything, handleShieldMe, handleVisionLink, handleTalkToExpert functions
 
   // --- INTELLIGENCE SYNC MODAL HANDLERS ---
   const handleIntelligenceSyncClick = () => {
@@ -1093,7 +1009,48 @@ export default function ChatInterface({
     return userEmail.split('@')[0];
   };
 
-  // Removed: CommandCenter component - not used anymore, replaced with simple message
+  // --- COMMAND CENTER COMPONENT (SIMPLIFIED: LOGO ONLY) ---
+  const CommandCenter = () => (
+    <div className="flex flex-col items-center justify-center h-full text-center py-8">
+      {/* LYLO Logo with Persona-Specific Glow */}
+      <div className={`w-24 h-24 bg-gradient-to-br from-gray-800 to-black rounded-2xl flex items-center justify-center mb-6 shadow-2xl transition-all duration-700 ${getPersonaColorClass(currentPersona, 'border')} ${getPersonaColorClass(currentPersona, 'glow')} border-2`}>
+        <span className="text-white font-black text-3xl tracking-wider">LYLO</span>
+      </div>
+      
+      <h1 className={`text-3xl font-black uppercase tracking-[0.1em] mb-2 ${getPersonaColorClass(currentPersona, 'text')}`}>
+        {currentPersona.name}
+      </h1>
+      <p className="text-gray-400 text-sm font-bold uppercase tracking-[0.1em] mb-1">
+        {currentPersona.protectiveJob}
+      </p>
+      <p className="text-gray-500 text-xs uppercase tracking-[0.2em] font-medium mb-8">
+        Digital Bodyguard Active
+      </p>
+      
+      {/* Intelligence Sync Progress - Clickable */}
+      <div className="mb-8 w-full max-w-md cursor-pointer" onClick={handleIntelligenceSyncClick}>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-white font-bold text-xs uppercase tracking-wider">Intelligence Sync</span>
+          <span className={`font-black text-sm ${getPersonaColorClass(currentPersona, 'text')}`}>{intelligenceSync}%</span>
+        </div>
+        <div className={`bg-gray-800 rounded-full h-3 overflow-hidden border transition-all duration-300 hover:scale-105 ${getPersonaColorClass(currentPersona, 'border')}`}>
+          <div 
+            className={`h-full transition-all duration-500 rounded-full ${getPersonaColorClass(currentPersona, 'bg')}`}
+            style={{ width: `${intelligenceSync}%` }}
+          />
+        </div>
+        <p className="text-gray-500 text-xs mt-1 hover:text-gray-300 transition-colors">Click to sync faster</p>
+      </div>
+
+      {/* Privacy Shield Status */}
+      <div className="mt-8 flex items-center gap-3">
+        <div className={`w-3 h-3 rounded-full transition-colors ${getPersonaColorClass(currentPersona, 'bg')}`} />
+        <span className="text-gray-400 text-xs font-black uppercase tracking-widest">
+          Protected Mode
+        </span>
+      </div>
+    </div>
+  );
 
   // --- INTELLIGENCE SYNC MODAL COMPONENT ---
   const IntelligenceSyncModal = () => (
@@ -1349,7 +1306,7 @@ export default function ChatInterface({
               </div>
               {/* Intelligence Sync Display - Clickable */}
               <div className="flex items-center gap-1 justify-end cursor-pointer" onClick={(e) => { e.stopPropagation(); handleIntelligenceSyncClick(); }}>
-                <span className={`text-xs uppercase font-black ${getPersonaColorClass(currentPersona, 'text')}`}>Intelligence Sync: {intelligenceSync}%</span>
+                <span className={`text-xs uppercase font-black ${getPersonaColorClass(currentPersona, 'text')}`}>Sync: {intelligenceSync}%</span>
               </div>
               <div className="flex items-center gap-1 justify-end">
                 <div className={`w-1.5 h-1.5 rounded-full ${getPersonaColorClass(currentPersona, 'bg')}`}></div>
@@ -1377,24 +1334,18 @@ export default function ChatInterface({
 
       {/* MAIN CHAT AREA */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-4 relative z-[100000]" style={{ paddingBottom: '240px', minHeight: 0, fontSize: `${zoomLevel / 100}rem` }}>
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-center">
-            <div className="text-gray-500 font-bold text-lg">
-              Ready to chat with {currentPersona.name}
-            </div>
-          </div>
-        ) : (
+        {messages.length === 0 ? <CommandCenter /> : (
           <>
             {messages.map((msg) => (
               <div key={msg.id} className="space-y-2">
                 <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-xl backdrop-blur-xl border transition-all ${
                     msg.sender === 'user' 
-                      ? 'bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] border-[#3b82f6]/30 text-white shadow-lg shadow-blue-500/10' 
+                      ? `${getPersonaColorClass(currentPersona, 'bg')} border-${getPersonaColorClass(currentPersona, 'border')} text-white shadow-lg shadow-${getPersonaColorClass(currentPersona, 'text')}/10` 
                       : `bg-black/60 text-gray-100 ${getPersonaColorClass(currentPersona, 'border')}/30 border`
                   }`}>
                     <div className="leading-relaxed font-medium">{msg.content}</div>
-                    <div className={`text-[10px] mt-2 opacity-70 font-black uppercase tracking-wider ${msg.sender === 'user' ? 'text-right text-blue-100' : 'text-left text-gray-400'}`}>
+                    <div className={`text-[10px] mt-2 opacity-70 font-black uppercase tracking-wider ${msg.sender === 'user' ? 'text-right text-white/70' : 'text-left text-gray-400'}`}>
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
@@ -1451,16 +1402,16 @@ export default function ChatInterface({
                 : micSupported 
                   ? 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20' 
                   : 'bg-gray-700 text-gray-500 cursor-not-allowed border-gray-600'
-              } disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{
-                isRecording ? 'STOP & SEND' : 'Record'
-              }</button>
+            } disabled:opacity-50`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>{
+              isRecording ? 'STOP & SEND' : 'Record'
+            }</button>
             <button onClick={cycleFontSize} className="text-sm px-8 py-3 rounded-lg bg-zinc-800 text-blue-400 font-black border-2 border-blue-500/40 hover:bg-blue-900/20 active:scale-95 transition-all uppercase tracking-widest shadow-lg">Size: {zoomLevel}%</button>
             {/* AI VOICE TOGGLE */}
             <button onClick={toggleTTS} className={`px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-[0.1em] transition-all relative border ${
               autoTTS 
                 ? `${getPersonaColorClass(currentPersona, 'bg')} text-white ${getPersonaColorClass(currentPersona, 'border')} shadow-lg` 
                 : 'bg-white/10 text-gray-300 hover:bg-white/20 border-white/20'
-              }`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>AI Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
+            }`} style={{ fontSize: `${zoomLevel / 100 * 0.8}rem` }}>AI Voice {autoTTS ? 'ON' : 'OFF'}{isSpeaking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}</button>
           </div>
           <div className="flex items-end gap-3">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
