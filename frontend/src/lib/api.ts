@@ -42,6 +42,11 @@ export interface UserStats {
     limit: number;
     percentage: number;
   };
+  // 👇 FIXED: Added this block so the build stops failing
+  learning_profile: {
+    top_concern: string;
+    learning_style?: string;
+  };
 }
 
 export interface QuizAnswers {
