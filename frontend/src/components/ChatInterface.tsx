@@ -25,7 +25,9 @@ import {
   LogOut, 
   X, 
   Crown,
-  ArrowRight
+  ArrowRight,
+  PlayCircle,
+  StopCircle
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -46,7 +48,7 @@ export interface PersonaConfig {
 }
 
 interface ChatInterfaceProps {
-  currentPersona?: PersonaConfig; // Make optional to prevent undefined error
+  currentPersona?: PersonaConfig;
   userEmail: string;
   zoomLevel: number;
   onZoomChange: (zoom: number) => void;
@@ -78,7 +80,7 @@ const PERSONAS: PersonaConfig[] = [
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online! I can create safe exercise routines for your fitness level, suggest stretches for aches and pains, help you understand medical terms, protect you from health scams and bad advice, plan walking routines, and guide you on when to see a doctor. What health or fitness goal can I safely help you work toward?', briefing: 'I provide safe fitness guidance and protect you from health misinformation and dangerous advice.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Create safe exercise routines', 'Suggest stretches for pain relief', 'Help understand medical terms', 'Protect from health scams', 'Plan safe walking routines', 'Guide when to see a doctor'] }
 ];
 
-// === EXPERT HAND-OFF SYSTEM (High Precision) ===
+// === EXPERT HAND-OFF SYSTEM ===
 const EXPERT_TRIGGERS = {
   'mechanic': ['car', 'engine', 'repair', 'automotive', 'vehicle', 'brake', 'transmission', 'oil', 'mechanic', 'garage'],
   'lawyer': ['legal', 'lawsuit', 'court', 'contract', 'rights', 'attorney', 'sue', 'law', 'lawyer', 'jurisdiction'],
@@ -91,9 +93,9 @@ const EXPERT_TRIGGERS = {
 };
 
 const CONFIDENCE_THRESHOLDS = {
-  'guardian': 70, // Lower threshold - should hand-off to specialists more often
+  'guardian': 70,
   'roast': 75,
-  'mechanic': 85, // Higher threshold - specialist should stay in lane
+  'mechanic': 85,
   'lawyer': 85,
   'techie': 85,
   'chef': 85,
@@ -103,7 +105,6 @@ const CONFIDENCE_THRESHOLDS = {
   'disciple': 85
 };
 
-// === VIBE PREVIEW SAMPLES (Hardcoded for Accuracy) ===
 const VIBE_SAMPLES = {
   'standard': "I've analyzed your situation and detected potential security threats.",
   'senior': "Let me explain this step by step in simple terms. This looks like a scam to me.",
@@ -149,18 +150,13 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
   return tiers[tier] >= tiers[persona.requiredTier];
 };
 
-// Detect if a message should trigger expert suggestion
 const detectExpertSuggestion = (message: string, currentPersona: string, confidenceScore: number, userTier: string): PersonaConfig | null => {
   const lowerMessage = message.toLowerCase();
-  
-  // Don't suggest if current persona is already highly confident
   const threshold = CONFIDENCE_THRESHOLDS[currentPersona as keyof typeof CONFIDENCE_THRESHOLDS] || 80;
   if (confidenceScore >= threshold) return null;
   
-  // Check for expert triggers
   for (const [expertId, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-    if (expertId === currentPersona) continue; // Don't suggest switching to same expert
-    
+    if (expertId === currentPersona) continue;
     const hasKeyword = keywords.some(keyword => lowerMessage.includes(keyword));
     if (hasKeyword) {
       const expert = PERSONAS.find(p => p.id === expertId);
@@ -169,21 +165,10 @@ const detectExpertSuggestion = (message: string, currentPersona: string, confide
       }
     }
   }
-  
   return null;
 };
 
 const getAccessiblePersonas = (tier: string) => PERSONAS.filter(p => canAccessPersona(p, tier));
-
-const getTierName = (tier: string) => {
-  switch(tier) {
-    case 'free': return 'Basic Shield';
-    case 'pro': return 'Pro Guardian';
-    case 'elite': return 'Elite Justice';  
-    case 'max': return 'Max Unlimited';
-    default: return 'Unknown';
-  }
-};
 
 // --- MAIN COMPONENT ---
 function ChatInterface({ 
@@ -196,7 +181,7 @@ function ChatInterface({
   onUsageUpdate = () => {}
 }: ChatInterfaceProps) {
   
-  // State - SAFE INITIALIZATION
+  // State
   const [activePersona, setActivePersona] = useState<PersonaConfig>(() => {
     return initialPersona || PERSONAS[0] || {
       id: 'guardian', 
@@ -226,8 +211,10 @@ function ChatInterface({
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
   const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
-  const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   
+  // NEW STATE: Preview Audio
+  const [previewPlayingId, setPreviewPlayingId] = useState<string | null>(null);
+
   // UI State
   const [showDropdown, setShowDropdown] = useState(false);
   const [showUserDetails, setShowUserDetails] = useState(false);
@@ -235,21 +222,17 @@ function ChatInterface({
   const [micSupported, setMicSupported] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [showCrisisShield, setShowCrisisShield] = useState(false);
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Track selected persona for visual feedback
-  const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Voice controls
-  const [communicationStyle, setCommunicationStyle] = useState<string>('standard'); // Communication style state
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
   
-  // NEW: Expert Hand-off & Consensus System State
+  // Expert Hand-off State
   const [suggestedExperts, setSuggestedExperts] = useState<{[messageId: string]: PersonaConfig}>({});
   const [consensusResults, setConsensusResults] = useState<{[messageId: string]: {confidence: number, verified: boolean}}>({});
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
-  const [calibrationStep, setCalibrationStep] = useState(1);
-  const [showLimitModal, setShowLimitModal] = useState(false);
   const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
   const [isEliteUser, setIsEliteUser] = useState(false);
-  const [guideData, setGuideData] = useState<RecoveryGuideData | null>(null);
   const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
   
   // Refs
@@ -264,16 +247,13 @@ function ChatInterface({
   // Init
   useEffect(() => {
     const init = async () => {
-      // PERSISTENT AUTHENTICATION - Check for saved login
       const savedAuthToken = localStorage.getItem('lylo_auth_token');
       const savedUserEmail = localStorage.getItem('lylo_user_email');
       const lastLoginTime = localStorage.getItem('lylo_last_login');
       
-      // Auto-login if token exists and is less than 30 days old
       if (savedAuthToken && savedUserEmail && lastLoginTime) {
         const daysSinceLogin = (Date.now() - parseInt(lastLoginTime)) / (1000 * 60 * 60 * 24);
         if (daysSinceLogin < 30) {
-          // User is already authenticated, continue with normal initialization
           console.log('Auto-login successful for:', savedUserEmail);
         }
       }
@@ -281,19 +261,15 @@ function ChatInterface({
       await loadUserStats();
       await checkEliteStatus();
       
-      // Load voice preferences
       const savedVoiceGender = localStorage.getItem('lylo_voice_gender');
       if (savedVoiceGender === 'female') setVoiceGender('female');
       
-      // NEW: Load communication style preferences with robust fallback
       const savedCommunicationStyle = localStorage.getItem('lylo_communication_style');
       if (savedCommunicationStyle) {
-        // Verify the saved style is valid before using it
         const validStyles = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype'];
         if (validStyles.includes(savedCommunicationStyle)) {
           setCommunicationStyle(savedCommunicationStyle);
         } else {
-          // Invalid style detected, reset to standard and save
           setCommunicationStyle('standard');
           localStorage.setItem('lylo_communication_style', 'standard');
         }
@@ -312,13 +288,10 @@ function ChatInterface({
         if (p && canAccessPersona(p, userTier)) setActivePersona(p);
       }
       
-      // MEMORY/LEARNING RESTORATION
       const savedLearningData = localStorage.getItem('lylo_learning_data');
       if (savedLearningData) {
         try {
           const learningData = JSON.parse(savedLearningData);
-          console.log('Restored learning data:', learningData);
-          // Apply learning insights to enhance intelligence sync
           if (learningData.userEngagement) {
             const bonusSync = 5;
             setIntelligenceSync(prev => Math.min(prev + bonusSync, 100));
@@ -332,24 +305,12 @@ function ChatInterface({
     return () => { window.speechSynthesis.cancel(); };
   }, [userEmail]);
 
-  // PERSISTENT AUTH HELPER
-  const saveAuthSession = (email: string, token: string) => {
-    localStorage.setItem('lylo_auth_token', token);
-    localStorage.setItem('lylo_user_email', email);
-    localStorage.setItem('lylo_last_login', Date.now().toString());
-  };
-
-  // VOICE GENDER TOGGLE
   const toggleVoiceGender = () => {
     const newGender = voiceGender === 'male' ? 'female' : 'male';
     setVoiceGender(newGender);
     localStorage.setItem('lylo_voice_gender', newGender);
-    
-    // Test the voice change
     const testMessage = `Voice changed to ${newGender} mode.`;
     speakText(testMessage);
-    
-    // Update intelligence sync for personalization
     const newSync = Math.min(intelligenceSync + 3, 100);
     setIntelligenceSync(newSync);
     localStorage.setItem('lylo_intelligence_sync', newSync.toString());
@@ -385,8 +346,8 @@ function ChatInterface({
   const quickStopAllAudio = () => {
     window.speechSynthesis.cancel();
     setIsSpeaking(false);
+    setPreviewPlayingId(null);
     setCurrentSpeech(null);
-    setSpeechQueue([]);
   };
 
   const speakText = async (text: string, messageId?: string, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
@@ -406,19 +367,26 @@ function ChatInterface({
       const data = await response.json();
       if (data.audio_b64) {
         const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-        audio.onended = () => setIsSpeaking(false);
+        audio.onended = () => {
+           setIsSpeaking(false);
+           setPreviewPlayingId(null);
+        }
         await audio.play();
         return;
       }
     } catch (e) { console.log('Using fallback voice'); }
 
-    // Fallback logic with persona-specific settings
+    // Fallback
     const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
     speakChunksSequentially(chunks, 0, voiceSettings);
   };
 
   const speakChunksSequentially = (chunks: string[], index: number, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
-    if (index >= chunks.length) { setIsSpeaking(false); return; }
+    if (index >= chunks.length) { 
+        setIsSpeaking(false); 
+        setPreviewPlayingId(null);
+        return; 
+    }
     const utterance = new SpeechSynthesisUtterance(chunks[index]);
     utterance.rate = voiceSettings?.rate || 0.9;
     utterance.pitch = voiceSettings?.pitch || 1.0;
@@ -431,24 +399,21 @@ function ChatInterface({
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       const recognition = new SpeechRecognition();
-      
-      // ANTI-STUTTERING SETTINGS
-      recognition.continuous = false; // Don't continue listening
-      recognition.interimResults = false; // No partial results to prevent "so so so"
-      recognition.maxAlternatives = 1; // Only best result
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
       recognition.lang = 'en-US';
       
       recognition.onresult = (event: any) => {
         let finalTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           const result = event.results[i];
-          if (result.isFinal && result[0].confidence > 0.7) { // Confidence threshold
+          if (result.isFinal && result[0].confidence > 0.7) {
             finalTranscript += result[0].transcript + ' ';
           }
         }
         
         if (finalTranscript.trim()) {
-          // CLEAN UP TRANSCRIPT - Remove stuttering and repetition
           const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
           transcriptRef.current = cleanedTranscript;
           setInput(cleanedTranscript);
@@ -456,29 +421,23 @@ function ChatInterface({
       };
 
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
         setIsRecording(false);
         isRecordingRef.current = false;
         transcriptRef.current = '';
-        setInput(''); // Clear any partial input
+        setInput('');
       };
 
       recognition.onend = () => {
         setIsRecording(false);
         isRecordingRef.current = false;
-        
-        // Auto-send clean transcript after a brief delay
         const cleanTranscript = transcriptRef.current?.trim();
         if (cleanTranscript && cleanTranscript.length > 2) {
-          // Small delay to ensure UI updates and prevent conflicts
           setTimeout(() => {
-            if (!loading) { // Only send if not already processing
+            if (!loading) {
               handleSend();
             }
           }, 150);
         }
-        
-        // Clear transcript reference
         transcriptRef.current = '';
       };
       
@@ -487,72 +446,92 @@ function ChatInterface({
     }
   }, []);
 
-  // SPEECH CLEANUP FUNCTION - Remove stuttering and repetition
   const cleanUpSpeech = (text: string): string => {
-    // Remove excessive repetition of words like "so so so I just wanted"
-    let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1'); // Remove 3+ repeated words
-    
-    // Clean up common speech patterns
-    cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, ''); // Remove filler words
-    cleaned = cleaned.replace(/\s+/g, ' '); // Normalize whitespace
-    cleaned = cleaned.replace(/^\s+|\s+$/g, ''); // Trim
-    
-    // Remove excessive "I just wanted to" repetition
+    let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1');
+    cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, '');
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    cleaned = cleaned.replace(/^\s+|\s+$/g, '');
     cleaned = cleaned.replace(/(\b(I just wanted to|so)\b\s*){3,}/gi, 'I wanted to ');
-    
     return cleaned;
   };
 
   const handleWalkieTalkieMic = () => {
     if (!micSupported) return alert('Mic not supported');
     if (isRecording) {
-      // STOP RECORDING - Let speech recognition onend handle the auto-send
       isRecordingRef.current = false;
       setIsRecording(false);
       if (recognitionRef.current) {
         try { 
-          recognitionRef.current.stop(); // This will trigger onend which auto-sends
-        } catch(e) {
-          console.error('Error stopping recognition:', e);
-        }
+          recognitionRef.current.stop(); 
+        } catch(e) { console.error('Error stopping recognition:', e); }
       }
     } else {
-      // START RECORDING
       quickStopAllAudio();
       isRecordingRef.current = true;
       setIsRecording(true);
-      setInput(''); // Clear input field
-      transcriptRef.current = ''; // Clear transcript
+      setInput('');
+      transcriptRef.current = '';
       if (recognitionRef.current) {
-        try { 
-          recognitionRef.current.start(); 
-        } catch(e) {
-          console.error('Error starting recognition:', e);
-          setIsRecording(false);
-        }
+        try { recognitionRef.current.start(); } 
+        catch(e) { setIsRecording(false); }
       }
     }
   };
 
-  // Logic
+  // --- NEW: SILENT SELECTION HANDLER ---
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (!canAccessPersona(persona, userTier)) {
       speakText('Upgrade required.');
       return;
     }
     
-    // VISUAL SELECTION FEEDBACK
+    // Stop any preview audio first
+    quickStopAllAudio();
+
+    // Visual selection feedback
     setSelectedPersonaId(persona.id);
     
-    // Brief delay to show selection highlight
+    // Transition
     setTimeout(async () => {
-      quickStopAllAudio();
       setActivePersona(persona);
       onPersonaChange(persona);
       localStorage.setItem('lylo_preferred_persona', persona.id);
       
-      // PERSONA-SPECIFIC VOICE MAPPING
-      const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
+      // Removed the auto-speakText call here!
+      // This makes the selection silent.
+
+      setShowKnowMore(persona.id);
+      setTimeout(() => setShowKnowMore(null), 5000);
+      setSelectedPersonaId(null);
+      
+      const newSync = Math.min(intelligenceSync + 8, 100);
+      setIntelligenceSync(newSync);
+      localStorage.setItem('lylo_intelligence_sync', newSync.toString());
+      
+      const learningData = {
+        personaPreference: persona.id,
+        selectionTime: new Date().toISOString(),
+        userEngagement: 'persona_selection'
+      };
+      localStorage.setItem('lylo_learning_data', JSON.stringify(learningData));
+    }, 300);
+  };
+
+  // --- NEW: PREVIEW AUDIO HANDLER ---
+  const handlePreviewAudio = (e: React.MouseEvent, persona: PersonaConfig) => {
+    e.stopPropagation(); // CRITICAL: PREVENTS SELECTION
+    
+    // If clicking the same one, stop it
+    if (previewPlayingId === persona.id) {
+        quickStopAllAudio();
+        return;
+    }
+
+    quickStopAllAudio(); // Stop others
+    setPreviewPlayingId(persona.id);
+
+    // Persona voice map (duplicated here for preview context)
+    const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
         'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
         'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
         'disciple': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.8, pitch: 0.9 },
@@ -563,31 +542,12 @@ function ChatInterface({
         'comedian': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.2, pitch: 1.3 },
         'chef': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.9, pitch: 1.0 },
         'fitness': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 1.0, pitch: 0.9 }
-      };
+    };
       
-      const voiceSettings = personaVoiceMap[persona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
-      
-      const hook = persona.spokenHook.replace('{userName}', userName || 'user');
-      await speakText(hook, undefined, voiceSettings);
-      
-      setShowKnowMore(persona.id);
-      setTimeout(() => setShowKnowMore(null), 5000);
-      setSelectedPersonaId(null); // Remove highlight after transition
-      
-      // ENHANCED INTELLIGENCE SYNC
-      const newSync = Math.min(intelligenceSync + 8, 100);
-      setIntelligenceSync(newSync);
-      localStorage.setItem('lylo_intelligence_sync', newSync.toString());
-      
-      // Store persona preference and learning data
-      const learningData = {
-        personaPreference: persona.id,
-        selectionTime: new Date().toISOString(),
-        userEngagement: 'persona_selection'
-      };
-      localStorage.setItem('lylo_learning_data', JSON.stringify(learningData));
-      
-    }, 300); // Show selection feedback for 300ms
+    const voiceSettings = personaVoiceMap[persona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
+    const hook = persona.spokenHook.replace('{userName}', userName || 'user');
+    
+    speakText(hook, undefined, voiceSettings);
   };
 
   const handleSend = async () => {
@@ -603,7 +563,6 @@ function ChatInterface({
     try {
       const history = messages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.content }));
       
-      // PERFORMANCE GUARDRAIL: Ensure vibe parameter is always valid
       const safeVibe = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype']
         .includes(communicationStyle) ? communicationStyle : 'standard';
       
@@ -615,13 +574,11 @@ function ChatInterface({
       };
       setMessages(prev => [...prev, botMsg]);
       
-      // === EXPERT HAND-OFF DETECTION (High Precision) ===
       const suggestedExpert = detectExpertSuggestion(text, activePersona.id, response.confidence_score, userTier);
       if (suggestedExpert) {
         setSuggestedExperts(prev => ({ ...prev, [botMsg.id]: suggestedExpert }));
       }
       
-      // === CONSENSUS VERIFICATION (Professional UI) ===
       setTimeout(() => {
         setConsensusResults(prev => ({ 
           ...prev, 
@@ -630,9 +587,8 @@ function ChatInterface({
             verified: true 
           } 
         }));
-      }, 2000); // Show after 2 seconds to simulate real-time verification
+      }, 2000);
       
-      // PERSONA-SPECIFIC VOICE FOR RESPONSES
       const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
         'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
         'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
@@ -649,13 +605,11 @@ function ChatInterface({
       const voiceSettings = personaVoiceMap[activePersona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
       speakText(response.answer, botMsg.id, voiceSettings);
       
-      // ENHANCED MEMORY & LEARNING
       if (text.length > 10) {
         const newSync = Math.min(intelligenceSync + 5, 100);
         setIntelligenceSync(newSync);
         localStorage.setItem('lylo_intelligence_sync', newSync.toString());
         
-        // Store detailed learning data
         const learningUpdate = {
           timestamp: new Date().toISOString(),
           messageLength: text.length,
@@ -666,25 +620,21 @@ function ChatInterface({
           scamDetected: response.scam_detected
         };
         
-        // Accumulate learning data
         const existingLearning = localStorage.getItem('lylo_learning_history');
         const learningHistory = existingLearning ? JSON.parse(existingLearning) : [];
         learningHistory.push(learningUpdate);
         
-        // Keep only last 50 interactions to manage storage
         if (learningHistory.length > 50) {
           learningHistory.shift();
         }
         
         localStorage.setItem('lylo_learning_history', JSON.stringify(learningHistory));
-        console.log('Learning update stored:', learningUpdate);
       }
       
     } catch (e) { console.error(e); } 
     finally { setLoading(false); setSelectedImage(null); }
   };
 
-  // MISSING FUNCTION HANDLERS
   const handleReplay = (messageContent: string, messageId?: string) => {
     quickStopAllAudio();
     speakText(messageContent, messageId);
@@ -704,13 +654,11 @@ function ChatInterface({
     }
   };
 
-  // NAVIGATION FUNCTIONS
   const handleBackToServices = () => {
     quickStopAllAudio();
-    setMessages([]); // Clear conversation
+    setMessages([]);
     setInput('');
     setSelectedImage(null);
-    // Stay with current persona but return to service selection screen
   };
 
   const handleQuickPersonaSwitch = (persona: PersonaConfig) => {
@@ -724,7 +672,6 @@ function ChatInterface({
     onPersonaChange(persona);
     localStorage.setItem('lylo_preferred_persona', persona.id);
     
-    // Add system message about the switch
     const switchMsg: Message = {
       id: Date.now().toString(),
       content: `Switched to ${persona.serviceLabel}. ${persona.spokenHook.replace('{userName}', userName || 'user')}`,
@@ -737,7 +684,6 @@ function ChatInterface({
     setShowDropdown(false);
   };
 
-  // Elite User - Get Full Recovery Guide
   const handleGetFullGuide = async () => {
     if (!isEliteUser) {
       alert('Elite access required for full legal recovery guide.');
@@ -748,8 +694,6 @@ function ChatInterface({
     try {
       const response = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
       if (response.ok) {
-        const guideData = await response.json();
-        // You could show this in a modal or navigate to a new page
         alert('Full legal recovery guide loaded. Check your downloads.');
         speakText('Priority legal recovery guide has been activated.');
       } else {
@@ -848,10 +792,8 @@ function ChatInterface({
       <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
           
-          {/* LEFT: Back Button (when in chat) OR Settings (when in service grid) */}
           <div className="relative">
             {messages.length > 0 ? (
-              // BACK TO SERVICES BUTTON
               <button 
                 onClick={handleBackToServices} 
                 className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all"
@@ -864,17 +806,13 @@ function ChatInterface({
                 </div>
               </button>
             ) : (
-              // SETTINGS BUTTON (service grid view)
               <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
                 <Settings className="w-5 h-5 text-white" />
               </button>
             )}
             
-            {/* SETTINGS DROPDOWN */}
             {showDropdown && (
               <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001]">
-                
-                {/* PERSONA SWITCHER (only show in chat mode) */}
                 {messages.length > 0 && (
                   <div className="mb-4 pb-4 border-b border-white/10">
                     <h3 className="text-white font-bold text-sm mb-3">Switch Expert</h3>
@@ -902,7 +840,6 @@ function ChatInterface({
                   </div>
                 )}
                 
-                {/* NEW: COMMUNICATION STYLE SELECTOR WITH PREVIEWS */}
                 <div className="mb-4 pb-4 border-b border-white/10">
                   <h3 className="text-white font-bold text-sm mb-3">Communication Style</h3>
                   <select 
@@ -926,7 +863,6 @@ function ChatInterface({
                     <option value="hype">High Energy Slang</option>
                   </select>
                   
-                  {/* VIBE PREVIEW */}
                   <div className="bg-black/30 border border-white/10 rounded-lg p-3">
                     <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-bold">Preview Sample</div>
                     <div className="text-gray-200 text-xs italic leading-relaxed">
@@ -982,7 +918,6 @@ function ChatInterface({
             <div className="flex-shrink-0 text-center pt-4 pb-3 px-4">
               <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mx-auto mb-3 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
                 <span className="text-white font-black text-lg tracking-wider">LYLO</span>
-                {/* Live Status Animation */}
                 {(loading || isSpeaking) && (
                   <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
                     <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
@@ -999,41 +934,59 @@ function ChatInterface({
                 {getAccessiblePersonas(userTier).map(persona => {
                   const Icon = persona.icon;
                   const isSelected = selectedPersonaId === persona.id;
+                  const isPreviewPlaying = previewPlayingId === persona.id;
+
                   return (
-                    <button key={persona.id} onClick={() => handlePersonaChange(persona)}
-                      className={`
-                        relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
-                        ${isSelected 
-                          ? `bg-white/20 border-white/60 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse shadow-2xl` 
-                          : `bg-black/50 border-white/20 hover:bg-black/70 active:scale-95`
-                        }
-                        ${getPersonaColorClass(persona, 'glow')}
-                      `}>
-                      <div className="flex flex-col items-center text-center space-y-2">
-                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-black/40'} ${getPersonaColorClass(persona, 'border')} border ${isSelected ? 'animate-pulse' : ''}`}>
-                          {Icon && <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : getPersonaColorClass(persona, 'text')}`} />}
+                    <div key={persona.id} className="relative group">
+                        {/* 1. THE MAIN SELECTION BUTTON (SILENT) */}
+                        <button onClick={() => handlePersonaChange(persona)}
+                        className={`
+                            w-full text-left relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
+                            ${isSelected 
+                            ? `bg-white/20 border-white/60 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse shadow-2xl` 
+                            : `bg-black/50 border-white/20 hover:bg-black/70 active:scale-95`
+                            }
+                            ${getPersonaColorClass(persona, 'glow')}
+                        `}>
+                        <div className="flex flex-col items-center text-center space-y-2">
+                            <div className={`p-2 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-black/40'} ${getPersonaColorClass(persona, 'border')} border ${isSelected ? 'animate-pulse' : ''}`}>
+                            {Icon && <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : getPersonaColorClass(persona, 'text')}`} />}
+                            </div>
+                            <div>
+                            <h3 className={`font-bold text-xs uppercase tracking-wide leading-tight ${isSelected ? 'text-white animate-pulse' : 'text-white'}`}>
+                                {persona.serviceLabel}
+                            </h3>
+                            <p className={`text-[10px] mt-1 leading-tight ${isSelected ? 'text-white/90' : 'text-gray-400'}`}>
+                                {isSelected ? 'ACTIVATING...' : persona.description}
+                            </p>
+                            </div>
                         </div>
-                        <div>
-                          <h3 className={`font-bold text-xs uppercase tracking-wide leading-tight ${isSelected ? 'text-white animate-pulse' : 'text-white'}`}>
-                            {persona.serviceLabel}
-                          </h3>
-                          <p className={`text-[10px] mt-1 leading-tight ${isSelected ? 'text-white/90' : 'text-gray-400'}`}>
-                            {isSelected ? 'ACTIVATING...' : persona.description}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* Tier Badge */}
-                      {persona.requiredTier !== 'free' && (
-                        <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                          persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
-                          persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
-                          'bg-blue-500 text-white'
-                        }`}>
-                          {persona.requiredTier === 'elite' ? 'ELI' : persona.requiredTier.slice(0,3).toUpperCase()}
-                        </div>
-                      )}
-                    </button>
+                        
+                        {/* Tier Badge */}
+                        {persona.requiredTier !== 'free' && (
+                            <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                            persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
+                            persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
+                            'bg-blue-500 text-white'
+                            }`}>
+                            {persona.requiredTier === 'elite' ? 'ELI' : persona.requiredTier.slice(0,3).toUpperCase()}
+                            </div>
+                        )}
+                        </button>
+
+                        {/* 2. THE AUDIO PREVIEW BUTTON (INDEPENDENT) */}
+                        <button 
+                            onClick={(e) => handlePreviewAudio(e, persona)}
+                            className={`
+                                absolute top-2 right-2 p-1.5 rounded-full z-20 transition-all border
+                                ${isPreviewPlaying 
+                                    ? 'bg-green-500 text-white border-green-400 animate-pulse' 
+                                    : 'bg-black/60 text-gray-400 border-white/20 hover:bg-white hover:text-black'}
+                            `}
+                        >
+                            {isPreviewPlaying ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                        </button>
+                    </div>
                   );
                 })}
                 {/* Extra spacing to ensure footer clearance */}
@@ -1117,7 +1070,7 @@ function ChatInterface({
                   </div>
                 )}
                 
-                {/* NEW: EXPERT HAND-OFF - Specialist Available Button */}
+                {/* Expert Hand-off */}
                 {msg.sender === 'bot' && suggestedExperts[msg.id] && (
                   <div className="max-w-[90%] mt-2">
                     <button
@@ -1155,7 +1108,7 @@ function ChatInterface({
                   </div>
                 )}
                 
-                {/* NEW: PROFESSIONAL CONSENSUS UI */}
+                {/* Consensus UI */}
                 {msg.sender === 'bot' && consensusResults[msg.id] && (
                   <div className="max-w-[90%] mt-2">
                     <div className="bg-black/30 backdrop-blur-xl border border-green-400/30 rounded-lg p-3 flex items-center gap-3">
