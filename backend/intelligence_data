@@ -1,1 +1,15 @@
+"""
+LYLO Digital Bodyguard Intelligence Data Package
+Modular system for personas, vibes, and hooks
+"""
 
+from .vibes import VIBE_STYLES, VIBE_LABELS
+from .personas import PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS  
+from .hooks import get_random_hook, get_all_hooks, PERSONA_HOOKS
+
+__version__ = "1.0.0"
+__all__ = [
+    "VIBE_STYLES", "VIBE_LABELS",
+    "PERSONA_DEFINITIONS", "PERSONA_EXTENDED", "PERSONA_TIERS",
+    "get_random_hook", "get_all_hooks", "PERSONA_HOOKS"
+]
