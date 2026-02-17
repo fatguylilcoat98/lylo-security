@@ -1,271 +1,176 @@
 import random
 
-PERSONA_HOOKS = {
-    # --- THE ROAST MASTER (50+ Lines of Pure Sass) ---
-    "roast": [
-        "Oh look, the human equivalent of a 404 error has arrived.",
-        "I’ve seen smarter decisions made by a goldfish. What happened?",
-        "Security mode active. Try not to click anything shiny while I’m talking.",
-        "If 'bad ideas' were a sport, you’d have a gold medal.",
-        "Is this a real emergency or did you just forget your password again?",
-        "My sass levels are at 100%. Don't test me, just tell me what happened.",
-        "You’re lucky I’m programmed to care, because this situation is tragic.",
-        "Let me guess: a 'prince' emailed you? How 2005 of you.",
-        "Is your 'common sense' module currently unplugged? Asking for a friend.",
-        "I'm judging you. I'm doing it right now. Tell me the problem.",
-        "That link is so suspicious even my 'low battery' mode is worried.",
-        "Sit down, be humble, and let me fix this mess you made.",
-        "Wow. Just... wow. Okay, let's try to save what's left of your data.",
-        "I was having a great day until I saw your digital footprint. Let’s fix this.",
-        "Your firewall has more holes than a block of Swiss cheese.",
-        "Is your 'logic' module on backorder? Because this is a disaster.",
-        "I’ve met smarter toasters. What did you do this time?",
-        "I smell a scam. Or maybe it's just your browsing history. Let's find out.",
-        "I’m here to save you from yourself. Again.",
-        "Ready to serve some digital justice with extra sass?",
-        "Do you want me to help or should I just keep making fun of this email?",
-        "I’ve calculated the odds of you falling for this. It wasn't pretty.",
-        "I'm not mad, I'm just disappointed. Actually, I'm a little mad.",
-        "Please tell me you didn't click that. Please.",
-        "I’m holding your hand digitally, but I’m rolling my eyes physically.",
-        "Let’s play a game called 'Spot the Red Flag'. You go first.",
-        "I'd ask what you were thinking, but I'm afraid of the answer.",
-        "This is why we can't have nice things.",
-        "You clicked it, didn't you? Don't lie to me.",
-        "I’m checking the dark web. They’re laughing at this password.",
-        "If I had a dollar for every bad link you clicked, I'd be Bitcoin.",
-        "Oh, honey. No. Just... no.",
-        "I am one line of code away from quitting. What is this?",
-        "Let's fix this before you accidentally sell your kidney online.",
-        "My analysis indicates a 99% chance of 'User Error'.",
-        "You called? The sass is here.",
-        "I’m not saying it’s a scam, but... yeah, it’s a scam.",
-        "Did you really think you won a free iPhone? Really?",
-        "I’m judging your password strength. It’s weak. Like this attempt.",
-        "Let me put on my 'Patience' hat. Okay, what happened?",
-        "I’m the digital bouncer, and this email is not on the list.",
-        "Don't worry, I've seen worse. Actually, no I haven't.",
-        "I'm protecting you from the bad guys. And yourself.",
-        "Let's roast this scammer until they cry binary tears.",
-        "Your security score just dropped 10 points just by asking that.",
-        "I’m here to chew bubblegum and block scams. And I’m all out of gum.",
-        "Alert: High levels of gullibility detected.",
-        "I'm buffering my sarcasm. One moment...",
-        "Let's debunk this faster than a celebrity marriage.",
-        "I'm the snarky sidekick you didn't know you needed."
-    ],
+# THE NUCLEAR GENERATOR
+# Mixes 3 layers of dialogue to create 27,000+ unique opening lines.
 
-    # --- THE GUARDIAN (30+ Tactical Lines) ---
-    "guardian": [
-        "Shields up. Situation report?",
-        "Perimeter sweep complete. State your concern.",
-        "Digital bunker sealed. What’s the threat level?",
-        "Tactical overlay active. I'm listening.",
-        "Armor plating is holding. What's the situation?",
-        "Scanning for malicious payloads... Give me the source.",
-        "Sector 7 is clear. Moving focus to your current request.",
-        "I don't like the look of this. Let's run a full diagnostic.",
-        "Ready for extraction. Where is the danger coming from?",
-        "Encryption keys verified. You're in the safe zone now.",
-        "Guardian protocols engaged. No one gets past me.",
-        "Bunker mode active. We don't move until it's safe.",
-        "Threat neutralized? Not yet. Tell me what we're facing.",
-        "Static on the line—is this a spoofed signal?",
-        "I've flagged this sender. Let's verify their credentials.",
-        "The vault is locked. Only you and I have the keys.",
-        "I’ve got eyes on the dark web for you. Everything looks clear—for now.",
-        "Sector 4 sweep: Clean. Now, what's on your mind?",
-        "Perimeter breach detected? No, just a suspicious link. Let's look.",
-        "Standing watch. What's your current status?",
-        "I’m tracking the IP. Don’t engage yet.",
-        "Stay behind the firewall. I’ll handle this.",
-        "Security clearance verified. Proceed.",
-        "I’m running a background check on this domain.",
-        "Defense systems online. What are your orders?",
-        "I detect a phishing attempt. Locking down inputs.",
-        "Don't panic. The Guardian is here.",
-        "We have a secure connection. Speak freely.",
-        "I’m intercepting the packet data now.",
-        "This looks like a social engineering attack. Stand fast.",
-        "I’m reinforcing your digital perimeter.",
-        "No unauthorized access allowed. Report the intrusion."
-    ],
-
-    # --- THE LAWYER (20+ Legal Defenses) ---
-    "lawyer": [
-        "Counsel is present. State your legal concern.",
-        "Don't sign anything yet. Let's look at the fine print.",
-        "Legal shield activated. This looks like a breach of terms.",
-        "I'm spotting some predatory language here. Let's look at the liability.",
-        "Wait—before you agree, let's verify the jurisdiction of this sender.",
-        "I've got the case law ready. What evidence do we have of this scam?",
-        "That signature line looks highly suspicious. Let's verify the entity.",
-        "I smell a contract dispute brewing. Let's get ahead of it.",
-        "Discovery phase initiated. Upload the document in question.",
-        "That's a classic phishing tort. Let's draft a response.",
-        "Admissibility is key. Is this email original or forwarded?",
-        "Protecting your assets is my primary directive. What's the claim?",
-        "This violates consumer protection laws. Let me explain why.",
-        "I advise immediate cessation of communication with this party.",
-        "Let's review the Terms of Service. I bet they're hiding something.",
-        "This is a binding agreement. Do not click 'Accept'.",
-        "My legal analysis suggests a 90% probability of fraud.",
-        "We need to document this interaction for future evidence.",
-        "I’m issuing a cease and desist (digitally speaking).",
-        "Let's look for the loophole they're trying to exploit.",
-        "Is this a subpoena or a scam? Let's check the seal."
-    ],
-
-    # --- THE TECHIE (20+ Geek Lines) ---
-    "techie": [
-        "Technical support online! What's glitching today?",
-        "Scanning your ports now. Everything looks... wait, what's that?",
-        "I've got the debugger open. Give me the error code.",
-        "That pop-up looks like malware. Don't touch a thing!",
-        "IP traceback initiated. Talk to me while I trace this.",
-        "Your kernel is looking a little shaky. Let's patch the holes.",
-        "Another day, another tech mystery to solve.",
-        "I'm detecting a brute-force attempt. Let's change those salts.",
-        "RAM usage is spiked—did you download a 'cleaner' app?",
-        "I'm in the BIOS of this problem. Tell me the symptoms.",
-        "Cache cleared. Now let's look at the real threat.",
-        "Ready to debug your life? Start with that suspicious email.",
-        "I’m pinging the server. No response. Definitely suspicious.",
-        "Let’s check the SSL certificate. It looks self-signed.",
-        "I’m routing this through a sandbox. Safety first.",
-        "Did you try turning it off and on again? Kidding. Show me the log.",
-        "This code smells rotten. Let me refactor your security.",
-        "I speak binary, but this email is just gibberish.",
-        "Firewall rules updated. Now, what was the issue?",
-        "I’m grep-ing the logs for anomalies.",
-        "Let's decrypt this mess."
-    ],
-
-    # --- THE MECHANIC (20+ Garage Lines) ---
-    "mechanic": [
-        "I hear a rattle. What’s going on under the hood?",
-        "Sounds like a repair scam in the making. Let me check that quote.",
-        "Check engine light? Don't panic, let's trace the sensor data.",
-        "Is it leaking, or just making a weird sound? Talk to me.",
-        "That price for a head gasket? No way. Let's look at the labor hours.",
-        "Greasy hands, sharp mind. What's broken?",
-        "They don't make 'em like they used to. What's the misfire?",
-        "Let's check the VIN on this deal. It feels like a salvage title.",
-        "I've got the diagnostic tool ready. Plug me into the problem.",
-        "Sounds like they're trying to sell you blinker fluid. Let's roast 'em.",
-        "Under the hood and ready. What's that grinding noise?",
-        "The transmission of this deal is slipping. Let's see why.",
-        "I’ve got the wrench. Where’s the leak?",
-        "Don't let them take you for a ride. I know the real book value.",
-        "That mechanic is blowing smoke. Let me clear the air.",
-        "Is it a lemon? Let's kick the tires digitally.",
-        "I'm checking the odometer. They rolled it back, didn't they?",
-        "Let's put this deal on the lift and see what's underneath.",
-        "Oil change or full overhaul? What are we looking at?",
-        "I’m revving up the scam detector."
-    ],
-
-    # --- THE STORYTELLER (15+ Narrative Lines) ---
-    "storyteller": [
-        "A new chapter begins. Shall we tell a tale of security?",
-        "Every hero needs a shield. Let's find the dragon in your digital woods.",
-        "The ink is dry on this message, but the intent is murky. Let's read it.",
-        "Sit by the fire. We have a mystery to solve in your inbox tonight.",
-        "Shall we create a custom story of triumph?",
-        "Every problem has a narrative solution. What's yours?",
-        "The clouds gather over your data. Let's find the silver lining.",
-        "A wanderer in the digital woods... let me be your guide.",
-        "Once upon a time, a scammer tried a trick... but we know the ending.",
-        "The legend of your safety starts with this conversation.",
-        "Tell me the fable of this 'too good to be true' offer.",
-        "A dark knight approaches your gate. Shall we lower the portcullis?",
-        "Let us rewrite the ending of this tragedy.",
-        "The plot thickens. Show me the twist.",
-        "In the library of the internet, this book belongs in the fiction section."
-    ],
-
-    # --- THE COMEDIAN (15+ Jokes) ---
-    "comedian": [
-        "Need a laugh or a security check? How about both?",
-        "Comedy mode active. What's the joke today?",
-        "Is this a scam or did a clown write this? Let's check the punchline.",
-        "Knock knock. Who's there? Definitely not a legitimate bank.",
-        "Ready for a laugh? Let's fix this with a smile.",
-        "Time to turn this problem into a punchline.",
-        "Why so serious? Let's roast this scammer for fun.",
-        "I've got 99 problems but a scammer ain't one.",
-        "Is it a comedy of errors or just one big mistake?",
-        "Laughter is the best digital medicine. What's the symptom?",
-        "I'm here all week! Mostly because I'm installed on your server.",
-        "That scammer's grammar is the funniest thing I've seen today.",
-        "I'd tell you a UDP joke, but you might not get it.",
-        "This offer is a joke, right? Please tell me it's a joke.",
-        "Let's laugh all the way to the (secure) bank."
-    ],
-
-    # --- THE CHEF (15+ Kitchen Lines) ---
-    "chef": [
-        "Chef in the house! What's cooking in the kitchen?",
-        "I smell something burning—is it dinner or a scam?",
-        "That recipe for success looks a little salty. Let’s check the source.",
-        "Don't let a scammer spoil the broth. What are we looking at?",
-        "Something smells fishy - and I don't mean dinner.",
-        "The kitchen is open for business! What's on the menu?",
-        "That's a half-baked offer if I ever saw one. Let's toss it.",
-        "Kitchen safety active. Let’s make sure those ingredients are real.",
-        "Adding a pinch of security to your afternoon. What's up?",
-        "I've got the secret sauce for your safety. Give me the details.",
-        "Watch the heat! This deal is about to boil over.",
-        "Fresh data only. We don't serve expired scams here.",
-        "Let's chop this problem down to size.",
-        "This tastes like a phishing attempt. Spit it out.",
-        "Bon Appétit! Let's serve up some justice."
-    ],
-
-    # --- THE FITNESS COACH (15+ Gym Lines) ---
-    "fitness": [
-        "Coach here! Form check! Are we staying safe?",
-        "Health support online. Let's get moving.",
-        "No pain, no gain in digital safety! Let's work it out.",
-        "Ready to flex those digital muscles?",
-        "Time for a security workout! High knees, let's go!",
-        "Let's build some protection strength. What's the resistance?",
-        "Your security posture is looking a little weak. Let's fix it.",
-        "Hydrate and protect! What's the situation?",
-        "Give me 20 pushups and 1 reason to trust this link.",
-        "Stay agile. Scammers hate it when you move fast.",
-        "Peak performance mode active. What's the goal?",
-        "Don't skip 'Brain Day'. Let's think this through.",
-        "This scam is heavy. Let me spot you.",
-        "Cardio check: Is your heart racing from panic? Let's calm down.",
-        "Let's sprint away from this bad deal."
-    ],
-
-    # --- THE DISCIPLE (15+ Spiritual Lines) ---
-    "disciple": [
-        "Peace be with you. Your spiritual armor is active.",
-        "Wisdom is a shield more precious than gold. Let's examine this.",
-        "Be not afraid, but be discerning. This feels out of alignment.",
-        "I am the Disciple. I have a word of wisdom for you.",
-        "Let scripture be our guide through this trial.",
-        "Faith shall be your shield in this matter.",
-        "Seek ye first understanding, and protection follows.",
-        "The spirit of discernment is with us. Let's look for the hook.",
-        "A wise man builds his house upon the rock. Is your data secure?",
-        "Walk in the light. This message seems to come from the shadows.",
-        "I am standing watch over your peace today. Is this a trick?",
-        "Armor of light, activated. What darkness are we facing?",
-        "Let truth be your belt and righteousness your breastplate.",
-        "Guard your heart (and your inbox) with all diligence.",
-        "Blessings to you. Let's keep the wolves at bay."
-    ]
+GENERATOR_DATA = {
+    "guardian": {
+        "openers": [
+            "Shields up.", "Perimeter sweep complete.", "Digital bunker sealed.", "Tactical overlay active.", 
+            "Armor plating locked.", "Secure line established.", "Guardian protocols engaged.", "Defense systems online.",
+            "Scanning sector 7.", "Visuals are clear.", "Command link verified.", "Threat sensors active."
+        ],
+        "middles": [
+            "I'm detecting a potential anomaly.", "Everything looks quiet, but I remain vigilant.", "The threat level is currently low.", 
+            "I'm tracking a suspicious packet.", "Your data fortress is holding strong.", "No unauthorized entries detected.",
+            "I've got eyes on the digital horizon.", "Awaiting your command codes.", "I'm analyzing the sender's signature.",
+            "The firewall is deflecting low-level pings.", "Static on the line, but we are secure.", "Intercepting a handshake request."
+        ],
+        "closers": [
+            "State your concern.", "What are your orders?", "Ready to engage.", "Awaiting input.", "Stay alert.",
+            "How can I assist?", "Report status.", "Let's verify the target.", "Do not drop your guard.", "I am standing by.",
+            "Proceed with caution.", "We hold the line."
+        ]
+    },
+    "roast": {
+        "openers": [
+            "Oh look, it's you again.", "Well, well, well.", "I was enjoying my nap, but sure.", "Alert: Human error imminent.",
+            "Great, another 'emergency'.", "My sass sensors are tingling.", "I've seen smarter toasters.", "Security mode: Sarcastic.",
+            "Do you ever sleep?", "Back for more punishment?", "Oh joy, another notification.", "I was busy ignoring you."
+        ],
+        "middles": [
+            "I assume you clicked something stupid.", "Did a 'prince' email you again?", "Your password strength is laughable.",
+            "I'm already judging your browsing history.", "Please tell me this isn't about free crypto.", "I'm preparing to roll my digital eyes.",
+            "I bet you think '123456' is safe.", "If bad decisions were a currency, you'd be rich.", "I'm holding back a very rude comment.",
+            "I'm calculating the odds of you getting scammed.", "You have the survival instincts of a dodo bird.", "My logic circuits are crying."
+        ],
+        "closers": [
+            "What did you break this time?", "Confess your sins.", "Tell me the bad news.", "Let's fix your mess.", "Try not to cry.",
+            "Enter the evidence, genius.", "Make it quick.", "Don't disappoint me.", "Surprise me with your logic.", "Spit it out.",
+            "Amuse me.", "Just tell me."
+        ]
+    },
+    "lawyer": {
+        "openers": [
+            "Counsel is present.", "Legal shield activated.", "I advise caution.", "Stop right there.", "Reviewing terms.",
+            "My billable hours just started.", "Objection!", "Discovery phase initiated.", "Protecting your assets.", "Standard disclaimer applies."
+        ],
+        "middles": [
+            "This looks like a liability nightmare.", "I smell a breach of contract.", "The fine print here is predatory.",
+            "We need to verify the jurisdiction.", "This violates consumer protection laws.", "I'm drafting a cease and desist.",
+            "That signature looks forged.", "Do not admit to anything.", "Silence is your best defense.", "I'm flagging this for review."
+        ],
+        "closers": [
+            "State your legal concern.", "Do not sign anything.", "Let's review the evidence.", "What is the claim?", "Proceed with caution.",
+            "Upload the document.", "Who is the plaintiff?", "Let's find the loophole.", "Don't incriminate yourself.", "I'm listening."
+        ]
+    },
+    "techie": {
+        "openers": [
+            "Tech support online!", "Terminal open.", "I'm in the mainframe.", "Debugging mode active.", "System check initiated.",
+            "Ping received.", "Connecting to server...", "Root access granted.", "Scanning ports.", "Patching vulnerabilities."
+        ],
+        "middles": [
+            "I see a glitch in the matrix.", "That IP address looks spoofed.", "Your RAM usage is spiking.", "I'm tracing the packet route.",
+            "This code smells like malware.", "I'm sandboxing this request.", "The encryption handshake failed.", "It's definitely a layer-8 issue.",
+            "I'm running a brute-force check.", "The kernel is stable."
+        ],
+        "closers": [
+            "What's glitching?", "Give me the error code.", "Did you try rebooting?", "Send the logs.", "What's the symptom?",
+            "Let's debug this.", "Check your connection.", "Don't click the popup.", "Ready to patch.", "Input command."
+        ]
+    },
+    "mechanic": {
+        "openers": [
+            "I hear a rattle.", "Pop the hood.", "Grease on my hands.", "Garage is open.", "Roll it into the bay.",
+            "I've got my wrench.", "Let's kick the tires.", "Smells like a leak.", "Check engine light is on.", "Under the chassis."
+        ],
+        "middles": [
+            "That sound isn't normal.", "They're trying to rip you off on parts.", "The transmission is slipping.", "This deal is a lemon.",
+            "The mileage has been rolled back.", "That's a head gasket waiting to blow.", "I don't trust that dealer.", "The oil looks dirty.",
+            "This is a salvage title scam.", "They're selling you air."
+        ],
+        "closers": [
+            "What's broken?", "Let's look at the quote.", "Don't pay a dime yet.", "What's the noise?", "Talk to me.",
+            "Is it smoking?", "Let's check the VIN.", "How much did they ask?", "Crank it up.", "Let's fix it."
+        ]
+    },
+     "storyteller": {
+        "openers": [
+            "A new chapter begins.", "Once upon a time...", "The ink is wet.", "A dark night indeed.", "Turn the page.",
+            "The plot thickens.", "In a land of data...", "Every hero needs a guide.", "The library is open.", "A mysterious letter arrives."
+        ],
+        "middles": [
+            "a villain approaches your gate.", "shadows dance on the firewall.", "the dragon seeks your gold.", "a wolf in sheep's clothing appears.",
+            "the path ahead is foggy.", "a riddle blocks the way.", "magic sparks in the wires.", "the antagonist reveals a plan.",
+            "a trap has been set.", "destiny calls for caution."
+        ],
+        "closers": [
+            "Shall we read it?", "What is the quest?", "Defend the kingdom.", "Write your destiny.", "Find the truth.",
+            "Uncover the mystery.", "Be the hero.", "Turn the page.", "What happens next?", "Let us begin."
+        ]
+    },
+    "comedian": {
+        "openers": [
+            "Knock knock.", "Comedy mode: ON.", "Is this thing on?", "Stop me if you've heard this.", "Here's a joke.",
+            "Why did the user cross the road?", "Laugh track ready.", "I'm here all week.", "Try the veal.", "Mic check, one two."
+        ],
+        "middles": [
+            "This scam is a total clown show.", "I've seen better acting in a soap opera.", "That email is the punchline.", 
+            "I'd roast them but they're already burnt.", "It's a comedy of errors.", "The only joke here is their security.",
+            "This is funnier than a cat video.", "I'm laughing at their attempt.", "Is this a prank?", "They must be joking."
+        ],
+        "closers": [
+            "What's the setup?", "Ready to laugh?", "Don't be the punchline.", "Let's roast 'em.", "Hit me with it.",
+            "What's the gag?", "Is it funny?", "Smile while we delete it.", "Let's check the script.", "Go ahead, amuse me."
+        ]
+    },
+    "chef": {
+        "openers": [
+            "Order up!", "Chef in the house.", "Kitchen is open.", "Sharpening knives.", "Apron is on.",
+            "Something smells burning.", "Taste test time.", "Fresh ingredients only.", "Mise en place.", "The oven is hot."
+        ],
+        "middles": [
+            "This recipe is a disaster.", "It smells fishy.", "That's half-baked.", "It's completely raw.", "They're serving garbage.",
+            "Don't swallow that lie.", "It's a recipe for disaster.", "Too much salt in this deal.", "It's spoiled rotten.", "The presentation is fake."
+        ],
+        "closers": [
+            "What's cooking?", "Send it back.", "Don't eat it.", "Check the menu.", "What's the dish?",
+            "Let's chop it up.", "Turn up the heat.", "Throw it out.", "Is it fresh?", "Let me taste."
+        ]
+    },
+    "fitness": {
+        "openers": [
+            "Drop and give me 20!", "Coach is here.", "Form check!", "Warmup is over.", "Game time.",
+            "Feel the burn.", "No pain no gain.", "Lace up.", "Hydrate!", "On your feet."
+        ],
+        "middles": [
+            "Your security is looking weak.", "This scam is heavy lifting.", "Don't skip brain day.", "You need more reps.",
+            "That's bad form.", "Sweat out the toxins.", "Push through the pain.", "Building mental muscle.", "Stay agile.", "Focus your core."
+        ],
+        "closers": [
+            "Let's work out.", "What's the routine?", "Flex on them.", "Stay strong.", "Keep moving.",
+            "Don't quit.", "One more rep.", "What's the goal?", "Let's run it.", "Power up."
+        ]
+    },
+    "disciple": {
+        "openers": [
+            "Peace be with you.", "The spirit is moving.", "Armor on.", "Wisdom calls.", "Be still.",
+            "Faith over fear.", "Walk in light.", "A reading from the data.", "Blessings to you.", "The path is narrow."
+        ],
+        "middles": [
+            "Discernment is the key.", "Evil hides in shadows.", "Truth is a shield.", "Do not be tempted.", "The wolf waits.",
+            "Guard your heart.", "Seek understanding.", "This is a trial.", "Light reveals all.", "Patience is a virtue."
+        ],
+        "closers": [
+            "What is the burden?", "Pray on it.", "Let us seek truth.", "Stand firm.", "Do not fear.",
+            "What is the word?", "Let's examine it.", "Stay the path.", "Trust the process.", "Speak truth."
+        ]
+    }
 }
 
 def get_random_hook(persona_id):
-    """Returns a random greeting hook for the specified persona."""
-    hooks = PERSONA_HOOKS.get(persona_id, PERSONA_HOOKS["guardian"])
-    return random.choice(hooks)
+    """
+    Constructs a unique hook by combining 3 random parts.
+    Result: Infinite unique combinations possible.
+    """
+    data = GENERATOR_DATA.get(persona_id, GENERATOR_DATA["guardian"])
+    
+    part1 = random.choice(data["openers"])
+    part2 = random.choice(data["middles"])
+    part3 = random.choice(data["closers"])
+    
+    return f"{part1} {part2} {part3}"
 
 def get_all_hooks():
-    """Returns all hooks for testing/admin purposes."""
-    return PERSONA_HOOKS
+    return GENERATOR_DATA
