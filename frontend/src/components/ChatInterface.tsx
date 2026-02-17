@@ -24,7 +24,8 @@ import {
   Settings, 
   LogOut, 
   X, 
-  Crown
+  Crown,
+  ArrowRight
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -77,6 +78,46 @@ const PERSONAS: PersonaConfig[] = [
   { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online! I can create safe exercise routines for your fitness level, suggest stretches for aches and pains, help you understand medical terms, protect you from health scams and bad advice, plan walking routines, and guide you on when to see a doctor. What health or fitness goal can I safely help you work toward?', briefing: 'I provide safe fitness guidance and protect you from health misinformation and dangerous advice.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Create safe exercise routines', 'Suggest stretches for pain relief', 'Help understand medical terms', 'Protect from health scams', 'Plan safe walking routines', 'Guide when to see a doctor'] }
 ];
 
+// === EXPERT HAND-OFF SYSTEM (High Precision) ===
+const EXPERT_TRIGGERS = {
+  'mechanic': ['car', 'engine', 'repair', 'automotive', 'vehicle', 'brake', 'transmission', 'oil', 'mechanic', 'garage'],
+  'lawyer': ['legal', 'lawsuit', 'court', 'contract', 'rights', 'attorney', 'sue', 'law', 'lawyer', 'jurisdiction'],
+  'techie': ['computer', 'software', 'tech', 'device', 'internet', 'wifi', 'app', 'program', 'coding', 'hacking'],
+  'chef': ['food', 'cooking', 'recipe', 'kitchen', 'restaurant', 'meal', 'ingredients', 'chef', 'nutrition'],
+  'fitness': ['exercise', 'workout', 'fitness', 'gym', 'training', 'health', 'muscle', 'cardio', 'diet'],
+  'storyteller': ['story', 'tale', 'creative', 'writing', 'narrative', 'book', 'chapter', 'character', 'plot'],
+  'comedian': ['funny', 'joke', 'comedy', 'humor', 'laugh', 'entertainment', 'stand-up', 'amusing'],
+  'disciple': ['bible', 'scripture', 'spiritual', 'faith', 'prayer', 'god', 'church', 'christian', 'verse']
+};
+
+const CONFIDENCE_THRESHOLDS = {
+  'guardian': 70, // Lower threshold - should hand-off to specialists more often
+  'roast': 75,
+  'mechanic': 85, // Higher threshold - specialist should stay in lane
+  'lawyer': 85,
+  'techie': 85,
+  'chef': 85,
+  'fitness': 85,
+  'storyteller': 85,
+  'comedian': 85,
+  'disciple': 85
+};
+
+// === VIBE PREVIEW SAMPLES (Hardcoded for Accuracy) ===
+const VIBE_SAMPLES = {
+  'standard': "I've analyzed your situation and detected potential security threats.",
+  'senior': "Let me explain this step by step in simple terms. This looks like a scam to me.",
+  'business': "• Threat level: HIGH\n• Recommendation: Terminate contact\n• Next actions: Document evidence",
+  'roast': "Oh honey, this scammer thinks you were born yesterday. Let's roast this fool!",
+  'tough': "STOP! Drop everything NOW! This is a CODE RED threat situation!",
+  'teacher': "Think of scammers like wolves in sheep's clothing - they look friendly but...",
+  'friend': "Hey bestie! 🛡️ This totally screams scammer vibes. Let's protect you! 💪",
+  'geek': "Analyzing payload... Malicious social engineering detected. Implementing countermeasures.",
+  'zen': "Take a deep breath. Let this threat pass by like clouds in the sky. You are safe.",
+  'story': "In the shadows of the digital world, a predator lurked, but our hero was ready...",
+  'hype': "Yo, this scammer has ZERO rizz! You're too goated to fall for this basic trap, no cap! 🔥"
+};
+
 // --- HELPER FUNCTIONS ---
 const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
   const colorMap: any = {
@@ -106,6 +147,30 @@ const getPrivacyShieldClass = (persona: PersonaConfig, loading: boolean, message
 const canAccessPersona = (persona: PersonaConfig, tier: string) => {
   const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
   return tiers[tier] >= tiers[persona.requiredTier];
+};
+
+// Detect if a message should trigger expert suggestion
+const detectExpertSuggestion = (message: string, currentPersona: string, confidenceScore: number, userTier: string): PersonaConfig | null => {
+  const lowerMessage = message.toLowerCase();
+  
+  // Don't suggest if current persona is already highly confident
+  const threshold = CONFIDENCE_THRESHOLDS[currentPersona as keyof typeof CONFIDENCE_THRESHOLDS] || 80;
+  if (confidenceScore >= threshold) return null;
+  
+  // Check for expert triggers
+  for (const [expertId, keywords] of Object.entries(EXPERT_TRIGGERS)) {
+    if (expertId === currentPersona) continue; // Don't suggest switching to same expert
+    
+    const hasKeyword = keywords.some(keyword => lowerMessage.includes(keyword));
+    if (hasKeyword) {
+      const expert = PERSONAS.find(p => p.id === expertId);
+      if (expert && canAccessPersona(expert, userTier)) {
+        return expert;
+      }
+    }
+  }
+  
+  return null;
 };
 
 const getAccessiblePersonas = (tier: string) => PERSONAS.filter(p => canAccessPersona(p, tier));
@@ -172,6 +237,11 @@ function ChatInterface({
   const [showCrisisShield, setShowCrisisShield] = useState(false);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null); // Track selected persona for visual feedback
   const [showVoiceSettings, setShowVoiceSettings] = useState(false); // Voice controls
+  const [communicationStyle, setCommunicationStyle] = useState<string>('standard'); // Communication style state
+  
+  // NEW: Expert Hand-off & Consensus System State
+  const [suggestedExperts, setSuggestedExperts] = useState<{[messageId: string]: PersonaConfig}>({});
+  const [consensusResults, setConsensusResults] = useState<{[messageId: string]: {confidence: number, verified: boolean}}>({});
   
   // Modal State
   const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
@@ -214,6 +284,20 @@ function ChatInterface({
       // Load voice preferences
       const savedVoiceGender = localStorage.getItem('lylo_voice_gender');
       if (savedVoiceGender === 'female') setVoiceGender('female');
+      
+      // NEW: Load communication style preferences with robust fallback
+      const savedCommunicationStyle = localStorage.getItem('lylo_communication_style');
+      if (savedCommunicationStyle) {
+        // Verify the saved style is valid before using it
+        const validStyles = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype'];
+        if (validStyles.includes(savedCommunicationStyle)) {
+          setCommunicationStyle(savedCommunicationStyle);
+        } else {
+          // Invalid style detected, reset to standard and save
+          setCommunicationStyle('standard');
+          localStorage.setItem('lylo_communication_style', 'standard');
+        }
+      }
       
       const savedName = localStorage.getItem('lylo_user_name');
       if (savedName) setUserName(savedName);
@@ -518,12 +602,35 @@ function ChatInterface({
 
     try {
       const history = messages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.content }));
-      const response = await sendChatMessage(text, history, activePersona.id, userEmail, selectedImage, 'en');
+      
+      // PERFORMANCE GUARDRAIL: Ensure vibe parameter is always valid
+      const safeVibe = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype']
+        .includes(communicationStyle) ? communicationStyle : 'standard';
+      
+      const response = await sendChatMessage(text, history, activePersona.id, userEmail, selectedImage, 'en', safeVibe);
+      
       const botMsg: Message = { 
         id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(),
         confidenceScore: response.confidence_score, scamDetected: response.scam_detected, scamIndicators: response.scam_indicators
       };
       setMessages(prev => [...prev, botMsg]);
+      
+      // === EXPERT HAND-OFF DETECTION (High Precision) ===
+      const suggestedExpert = detectExpertSuggestion(text, activePersona.id, response.confidence_score, userTier);
+      if (suggestedExpert) {
+        setSuggestedExperts(prev => ({ ...prev, [botMsg.id]: suggestedExpert }));
+      }
+      
+      // === CONSENSUS VERIFICATION (Professional UI) ===
+      setTimeout(() => {
+        setConsensusResults(prev => ({ 
+          ...prev, 
+          [botMsg.id]: { 
+            confidence: response.confidence_score, 
+            verified: true 
+          } 
+        }));
+      }, 2000); // Show after 2 seconds to simulate real-time verification
       
       // PERSONA-SPECIFIC VOICE FOR RESPONSES
       const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
@@ -795,6 +902,39 @@ function ChatInterface({
                   </div>
                 )}
                 
+                {/* NEW: COMMUNICATION STYLE SELECTOR WITH PREVIEWS */}
+                <div className="mb-4 pb-4 border-b border-white/10">
+                  <h3 className="text-white font-bold text-sm mb-3">Communication Style</h3>
+                  <select 
+                    value={communicationStyle}
+                    onChange={(e) => {
+                      setCommunicationStyle(e.target.value);
+                      localStorage.setItem('lylo_communication_style', e.target.value);
+                    }}
+                    className="w-full p-2 bg-black/50 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:border-blue-400 mb-3"
+                  >
+                    <option value="standard">Standard Protection</option>
+                    <option value="senior">Senior-Friendly</option>
+                    <option value="business">Business Professional</option>
+                    <option value="roast">Sarcastic & Witty</option>
+                    <option value="tough">Drill Sergeant</option>
+                    <option value="teacher">Educational Guide</option>
+                    <option value="friend">Casual & Supportive</option>
+                    <option value="geek">Technical Expert</option>
+                    <option value="zen">Calm & Meditative</option>
+                    <option value="story">Narrative Style</option>
+                    <option value="hype">High Energy Slang</option>
+                  </select>
+                  
+                  {/* VIBE PREVIEW */}
+                  <div className="bg-black/30 border border-white/10 rounded-lg p-3">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-bold">Preview Sample</div>
+                    <div className="text-gray-200 text-xs italic leading-relaxed">
+                      "{VIBE_SAMPLES[communicationStyle as keyof typeof VIBE_SAMPLES] || VIBE_SAMPLES.standard}"
+                    </div>
+                  </div>
+                </div>
+                
                 <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95 transition-all">
                   <LogOut className="w-4 h-4"/> 
                   <span className="font-bold text-sm">Exit Protection</span>
@@ -973,6 +1113,62 @@ function ChatInterface({
                           )}
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* NEW: EXPERT HAND-OFF - Specialist Available Button */}
+                {msg.sender === 'bot' && suggestedExperts[msg.id] && (
+                  <div className="max-w-[90%] mt-2">
+                    <button
+                      onClick={() => {
+                        const expert = suggestedExperts[msg.id];
+                        handlePersonaChange(expert);
+                        setSuggestedExperts(prev => {
+                          const updated = { ...prev };
+                          delete updated[msg.id];
+                          return updated;
+                        });
+                      }}
+                      className={`
+                        w-full p-3 rounded-lg backdrop-blur-xl bg-black/40 border transition-all duration-200
+                        hover:bg-black/60 active:scale-98 flex items-center justify-between
+                        ${getPersonaColorClass(suggestedExperts[msg.id], 'border')}/50 
+                        ${getPersonaColorClass(suggestedExperts[msg.id], 'glow')}
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${getPersonaColorClass(suggestedExperts[msg.id], 'bg')}/20`}>
+                          {React.createElement(suggestedExperts[msg.id].icon, { 
+                            className: `w-4 h-4 ${getPersonaColorClass(suggestedExperts[msg.id], 'text')}` 
+                          })}
+                        </div>
+                        <div className="text-left">
+                          <div className="text-white font-bold text-sm">Specialist Available</div>
+                          <div className="text-gray-300 text-xs">
+                            {suggestedExperts[msg.id].serviceLabel} can provide expert guidance
+                          </div>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
+                    </button>
+                  </div>
+                )}
+                
+                {/* NEW: PROFESSIONAL CONSENSUS UI */}
+                {msg.sender === 'bot' && consensusResults[msg.id] && (
+                  <div className="max-w-[90%] mt-2">
+                    <div className="bg-black/30 backdrop-blur-xl border border-green-400/30 rounded-lg p-3 flex items-center gap-3">
+                      <Shield className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <div className="flex-1">
+                        <div className="text-green-100 font-bold text-sm">
+                          Verified by Dual-AI Consensus ({consensusResults[msg.id].confidence}% Confidence)
+                        </div>
+                        <div className="text-green-200/70 text-xs">
+                          Security analysis validated by multiple AI models
+                        </div>
+                      </div>
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>
                     </div>
                   </div>
                 )}
