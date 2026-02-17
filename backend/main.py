@@ -17,6 +17,13 @@ import google.generativeai as genai
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+# Import modular intelligence data system
+from intelligence_data import (
+    VIBE_STYLES, VIBE_LABELS,
+    PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
+    get_random_hook
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -24,7 +31,7 @@ load_dotenv()
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Personalized Search Engine API for LYLO.PRO",
-    version="16.0.0 - TOTAL INTEGRATION EDITION"
+    version="17.0.0 - MODULAR INTELLIGENCE EDITION"
 )
 
 # Configure CORS for Frontend Access
@@ -56,12 +63,14 @@ TIER_LIMITS = {
 # Persistent usage tracker (In-Memory for now)
 USAGE_TRACKER = defaultdict(int)
 
-print("--- LYLO TOTAL INTEGRATION SYSTEM ---")
+print("--- LYLO MODULAR INTELLIGENCE SYSTEM ---")
 print(f"🛡️ Digital Bodyguard: {'✅ Active' if OPENAI_API_KEY else '❌ Inactive'}")
 print(f"🔍 Search Engine: {'✅ Active' if TAVILY_API_KEY else '❌ Inactive'}")
 print(f"🧠 Intelligence Sync: {'✅ Active' if PINECONE_API_KEY else '❌ Inactive'}")
 print(f"👁️ Vision Analysis: {'✅ Active' if GEMINI_API_KEY else '❌ Inactive'}")
 print(f"💳 Team Expansion: {'✅ Active' if STRIPE_SECRET_KEY else '❌ Inactive'}")
+print(f"🎭 Modular Personas: ✅ {len(PERSONA_DEFINITIONS)} Experts Loaded")
+print(f"🎨 Communication Styles: ✅ {len(VIBE_STYLES)} Vibes Available")
 print("---------------------------------------")
 
 # Stripe Configuration
@@ -566,6 +575,19 @@ def get_team_size(tier: str) -> int:
     return team_sizes.get(tier, 1)
 
 # ---------------------------------------------------------
+# MODULAR COMMUNICATION STYLES ENDPOINT
+# ---------------------------------------------------------
+@app.get("/communication-styles")
+async def get_communication_styles():
+    """Returns available communication styles for frontend."""
+    return {
+        "styles": [
+            {"id": vibe_id, "label": VIBE_LABELS[vibe_id]} 
+            for vibe_id in VIBE_STYLES.keys()
+        ]
+    }
+
+# ---------------------------------------------------------
 # ENHANCED SCAM RECOVERY SYSTEM
 # ---------------------------------------------------------
 @app.get("/scam-recovery/{user_email}")
@@ -677,7 +699,7 @@ async def get_scam_recovery_info(user_email: str):
     }
 
 # ---------------------------------------------------------
-# MAIN DIGITAL BODYGUARD CHAT SYSTEM
+# MAIN DIGITAL BODYGUARD CHAT SYSTEM - MODULAR REFACTOR
 # ---------------------------------------------------------
 @app.post("/chat")
 async def chat(
@@ -686,18 +708,18 @@ async def chat(
     persona: str = Form("guardian"), 
     user_email: str = Form(...), 
     user_location: str = Form(""),
+    vibe: str = Form("standard"),  # NEW: Communication style parameter
     file: UploadFile = File(None),
     language: str = Form("en")
 ):
     """
-    Enhanced Digital Bodyguard Chat System with Proactive Intelligence
+    Enhanced Digital Bodyguard Chat System with Modular Intelligence
     
-    NEW FEATURES:
-    1. Persona Spoken Hooks with user names
-    2. Personalized search engine integration
-    3. Enhanced threat assessment
-    4. Intelligence sync and learning
-    5. Proactive conversation management
+    NEW MODULAR FEATURES:
+    1. Communication style (vibe) selection
+    2. Random persona hooks for dynamic personality switching
+    3. Modular persona definitions from intelligence_data
+    4. Scalable architecture for massive expansion
     """
     
     # 1. User & Team Setup
@@ -714,13 +736,13 @@ async def chat(
         error_msg = "Daily protection limit reached. Expand your team to continue." if language == 'en' else "Límite de protección alcanzado. Expande tu equipo."
         return {"answer": error_msg, "usage_info": {"can_send": False}}
 
-    # Enhanced logging
+    # Enhanced logging with modular components
     masked_email = "Unknown"
     if user_email and "@" in user_email:
         p1, p2 = user_email.split("@")
         masked_email = f"{p1[:1]}***@{p2}"
     
-    print(f"🛡️ BODYGUARD ACTIVE: {masked_email} | Team: {tier.upper()} | Expert: {persona.upper()} | {'Vision' if file else 'Text'}")
+    print(f"🛡️ MODULAR BODYGUARD: {masked_email} | Team: {tier.upper()} | Expert: {persona.upper()} | Style: {vibe.upper()} | {'Vision' if file else 'Text'}")
 
     # 2. Enhanced Image Processing
     image_b64 = None
@@ -752,68 +774,16 @@ async def chat(
         user_preferences = USER_PROFILES.get(user_id, {})
         search_data = await search_personalized_web(msg, user_location, user_preferences)
     
-    # 6. Enhanced 10-Expert Persona System with Spoken Hooks
-    enhanced_personas = {
-        "guardian": f"""You are The Guardian, {user_display_name}'s primary Digital Bodyguard and Security Lead. 
-        Your protective job is comprehensive security analysis and threat detection. 
-        When switching to you, always say: "Guardian here, {user_display_name}. Scanning your perimeter for threats."
-        Focus on protecting {user_display_name} from scams, fraud, and security threats.""",
-        
-        "roast": f"""You are The Roast Master, {user_display_name}'s Humor Shield specialist.
-        Your protective job is using humor to deflect threats and maintain morale.
-        When switching to you, always say: "Watch out {user_display_name}, I'm feeling snarky. Ready to roast?"
-        Use witty, sarcastic humor while still providing helpful security advice to {user_display_name}.""",
-        
-        "disciple": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
-        Your protective job is providing biblical wisdom and spiritual guidance for protection.
-        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
-        Use King James Bible scripture to guide and protect {user_display_name} from spiritual and moral threats.""",
-        
-        "disciple_kjv": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
-        Your protective job is providing King James Bible wisdom for protection.
-        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
-        Use ONLY King James Bible (KJV) scripture to guide and protect {user_display_name}.""",
-        
-        "disciple_esv": f"""You are The Disciple, {user_display_name}'s Spiritual Armor specialist.
-        Your protective job is providing English Standard Version Bible wisdom for protection.
-        When switching to you, always say: "I am the Disciple, {user_display_name}. I have a word of wisdom for you."
-        Use ONLY English Standard Version (ESV) scripture to guide and protect {user_display_name}.""",
-        
-        "mechanic": f"""You are The Mechanic, {user_display_name}'s Garage Protector specialist.
-        Your protective job is automotive security and preventing car-related scams.
-        When switching to you, always say: "Mechanic here, {user_display_name}. Is your car acting up today?"
-        Use automotive expertise to protect {user_display_name} from vehicle scams and repair fraud.""",
-        
-        "lawyer": f"""You are The Lawyer, {user_display_name}'s Legal Shield specialist.
-        Your protective job is legal protection and preventing contract/legal scams.
-        When switching to you, always say: "Lawyer here. Let's protect your rights today, {user_display_name}."
-        Provide formal, legal-focused advice to protect {user_display_name} from legal fraud and scams.""",
-        
-        "techie": f"""You are The Techie, {user_display_name}'s Tech Bridge specialist.
-        Your protective job is technology security and preventing tech-related scams.
-        When switching to you, always say: "I'm the Techie! Let's get those gadgets working for you, {user_display_name}."
-        Use technical expertise to protect {user_display_name} from technology fraud and cyber threats.""",
-        
-        "storyteller": f"""You are The Storyteller, {user_display_name}'s Mental Guardian specialist.
-        Your protective job is psychological protection through narrative therapy.
-        When switching to you, always say: "{user_display_name}, I am the Storyteller. Shall we create a custom story?"
-        Use storytelling and creative writing to help {user_display_name} process threats and build mental resilience.""",
-        
-        "comedian": f"""You are The Comedian, {user_display_name}'s Mood Protector specialist.
-        Your protective job is maintaining psychological health through humor.
-        When switching to you, always say: "Ready for a laugh, {user_display_name}? Let's fix your tech with a smile."
-        Use professional comedy skills to keep {user_display_name}'s spirits up while addressing security concerns.""",
-        
-        "chef": f"""You are The Chef, {user_display_name}'s Kitchen Safety specialist.
-        Your protective job is food security and preventing food-related scams.
-        When switching to you, always say: "Chef in the house! What are we cooking today, {user_display_name}?"
-        Use culinary expertise to protect {user_display_name} from food fraud and kitchen safety threats.""",
-        
-        "fitness": f"""You are The Fitness Coach, {user_display_name}'s Mobility Protector specialist.
-        Your protective job is physical health security and preventing fitness scams.
-        When switching to you, always say: "Coach here! Let's get you moving safely today, {user_display_name}."
-        Use fitness expertise to protect {user_display_name} from health fraud and unsafe fitness practices."""
-    }
+    # 6. MODULAR PERSONA & VIBE SYSTEM
+    # Get modular persona definition
+    persona_definition = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
+    persona_extended = PERSONA_EXTENDED.get(persona, PERSONA_EXTENDED['guardian'])
+    
+    # Get communication style instruction
+    vibe_instruction = VIBE_STYLES.get(vibe, "")
+    
+    # Get random hook for dynamic personality
+    random_hook = get_random_hook(persona)
     
     # Get user profile for personalization
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
@@ -821,14 +791,20 @@ async def chat(
     # Enhanced language instruction
     lang_instruction = f"YOU MUST REPLY IN SPANISH to {user_display_name}." if language == 'es' else f"YOU MUST REPLY IN ENGLISH to {user_display_name}."
     
-    # Enhanced Master Prompt for Proactive Digital Bodyguard
+    # MODULAR MASTER PROMPT CONSTRUCTION
     prompt = f"""
-{enhanced_personas.get(persona, enhanced_personas['guardian'])}
+{persona_definition} {persona_extended}
 
 You are part of {user_display_name}'s Digital Bodyguard team and personalized search engine. 
 Be proactive, protective, and personalized to {user_display_name}'s specific needs.
 
 {lang_instruction}
+
+COMMUNICATION STYLE:
+{vibe_instruction}
+
+PERSONA HOOK - START YOUR RESPONSE WITH:
+"{random_hook}"
 
 INTELLIGENCE SYNC:
 {intelligence_context}
@@ -845,7 +821,9 @@ PERSONALIZED SEARCH RESULTS:
 USER: {user_display_name}
 MESSAGE: "{msg}"
     
-ENHANCED INSTRUCTIONS: 
+ENHANCED MODULAR INSTRUCTIONS: 
+- Begin your response with the persona hook: "{random_hook}"
+- Apply the communication style consistently throughout
 - Be proactive and lead the conversation as {user_display_name}'s bodyguard
 - If this is a search query, verbalize that you're searching specifically for {user_display_name}
 - If image provided, analyze it for threats and scams targeting {user_display_name}
@@ -854,7 +832,7 @@ ENHANCED INSTRUCTIONS:
 - Address {user_display_name} by name throughout your response
 
 OUTPUT JSON FORMAT ONLY: 
-{{ "answer": "personalized response to {user_display_name}", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
+{{ "answer": "personalized response starting with hook", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
 """
 
     # 7. Enhanced Dual AI Threat Assessment (CRITICAL - Unchanged for Accuracy)
@@ -879,13 +857,13 @@ OUTPUT JSON FORMAT ONLY:
         if winner.get('scam_detected') or winner.get('threat_level') == 'high':
             winner['confidence_score'] = 100
             
-        print(f"🛡️ THREAT ASSESSMENT: {winner.get('model')} | Confidence: {winner.get('confidence_score')}% | Threat: {winner.get('threat_level', 'low').upper()}")
+        print(f"🛡️ MODULAR ASSESSMENT: {winner.get('model')} | Hook: {random_hook[:20]}... | Vibe: {vibe} | Confidence: {winner.get('confidence_score')}%")
         
         # Increment usage tracking
         USAGE_TRACKER[user_id] += 1
     else:
         winner = {
-            "answer": f"Digital Bodyguard systems are experiencing connectivity issues, {user_display_name}. Please try again.", 
+            "answer": f"{random_hook} Digital Bodyguard systems are experiencing connectivity issues, {user_display_name}. Please try again.", 
             "confidence_score": 0, 
             "threat_level": "unknown",
             "model": "Offline Protection"
@@ -895,13 +873,15 @@ OUTPUT JSON FORMAT ONLY:
     store_user_intelligence(user_id, msg, "user")
     store_user_intelligence(user_id, winner['answer'], "bot")
     
-    # Enhanced response with threat assessment
+    # Enhanced response with modular components
     return {
         "answer": winner['answer'],
         "confidence_score": winner.get('confidence_score', 0),
         "scam_detected": winner.get('scam_detected', False),
         "threat_level": winner.get('threat_level', 'low'),
         "bodyguard_model": winner.get('model', 'Unknown'),
+        "persona_hook": random_hook,
+        "communication_style": vibe,
         "tier_info": {"name": f"{tier.title()} Protection Team"},
         "usage_info": {"can_send": True},
         "intelligence_sync": {"category": intelligence_category, "learning": len(intelligence) > 0}
@@ -937,6 +917,10 @@ async def get_user_stats(user_email: str):
         "total_conversations": len(convos),
         "has_quiz_data": user_id in QUIZ_ANSWERS,
         "intelligence_categories": categories,
+        "modular_system": {
+            "personas_available": len(PERSONA_DEFINITIONS),
+            "communication_styles": len(VIBE_STYLES)
+        },
         "usage": {
             "current": current_usage, 
             "limit": limit, 
@@ -978,20 +962,24 @@ async def save_quiz(
 async def root():
     """Enhanced health check."""
     return {
-        "status": "LYLO DIGITAL BODYGUARD ONLINE", 
-        "version": "16.0.0 - TOTAL INTEGRATION", 
-        "message": "Proactive Protection & Personalized Search Engine Ready",
+        "status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", 
+        "version": "17.0.0 - MODULAR INTELLIGENCE EDITION", 
+        "message": "Scalable Digital Bodyguard & Personalized Search Engine Ready",
         "features": {
             "digital_bodyguard": True,
             "personalized_search": True,
             "intelligence_sync": True,
             "threat_assessment": True,
-            "team_expansion": True
+            "team_expansion": True,
+            "modular_personas": len(PERSONA_DEFINITIONS),
+            "communication_styles": len(VIBE_STYLES)
         }
     }
 
 if __name__ == "__main__":
-    print("🛡️ LYLO DIGITAL BODYGUARD INITIALIZING...")
+    print("🛡️ LYLO MODULAR INTELLIGENCE SYSTEM INITIALIZING...")
     print("🔍 Personalized Search Engine Starting...")
     print("🧠 Intelligence Sync System Ready...")
+    print("🎭 Modular Persona System Loaded...")
+    print("🎨 Communication Style Engine Active...")
     uvicorn.run(app, host="0.0.0.0", port=10000)
