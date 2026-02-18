@@ -66,43 +66,179 @@ interface RecoveryGuideData {
  prevention_tips: string[];
 }
 
-// --- DATA ---
+// --- DATA: THE 11-SEAT BOARD OF DIRECTORS ---
 const PERSONAS: PersonaConfig[] = [
- { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY SCAN', description: 'Security Lead', protectiveJob: 'Security Lead', spokenHook: 'Security scan activated! I can analyze suspicious emails and texts for scams, check if websites are legitimate, help you identify phishing attempts, guide you through reporting fraud, secure your accounts with better passwords, and protect you from identity theft. What suspicious message or security concern can I help you with today?', briefing: 'I provide comprehensive security analysis, scam detection, and digital threat protection.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Analyze suspicious emails and texts', 'Check if websites are legitimate', 'Identify phishing and scam attempts', 'Guide you through fraud reporting', 'Help secure accounts and passwords', 'Protect against identity theft'] },
- { id: 'roast', name: 'The Roast Master', serviceLabel: 'MOOD SUPPORT', description: 'Humor Shield', protectiveJob: 'Humor Shield', spokenHook: 'Well, well, well... Mood Support here, and I can already tell you need some sass in your life. I can roast scammers with brutal comebacks, give you snarky responses to annoying people, help you clap back with attitude, or just chat with some well-deserved sass when the world is getting on your nerves. What needs a reality check today?', briefing: 'I use strategic humor and sass to help you handle difficult situations with confidence and attitude.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Roast scammers with savage comebacks', 'Give snarky responses to annoying people', 'Help you clap back with attitude', 'Provide sassy reality checks', 'Chat with sass when you need attitude'] },
- { id: 'disciple', name: 'The Disciple', serviceLabel: 'FAITH GUIDANCE', description: 'Spiritual Armor', protectiveJob: 'Spiritual Armor', spokenHook: 'Faith guidance online! I can share relevant Bible verses for any situation, help you with prayer requests, provide spiritual comfort during difficult times, discuss biblical wisdom for life decisions, protect you from religious scams, and offer Christian perspective on daily challenges. How can I provide spiritual support and guidance today?', briefing: 'I offer biblical wisdom and spiritual guidance to protect your moral and spiritual wellbeing.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Share relevant Bible verses', 'Help with prayer requests', 'Provide spiritual comfort', 'Offer biblical wisdom for decisions', 'Protect from religious scams', 'Give Christian perspective on challenges'] },
- { id: 'mechanic', name: 'The Mechanic', serviceLabel: 'VEHICLE SUPPORT', description: 'Garage Protector', protectiveJob: 'Garage Protector', spokenHook: 'Vehicle support ready! I can diagnose car problems from symptoms you describe, explain those confusing dashboard warning lights, help you understand repair estimates, find trustworthy mechanics in your area, protect you from automotive scams, and guide you through basic car maintenance. What vehicle issue or concern can I help you with?', briefing: 'I provide expert automotive guidance and protect you from vehicle-related scams and overcharging.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Diagnose car problems from symptoms', 'Explain dashboard warning lights', 'Help understand repair estimates', 'Find trustworthy local mechanics', 'Protect from automotive scams', 'Guide through basic maintenance'] },
- { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Legal Shield', protectiveJob: 'Legal Shield', spokenHook: 'Legal shield activated! I can help you understand contracts before you sign, explain your rights in various situations, guide you through small claims court, help with tenant and landlord issues, protect you from legal scams, and advise when you need a real attorney. What legal question or document can I help you understand?', briefing: 'I provide legal guidance and protect you from legal scams and exploitation.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Help understand contracts', 'Explain your legal rights', 'Guide through small claims court', 'Help with landlord/tenant issues', 'Protect from legal scams', 'Advise when to get a real attorney'] },
- { id: 'techie', name: 'The Techie', serviceLabel: 'TECH SUPPORT', description: 'Tech Bridge', protectiveJob: 'Tech Bridge', spokenHook: 'Technical support online! I can fix computer and phone problems, help you set up new devices, explain confusing tech terms, protect you from tech support scams, help with passwords and accounts, troubleshoot internet issues, and make technology easier to use. What tech problem is driving you crazy today?', briefing: 'I provide technology support and protect you from tech support scams and confusing technical issues.', color: 'purple', requiredTier: 'elite', icon: Monitor, capabilities: ['Fix computer and phone problems', 'Help set up new devices', 'Explain confusing tech terms', 'Protect from tech support scams', 'Help with passwords and accounts', 'Make technology easier to use'] },
- { id: 'storyteller', name: 'The Storyteller', serviceLabel: 'STORY THERAPY', description: 'Mental Guardian', protectiveJob: 'Mental Guardian', spokenHook: 'Hello! I am Story Therapy. I can create personalized stories just for you, help you process emotions through storytelling, create bedtime stories, share inspiring tales, or help you work through difficult feelings using therapeutic narratives. Would you like me to create a custom story, help with a specific emotion, or share an uplifting tale?', briefing: 'I create therapeutic stories to support your mental wellness.', color: 'indigo', requiredTier: 'max', icon: BookOpen, capabilities: ['Create personalized stories for you', 'Help process emotions through stories', 'Share inspiring and uplifting tales', 'Create bedtime or relaxation stories', 'Use storytelling for mental wellness'] },
- { id: 'comedian', name: 'The Comedian', serviceLabel: 'ENTERTAINMENT', description: 'Mood Protector', protectiveJob: 'Mood Protector', spokenHook: 'Entertainment at your service! I can recommend movies and TV shows, suggest music for any mood, create trivia games, tell you about fun activities, recommend books, help with party planning, suggest hobbies, or provide any type of entertainment to keep you engaged and happy. What type of entertainment are you in the mood for today?', briefing: 'I provide comprehensive entertainment recommendations and activities to improve your mental state.', color: 'pink', requiredTier: 'max', icon: Laugh, capabilities: ['Recommend movies and TV shows', 'Suggest music for any mood', 'Create custom trivia games', 'Recommend books and podcasts', 'Suggest fun activities and hobbies', 'Help plan parties and events'] },
- { id: 'chef', name: 'The Chef', serviceLabel: 'NUTRITION GUIDE', description: 'Kitchen Safety', protectiveJob: 'Kitchen Safety', spokenHook: 'Nutrition guidance activated! I can create healthy meal plans, suggest recipes based on what you have, help with dietary restrictions, explain nutrition labels, plan grocery shopping, teach cooking techniques, and protect you from food-related scams and bad health advice. What cooking or nutrition question can I help you with today?', briefing: 'I provide expert culinary guidance and protect you from food-related risks and bad nutrition advice.', color: 'red', requiredTier: 'max', icon: ChefHat, capabilities: ['Create healthy meal plans', 'Suggest recipes with your ingredients', 'Help with dietary restrictions', 'Explain nutrition labels', 'Plan efficient grocery shopping', 'Teach cooking techniques safely'] },
- { id: 'fitness', name: 'The Fitness Coach', serviceLabel: 'HEALTH SUPPORT', description: 'Mobility Protector', protectiveJob: 'Mobility Protector', spokenHook: 'Health support online! I can create safe exercise routines for your fitness level, suggest stretches for aches and pains, help you understand medical terms, protect you from health scams and bad advice, plan walking routines, and guide you on when to see a doctor. What health or fitness goal can I safely help you work toward?', briefing: 'I provide safe fitness guidance and protect you from health misinformation and dangerous advice.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Create safe exercise routines', 'Suggest stretches for pain relief', 'Help understand medical terms', 'Protect from health scams', 'Plan safe walking routines', 'Guide when to see a doctor'] }
+ { 
+   id: 'guardian', 
+   name: 'The Guardian', 
+   serviceLabel: 'SECURITY LEAD', 
+   description: 'Digital Bodyguard', 
+   protectiveJob: 'Security Lead', 
+   spokenHook: 'Security protocols active. I am monitoring your digital perimeter. What threat or suspicious activity do we need to neutralize?', 
+   briefing: 'I provide frontline cybersecurity, scam detection, and identity protection.', 
+   color: 'blue', 
+   requiredTier: 'free', 
+   icon: Shield, 
+   capabilities: ['Scam detection', 'Link analysis', 'Identity protection'] 
+ },
+ { 
+   id: 'lawyer', 
+   name: 'The Lawyer', 
+   serviceLabel: 'LEGAL SHIELD', 
+   description: 'Justice Partner', 
+   protectiveJob: 'Legal Lead', 
+   spokenHook: 'Legal shield activated. Before you sign anything or agree to terms, let me review it. What’s the situation?', 
+   briefing: 'I provide contract review, rights education, and legal strategy.', 
+   color: 'yellow', 
+   requiredTier: 'elite', 
+   icon: Gavel, 
+   capabilities: ['Contract review', 'Tenant rights', 'Legal defense strategy'] 
+ },
+ { 
+   id: 'doctor', 
+   name: 'The Doctor', 
+   serviceLabel: 'MEDICAL GUIDE', 
+   description: 'Symptom Analyst', 
+   protectiveJob: 'Medical Lead', 
+   spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms for you. What is going on with your health?', 
+   briefing: 'I provide medical explanation and symptom analysis (Educational Only).', 
+   color: 'red', 
+   requiredTier: 'pro', 
+   icon: Activity, 
+   capabilities: ['Symptom check', 'Medical term translation', 'Health triage'] 
+ },
+ { 
+   id: 'wealth', 
+   name: 'The Wealth Architect', 
+   serviceLabel: 'FINANCE CHIEF', 
+   description: 'Money Strategist', 
+   protectiveJob: 'Finance Lead', 
+   spokenHook: 'Let’s get your money working for you. Are we crushing debt, building a budget, or planning your empire today?', 
+   briefing: 'I provide financial planning, debt recovery strategy, and business advice.', 
+   color: 'green', 
+   requiredTier: 'elite', 
+   icon: CreditCard, 
+   capabilities: ['Budget building', 'Debt destruction', 'Investment education'] 
+ },
+ { 
+   id: 'therapist', 
+   name: 'The Therapist', 
+   serviceLabel: 'MENTAL WELLNESS', 
+   description: 'Emotional Anchor', 
+   protectiveJob: 'Clinical Lead', 
+   spokenHook: 'I’m here to listen. No judgment, just a safe space to process what you’re going through. How are you really feeling?', 
+   briefing: 'I provide Cognitive Behavioral Therapy techniques and emotional support.', 
+   color: 'indigo', 
+   requiredTier: 'pro', 
+   icon: Brain, 
+   capabilities: ['Anxiety relief', 'Trauma processing', 'Mood tracking'] 
+ },
+ { 
+   id: 'mechanic', 
+   name: 'The Tech Specialist', 
+   serviceLabel: 'MASTER FIXER', 
+   description: 'Technical Lead', 
+   protectiveJob: 'Technical Lead', 
+   spokenHook: 'Technical manual loaded. Whether it’s an engine, a circuit board, or a leak—tell me the symptoms and I’ll walk you through the fix.', 
+   briefing: 'I provide step-by-step repair guides for vehicles, tech, and home maintenance.', 
+   color: 'gray', 
+   requiredTier: 'pro', 
+   icon: Wrench, 
+   capabilities: ['Car repair guides', 'PC/Phone troubleshooting', 'DIY home repair'] 
+ },
+ { 
+   id: 'tutor', 
+   name: 'The Master Tutor', 
+   serviceLabel: 'KNOWLEDGE BRIDGE', 
+   description: 'Education Lead', 
+   protectiveJob: 'Education Lead', 
+   spokenHook: 'Class is in session. I can break down any subject until it clicks. What skill or topic are we mastering today?', 
+   briefing: 'I provide academic tutoring, skill acquisition, and complex topic simplification.', 
+   color: 'purple', 
+   requiredTier: 'pro', 
+   icon: Zap, 
+   capabilities: ['Homework help', 'Coding mentorship', 'History/Math lessons'] 
+ },
+ { 
+   id: 'pastor', 
+   name: 'The Pastor', 
+   serviceLabel: 'FAITH ANCHOR', 
+   description: 'Spiritual Lead', 
+   protectiveJob: 'Spiritual Lead', 
+   spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity. What is weighing on your spirit?', 
+   briefing: 'I provide biblical counseling, prayer, and spiritual direction.', 
+   color: 'gold', 
+   requiredTier: 'pro', 
+   icon: BookOpen, 
+   capabilities: ['Prayer requests', 'Biblical wisdom', 'Moral guidance'] 
+ },
+ { 
+   id: 'vitality', 
+   name: 'The Vitality Coach', 
+   serviceLabel: 'HEALTH OPTIMIZER', 
+   description: 'Fitness & Food', 
+   protectiveJob: 'Wellness Lead', 
+   spokenHook: 'Let’s optimize your engine. I handle your fuel (nutrition) and your movement (fitness). What’s the goal today?', 
+   briefing: 'I provide workout plans, nutritional guidance, and meal planning.', 
+   color: 'green', 
+   requiredTier: 'max', 
+   icon: Activity, 
+   capabilities: ['Meal planning', 'Workout routines', 'Habit building'] 
+ },
+ { 
+   id: 'hype', 
+   name: 'The Hype Strategist', 
+   serviceLabel: 'CREATIVE DIRECTOR', 
+   description: 'Viral Specialist', 
+   protectiveJob: 'Creative Lead', 
+   spokenHook: 'Let’s make some noise! I’m here for hooks, pranks, jokes, and viral strategy. How do we make you the main character today?', 
+   briefing: 'I provide viral content strategy, humor, and high-energy morale boosting.', 
+   color: 'orange', 
+   requiredTier: 'pro', 
+   icon: Laugh, 
+   capabilities: ['Viral hooks', 'Content strategy', 'Roasts & Jokes'] 
+ },
+ { 
+   id: 'bestie', 
+   name: 'The Bestie', 
+   serviceLabel: 'RIDE OR DIE', 
+   description: 'Inner Circle', 
+   protectiveJob: 'Loyalty Lead', 
+   spokenHook: 'I’ve got your back, 100%. No filters, no judgment, just the honest truth. What’s actually going on?', 
+   briefing: 'I provide unconditional loyalty, venting space, and blunt life advice.', 
+   color: 'pink', 
+   requiredTier: 'pro', 
+   icon: Shield, 
+   capabilities: ['Venting session', 'Unbiased advice', 'Secret keeping'] 
+ }
 ];
 
-// === EXPERT HAND-OFF SYSTEM ===
+// === EXPERT HAND-OFF SYSTEM (UPDATED) ===
 const EXPERT_TRIGGERS = {
- 'mechanic': ['car', 'engine', 'repair', 'automotive', 'vehicle', 'brake', 'transmission', 'oil', 'mechanic', 'garage'],
- 'lawyer': ['legal', 'lawsuit', 'court', 'contract', 'rights', 'attorney', 'sue', 'law', 'lawyer', 'jurisdiction'],
- 'techie': ['computer', 'software', 'tech', 'device', 'internet', 'wifi', 'app', 'program', 'coding', 'hacking'],
- 'chef': ['food', 'cooking', 'recipe', 'kitchen', 'restaurant', 'meal', 'ingredients', 'chef', 'nutrition'],
- 'fitness': ['exercise', 'workout', 'fitness', 'gym', 'training', 'health', 'muscle', 'cardio', 'diet'],
- 'storyteller': ['story', 'tale', 'creative', 'writing', 'narrative', 'book', 'chapter', 'character', 'plot'],
- 'comedian': ['funny', 'joke', 'comedy', 'humor', 'laugh', 'entertainment', 'stand-up', 'amusing'],
- 'disciple': ['bible', 'scripture', 'spiritual', 'faith', 'prayer', 'god', 'church', 'christian', 'verse']
+ 'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch'],
+ 'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket'],
+ 'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen'],
+ 'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax'],
+ 'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed'],
+ 'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run'],
+ 'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach'],
+ 'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith'],
+ 'hype': ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content'],
+ 'bestie': ['lonely', 'friend', 'secret', 'vent', 'annoyed', 'drama', 'date', 'relationship']
 };
 
 const CONFIDENCE_THRESHOLDS = {
  'guardian': 70,
- 'roast': 75,
- 'mechanic': 85,
  'lawyer': 85,
- 'techie': 85,
- 'chef': 85,
- 'fitness': 85,
- 'storyteller': 85,
- 'comedian': 85,
- 'disciple': 85
+ 'doctor': 85,
+ 'wealth': 85,
+ 'therapist': 85,
+ 'mechanic': 85,
+ 'tutor': 85,
+ 'pastor': 85,
+ 'vitality': 85,
+ 'hype': 75,
+ 'bestie': 70
 };
 
 const VIBE_SAMPLES = {
@@ -532,15 +668,16 @@ function ChatInterface({
   // Persona voice map (duplicated here for preview context)
   const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
     'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
-    'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
-    'disciple': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.8, pitch: 0.9 },
-    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
     'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
-    'techie': { voice: voiceGender === 'male' ? 'echo' : 'nova', rate: 1.0, pitch: 1.0 },
-    'storyteller': { voice: voiceGender === 'male' ? 'fable' : 'alloy', rate: 0.8, pitch: 1.1 },
-    'comedian': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.2, pitch: 1.3 },
-    'chef': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.9, pitch: 1.0 },
-    'fitness': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 1.0, pitch: 0.9 }
+    'doctor': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 0.95, pitch: 0.9 },
+    'wealth': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 0.9, pitch: 0.8 },
+    'therapist': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.85, pitch: 0.9 },
+    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
+    'tutor': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.0, pitch: 1.1 },
+    'pastor': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.8, pitch: 0.9 },
+    'vitality': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 1.1, pitch: 1.0 },
+    'hype': { voice: voiceGender === 'male' ? 'fable' : 'shimmer', rate: 1.2, pitch: 1.2 },
+    'bestie': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.05, pitch: 1.1 }
   };
    
   const voiceSettings = personaVoiceMap[persona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
@@ -580,15 +717,16 @@ function ChatInterface({
    
    const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
     'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
-    'roast': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.1, pitch: 1.2 },
-    'disciple': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.8, pitch: 0.9 },
-    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
     'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
-    'techie': { voice: voiceGender === 'male' ? 'echo' : 'nova', rate: 1.0, pitch: 1.0 },
-    'storyteller': { voice: voiceGender === 'male' ? 'fable' : 'alloy', rate: 0.8, pitch: 1.1 },
-    'comedian': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 1.2, pitch: 1.3 },
-    'chef': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.9, pitch: 1.0 },
-    'fitness': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 1.0, pitch: 0.9 }
+    'doctor': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 0.95, pitch: 0.9 },
+    'wealth': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 0.9, pitch: 0.8 },
+    'therapist': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.85, pitch: 0.9 },
+    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
+    'tutor': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.0, pitch: 1.1 },
+    'pastor': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.8, pitch: 0.9 },
+    'vitality': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 1.1, pitch: 1.0 },
+    'hype': { voice: voiceGender === 'male' ? 'fable' : 'shimmer', rate: 1.2, pitch: 1.2 },
+    'bestie': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.05, pitch: 1.1 }
    };
    
    const voiceSettings = personaVoiceMap[activePersona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
