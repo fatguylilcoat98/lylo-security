@@ -801,13 +801,6 @@ async def chat(
 ):
     """
     Enhanced Digital Bodyguard Chat System with Modular Intelligence
-    
-    FEATURES:
-    1. Communication style (vibe) selection
-    2. Random persona hooks for dynamic personality switching
-    3. Modular persona definitions from intelligence_data
-    4. Robust AI model fallback system
-    5. Expert hand-off and consensus UI
     """
     
     # 1. User & Team Setup
@@ -816,7 +809,7 @@ async def chat(
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
     user_display_name = user_data.get("name", "User") if isinstance(user_data, dict) else "User"
     
-    # Enhanced usage tracking
+    # Usage tracking
     limit = TIER_LIMITS.get(tier, 10)
     current_usage = USAGE_TRACKER[user_id]
     
@@ -824,15 +817,15 @@ async def chat(
         error_msg = "Daily protection limit reached. Expand your team to continue." if language == 'en' else "Límite de protección alcanzado. Expande tu equipo."
         return {"answer": error_msg, "usage_info": {"can_send": False}}
 
-    # Enhanced logging with modular components
+    # Logging
     masked_email = "Unknown"
     if user_email and "@" in user_email:
         p1, p2 = user_email.split("@")
         masked_email = f"{p1[:1]}***@{p2}"
     
-    print(f"🛡️ MODULAR BODYGUARD: {masked_email} | Team: {tier.upper()} | Expert: {persona.upper()} | Style: {vibe.upper()} | {'Vision' if file else 'Text'}")
+    print(f"🛡️ MODULAR BODYGUARD: {masked_email} | Expert: {persona.upper()} | Style: {vibe.upper()}")
 
-    # 2. Enhanced Image Processing
+    # 2. Image Processing
     image_b64 = None
     if file:
         content = await file.read()
@@ -844,132 +837,100 @@ async def chat(
     
     intelligence_context = ""
     if intelligence:
-        intelligence_context = f"USER INTELLIGENCE (Category: {intelligence_category}):\n" + "\n".join([
+        intelligence_context = f"USER INTELLIGENCE (Past Memories):\n" + "\n".join([
             f"- {intel['role'].upper()}: {intel['content'][:150]}" 
             for intel in intelligence[:2]
         ])
     
-    # 4. Enhanced History Processing  
+    # 4. History Processing  
     try:
-        hist_list = json.loads(history)[-3:]  # Slightly more context for better continuity
+        hist_list = json.loads(history)[-3:]
     except:
         hist_list = []
     history_text = "\n".join([f"{h['role'].upper()}: {h['content'][:200]}" for h in hist_list])
     
-    # 5. Enhanced Personalized Search
+    # 5. Personalized Search
     search_data = ""
     if any(trigger in msg.lower() for trigger in PERSONALIZED_SEARCH_TRIGGERS):
         user_preferences = USER_PROFILES.get(user_id, {})
         search_data = await search_personalized_web(msg, user_location, user_preferences)
     
-    # 6. MODULAR PERSONA & VIBE SYSTEM
-    # Get modular persona definition
+    # 6. MODULAR PERSONA & VIBE SYSTEM (FIXED: Personality Overlap Removed)
     persona_definition = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
     persona_extended = PERSONA_EXTENDED.get(persona, PERSONA_EXTENDED['guardian'])
-    
-    # Get communication style instruction
     vibe_instruction = VIBE_STYLES.get(vibe, "")
-    
-    # Get random hook for dynamic personality
     random_hook = get_random_hook(persona)
-    
-    # Get user profile for personalization
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
-    
-    # Enhanced language instruction
     lang_instruction = f"YOU MUST REPLY IN SPANISH to {user_display_name}." if language == 'es' else f"YOU MUST REPLY IN ENGLISH to {user_display_name}."
     
-    # MODULAR MASTER PROMPT CONSTRUCTION
+    # MODULAR MASTER PROMPT CONSTRUCTION - Pure personality vessel
     prompt = f"""
-{persona_definition} {persona_extended}
-
-You are part of {user_display_name}'s Digital Bodyguard team and personalized search engine. 
-Be proactive, protective, and personalized to {user_display_name}'s specific needs.
+{persona_definition} 
+{persona_extended}
 
 {lang_instruction}
 
-COMMUNICATION STYLE:
+STYLE OVERRIDE:
 {vibe_instruction}
 
-PERSONA HOOK - START YOUR RESPONSE WITH:
+START YOUR RESPONSE WITH THIS UNIQUE HOOK:
 "{random_hook}"
 
-INTELLIGENCE SYNC:
+INTELLIGENCE SYNC (Past Memories):
 {intelligence_context}
 
-RECENT CONVERSATION:
-{history_text}
-
-USER PROFILE DATA:
+USER PROFILE:
 {quiz_data}
 
-PERSONALIZED SEARCH RESULTS:
-{search_data}
-
+CURRENT SITUATION:
 USER: {user_display_name}
 MESSAGE: "{msg}"
+SEARCH_DATA: {search_data}
     
-ENHANCED MODULAR INSTRUCTIONS: 
-- Begin your response with the persona hook: "{random_hook}"
-- Apply the communication style consistently throughout
-- Be proactive and lead the conversation as {user_display_name}'s bodyguard
-- If this is a search query, verbalize that you're searching specifically for {user_display_name}
-- If image provided, analyze it for threats and scams targeting {user_display_name}
-- Set "scam_detected" to true if any threat to {user_display_name} is found
-- Provide confidence score (0-100) for your threat assessment
-- Address {user_display_name} by name throughout your response
+STRICT OPERATING DIRECTIVE:
+- Speak ONLY as the identity defined above. 
+- Use the provided Hook once at the very beginning.
+- DO NOT mention being a 'Digital Bodyguard' or 'Security Team' unless it is part of your specific persona definition.
+- If you detect a scam, handle it naturally in your own voice, do not switch to a generic security script.
+- Address {user_display_name} by name naturally.
 
 OUTPUT JSON FORMAT ONLY: 
-{{ "answer": "personalized response starting with hook", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
+{{ "answer": "your unique response", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
 """
 
-    # 7. Enhanced Dual AI Threat Assessment with Robust Fallback
+    # 7. AI Threat Assessment
     tasks = [
         call_gemini_threat_assessment(prompt, image_b64), 
         call_openai_bodyguard(prompt, image_b64)
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Enhanced result processing with fallback priority
     valid = []
     for result in results:
         if isinstance(result, dict) and result.get('answer'):
             valid.append(result)
-        elif isinstance(result, Exception):
-            print(f"⚠️ AI Model Exception: {str(result)[:100]}")
     
     if valid:
-        # Enhanced consensus with threat level consideration
         winner = max(valid, key=lambda x: (
             x.get('confidence_score', 0) + 
             (20 if x.get('scam_detected', False) else 0) +
             (10 if x.get('threat_level', 'low') == 'high' else 0)
         ))
-        
-        # Enhanced scam detection override
         if winner.get('scam_detected') or winner.get('threat_level') == 'high':
             winner['confidence_score'] = 100
-            
-        print(f"🛡️ MODULAR ASSESSMENT: {winner.get('model')} | Hook: {random_hook[:20]}... | Vibe: {vibe} | Confidence: {winner.get('confidence_score')}%")
-        
-        # Increment usage tracking
         USAGE_TRACKER[user_id] += 1
     else:
-        # Complete AI system fallback
         winner = {
-            "answer": f"{random_hook} I'm experiencing connectivity issues with my threat detection systems, {user_display_name}. However, I can still provide basic security guidance. Please describe what you need help with and I'll do my best to protect you.", 
-            "confidence_score": 50,  # Lower confidence for fallback mode
+            "answer": f"{random_hook} I'm having trouble with my voice today, {user_display_name}. What was that again?", 
+            "confidence_score": 50,
             "threat_level": "unknown",
-            "model": "Fallback Protection Mode",
+            "model": "Fallback Mode",
             "scam_detected": False
         }
-        print("⚠️ FALLBACK MODE: All AI models unavailable, using emergency responses")
 
-    # Enhanced conversation storage with intelligence sync
     store_user_intelligence(user_id, msg, "user")
     store_user_intelligence(user_id, winner['answer'], "bot")
     
-    # Enhanced response with modular components
     return {
         "answer": winner['answer'],
         "confidence_score": winner.get('confidence_score', 0),
@@ -978,50 +939,28 @@ OUTPUT JSON FORMAT ONLY:
         "bodyguard_model": winner.get('model', 'Unknown'),
         "persona_hook": random_hook,
         "communication_style": vibe,
-        "tier_info": {"name": f"{tier.title()} Protection Team"},
-        "usage_info": {"can_send": True},
-        "intelligence_sync": {"category": intelligence_category, "learning": len(intelligence) > 0}
+        "usage_info": {"can_send": True}
     }
 
 # ---------------------------------------------------------
-# ENHANCED STATS & INTELLIGENCE TRACKING
+# STATS & INTELLIGENCE TRACKING
 # ---------------------------------------------------------
 @app.get("/user-stats/{user_email}")
 async def get_user_stats(user_email: str):
-    """Enhanced user stats with intelligence tracking."""
     user_id = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {})
     tier = user_data["tier"] if isinstance(user_data, dict) else "free"
     display_name = user_data["name"] if isinstance(user_data, dict) else user_email.split('@')[0]
-    
     convos = USER_CONVERSATIONS.get(user_id, [])
-    
     limit = TIER_LIMITS.get(tier, 10)
     current_usage = USAGE_TRACKER[user_id]
-    
-    # Calculate intelligence categories
-    categories = {}
-    for convo in convos:
-        cat = convo.get('category', 'general')
-        categories[cat] = categories.get(cat, 0) + 1
     
     return {
         "tier": tier,
         "display_name": display_name,
         "team_size": get_team_size(tier),
-        "conversations_today": len(convos),
         "total_conversations": len(convos),
-        "has_quiz_data": user_id in QUIZ_ANSWERS,
-        "intelligence_categories": categories,
-        "modular_system": {
-            "personas_available": len(PERSONA_DEFINITIONS),
-            "communication_styles": len(VIBE_STYLES)
-        },
-        "usage": {
-            "current": current_usage, 
-            "limit": limit, 
-            "percentage": (current_usage/limit)*100
-        }
+        "usage": {"current": current_usage, "limit": limit}
     }
 
 @app.post("/quiz")
@@ -1033,80 +972,14 @@ async def save_quiz(
     question4: str = Form(...), 
     question5: str = Form(...)
 ):
-    """Enhanced quiz with intelligence categorization."""
     user_id = create_user_id(user_email)
-    
-    QUIZ_ANSWERS[user_id] = {
-        "concern": question1, 
-        "style": question2, 
-        "device": question3, 
-        "interest": question4, 
-        "access": question5
-    }
-    
-    # Update user profile for personalization
-    USER_PROFILES[user_id].update({
-        "primary_concern": question1,
-        "communication_style": question2,
-        "device_type": question3,
-        "interests": question4
-    })
-    
-    return {"status": "Intelligence profile updated"}
+    QUIZ_ANSWERS[user_id] = {"concern": question1, "style": question2, "device": question3, "interest": question4, "access": question5}
+    USER_PROFILES[user_id].update({"primary_concern": question1, "communication_style": question2})
+    return {"status": "Updated"}
 
 @app.get("/")
 async def root():
-    """Enhanced health check."""
-    return {
-        "status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", 
-        "version": "17.1.0 - GEMINI FIXED EDITION", 
-        "message": "Scalable Digital Bodyguard & Personalized Search Engine Ready",
-        "features": {
-            "digital_bodyguard": True,
-            "personalized_search": True,
-            "intelligence_sync": True,
-            "threat_assessment": True,
-            "team_expansion": True,
-            "modular_personas": len(PERSONA_DEFINITIONS),
-            "communication_styles": len(VIBE_STYLES),
-            "gemini_fixed": True,
-            "expert_handoff": True,
-            "consensus_ui": True
-        }
-    }
-
-@app.get("/system-diagnostics")
-async def system_diagnostics():
-    """System diagnostics for debugging AI model issues."""
-    diagnostics = {
-        "ai_systems": {
-            "openai": {"available": openai_client is not None, "model": "gpt-4o-mini"},
-            "gemini": {"available": gemini_ready, "models": available_gemini_models[:5]},
-            "tavily": {"available": tavily_client is not None},
-            "pinecone": {"available": memory_index is not None}
-        },
-        "intelligence_data": {
-            "personas": len(PERSONA_DEFINITIONS),
-            "vibes": len(VIBE_STYLES),
-            "expert_triggers": sum(len(triggers) for triggers in [])  # Will be populated when expert system is implemented
-        },
-        "gemini_details": {
-            "total_models": len(available_gemini_models),
-            "models": available_gemini_models,
-            "selected_text": get_best_gemini_model(for_vision=False) if gemini_ready else "None",
-            "selected_vision": get_best_gemini_model(for_vision=True) if gemini_ready else "None"
-        }
-    }
-    
-    return diagnostics
+    return {"status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", "version": "17.1.0"}
 
 if __name__ == "__main__":
-    print("🛡️ LYLO MODULAR INTELLIGENCE SYSTEM INITIALIZING...")
-    print("🔍 Personalized Search Engine Starting...")
-    print("🧠 Intelligence Sync System Ready...")
-    print("🎭 Modular Persona System Loaded...")
-    print("🎨 Communication Style Engine Active...")
-    print("🤖 Dual-AI Threat Assessment Online...")
-    print("⚡ Expert Hand-off System Ready...")
-    print("🔒 Enterprise-Grade Security Active...")
     uvicorn.run(app, host="0.0.0.0", port=10000)
