@@ -27,7 +27,8 @@ import {
  Crown,
  ArrowRight,
  PlayCircle,
- StopCircle
+ StopCircle,
+ Briefcase
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -57,16 +58,7 @@ interface ChatInterfaceProps {
  onUsageUpdate?: () => void;
 }
 
-interface RecoveryGuideData {
- title: string;
- subtitle: string;
- immediate_actions: string[];
- recovery_steps: { step: number; title: string; actions: string[] }[];
- phone_scripts: { bank_script: string; police_script: string };
- prevention_tips: string[];
-}
-
-// --- DATA: THE 11-SEAT BOARD OF DIRECTORS ---
+// --- DATA: THE 12-SEAT BOARD OF DIRECTORS ---
 const PERSONAS: PersonaConfig[] = [
  { 
    id: 'guardian', 
@@ -119,6 +111,19 @@ const PERSONAS: PersonaConfig[] = [
    requiredTier: 'elite', 
    icon: CreditCard, 
    capabilities: ['Budget building', 'Debt destruction', 'Investment education'] 
+ },
+ { 
+   id: 'career', 
+   name: 'The Career Strategist', 
+   serviceLabel: 'CAREER COACH', 
+   description: 'Professional Growth', 
+   protectiveJob: 'Career Lead', 
+   spokenHook: 'Let’s level up your career. Resume check, salary negotiation, or office politics—I’m here to help you win. What’s the move?', 
+   briefing: 'I provide resume optimization, interview prep, and career advancement strategy.', 
+   color: 'indigo', 
+   requiredTier: 'pro', 
+   icon: Briefcase, 
+   capabilities: ['Resume review', 'Salary negotiation', 'Interview prep'] 
  },
  { 
    id: 'therapist', 
@@ -213,7 +218,7 @@ const PERSONAS: PersonaConfig[] = [
  }
 ];
 
-// === EXPERT HAND-OFF SYSTEM (UPDATED) ===
+// === EXPERT HAND-OFF SYSTEM ===
 const EXPERT_TRIGGERS = {
  'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch'],
  'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket'],
@@ -224,7 +229,8 @@ const EXPERT_TRIGGERS = {
  'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach'],
  'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith'],
  'hype': ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content'],
- 'bestie': ['lonely', 'friend', 'secret', 'vent', 'annoyed', 'drama', 'date', 'relationship']
+ 'bestie': ['lonely', 'friend', 'secret', 'vent', 'annoyed', 'drama', 'date', 'relationship'],
+ 'career': ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired']
 };
 
 const CONFIDENCE_THRESHOLDS = {
@@ -238,7 +244,47 @@ const CONFIDENCE_THRESHOLDS = {
  'pastor': 85,
  'vitality': 85,
  'hype': 75,
- 'bestie': 70
+ 'bestie': 70,
+ 'career': 85
+};
+
+// --- CURATED VOICE CAST (PERMANENT ASSIGNMENT) ---
+const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch: number } } = {
+  // GUARDIAN: Deep, Authoritative (American)
+  'guardian': { voice: 'onyx', rate: 0.9, pitch: 0.8 }, 
+  
+  // LAWYER: Sophisticated, Sharp (Transatlantic/British Vibe)
+  'lawyer': { voice: 'fable', rate: 0.9, pitch: 0.9 }, 
+  
+  // DOCTOR: Professional, Clinical (Neutral Female)
+  'doctor': { voice: 'nova', rate: 0.95, pitch: 1.0 }, 
+  
+  // WEALTH: Serious, Firm (American Male)
+  'wealth': { voice: 'onyx', rate: 0.9, pitch: 0.9 }, 
+  
+  // CAREER: Bright, Articulate (American Female)
+  'career': { voice: 'shimmer', rate: 1.0, pitch: 1.0 }, 
+  
+  // THERAPIST: Comforting, Soft (Neutral)
+  'therapist': { voice: 'alloy', rate: 0.9, pitch: 1.0 }, 
+  
+  // MECHANIC: Gruff, Deep (American Male)
+  'mechanic': { voice: 'echo', rate: 0.95, pitch: 0.8 }, 
+  
+  // TUTOR: Intellectual, Clear (British/Academic Vibe)
+  'tutor': { voice: 'fable', rate: 0.95, pitch: 1.0 }, 
+  
+  // PASTOR: Soothing, Deep (Male)
+  'pastor': { voice: 'onyx', rate: 0.85, pitch: 0.9 },
+  
+  // VITALITY: High Energy, Motivating (Female)
+  'vitality': { voice: 'nova', rate: 1.1, pitch: 1.0 }, 
+  
+  // HYPE: Fast, Exciting (Female)
+  'hype': { voice: 'shimmer', rate: 1.15, pitch: 1.1 },
+  
+  // BESTIE: Friendly, Casual (Neutral)
+  'bestie': { voice: 'alloy', rate: 1.05, pitch: 1.1 }
 };
 
 const VIBE_SAMPLES = {
@@ -344,7 +390,6 @@ function ChatInterface({
  const isRecordingRef = useRef(false);
  const [autoTTS, setAutoTTS] = useState(true);
  const [isSpeaking, setIsSpeaking] = useState(false);
- const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
  const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
  const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
  
@@ -396,9 +441,6 @@ function ChatInterface({
    await loadUserStats();
    await checkEliteStatus();
    
-   const savedVoiceGender = localStorage.getItem('lylo_voice_gender');
-   if (savedVoiceGender === 'female') setVoiceGender('female');
-   
    const savedCommunicationStyle = localStorage.getItem('lylo_communication_style');
    if (savedCommunicationStyle) {
     const validStyles = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype'];
@@ -439,17 +481,6 @@ function ChatInterface({
   init();
   return () => { window.speechSynthesis.cancel(); };
  }, [userEmail]);
-
- const toggleVoiceGender = () => {
-  const newGender = voiceGender === 'male' ? 'female' : 'male';
-  setVoiceGender(newGender);
-  localStorage.setItem('lylo_voice_gender', newGender);
-  const testMessage = `Voice changed to ${newGender} mode.`;
-  speakText(testMessage);
-  const newSync = Math.min(intelligenceSync + 3, 100);
-  setIntelligenceSync(newSync);
-  localStorage.setItem('lylo_intelligence_sync', newSync.toString());
- };
 
  const checkEliteStatus = async () => {
   try {
@@ -494,10 +525,13 @@ function ChatInterface({
    setTimeout(() => setShowReplayButton(null), 5000);
   }
 
+  // Use Permanent Voice Map
+  const assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+
   try {
    const formData = new FormData();
    formData.append('text', text);
-   formData.append('voice', voiceSettings?.voice || (voiceGender === 'male' ? 'onyx' : 'nova'));
+   formData.append('voice', assignedVoice.voice);
    const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
    const data = await response.json();
    if (data.audio_b64) {
@@ -513,7 +547,7 @@ function ChatInterface({
 
   // Fallback
   const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
-  speakChunksSequentially(chunks, 0, voiceSettings);
+  speakChunksSequentially(chunks, 0, assignedVoice);
  };
 
  const speakChunksSequentially = (chunks: string[], index: number, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
@@ -613,7 +647,7 @@ function ChatInterface({
   }
  };
 
- // --- NEW: SILENT SELECTION HANDLER ---
+ // --- SILENT SELECTION HANDLER ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) {
    speakText('Upgrade required.');
@@ -632,9 +666,6 @@ function ChatInterface({
    onPersonaChange(persona);
    localStorage.setItem('lylo_preferred_persona', persona.id);
    
-   // Removed the auto-speakText call here!
-   // This makes the selection silent.
-
    setShowKnowMore(persona.id);
    setTimeout(() => setShowKnowMore(null), 5000);
    setSelectedPersonaId(null);
@@ -652,11 +683,10 @@ function ChatInterface({
   }, 300);
  };
 
- // --- NEW: PREVIEW AUDIO HANDLER ---
+ // --- PREVIEW AUDIO HANDLER ---
  const handlePreviewAudio = (e: React.MouseEvent, persona: PersonaConfig) => {
   e.stopPropagation(); // CRITICAL: PREVENTS SELECTION
   
-  // If clicking the same one, stop it
   if (previewPlayingId === persona.id) {
     quickStopAllAudio();
     return;
@@ -665,22 +695,7 @@ function ChatInterface({
   quickStopAllAudio(); // Stop others
   setPreviewPlayingId(persona.id);
 
-  // Persona voice map (duplicated here for preview context)
-  const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
-    'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
-    'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
-    'doctor': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 0.95, pitch: 0.9 },
-    'wealth': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 0.9, pitch: 0.8 },
-    'therapist': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.85, pitch: 0.9 },
-    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
-    'tutor': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.0, pitch: 1.1 },
-    'pastor': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.8, pitch: 0.9 },
-    'vitality': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 1.1, pitch: 1.0 },
-    'hype': { voice: voiceGender === 'male' ? 'fable' : 'shimmer', rate: 1.2, pitch: 1.2 },
-    'bestie': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.05, pitch: 1.1 }
-  };
-   
-  const voiceSettings = personaVoiceMap[persona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
+  const voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
   const hook = persona.spokenHook.replace('{userName}', userName || 'user');
   
   speakText(hook, undefined, voiceSettings);
@@ -715,21 +730,8 @@ function ChatInterface({
     setSuggestedExperts(prev => ({ ...prev, [botMsg.id]: suggestedExpert }));
    }
    
-   const personaVoiceMap: { [key: string]: { voice: string; rate: number; pitch: number } } = {
-    'guardian': { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 0.8 },
-    'lawyer': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.85, pitch: 0.7 },
-    'doctor': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 0.95, pitch: 0.9 },
-    'wealth': { voice: voiceGender === 'male' ? 'echo' : 'shimmer', rate: 0.9, pitch: 0.8 },
-    'therapist': { voice: voiceGender === 'male' ? 'onyx' : 'alloy', rate: 0.85, pitch: 0.9 },
-    'mechanic': { voice: voiceGender === 'male' ? 'fable' : 'nova', rate: 0.95, pitch: 0.8 },
-    'tutor': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.0, pitch: 1.1 },
-    'pastor': { voice: voiceGender === 'male' ? 'onyx' : 'shimmer', rate: 0.8, pitch: 0.9 },
-    'vitality': { voice: voiceGender === 'male' ? 'alloy' : 'nova', rate: 1.1, pitch: 1.0 },
-    'hype': { voice: voiceGender === 'male' ? 'fable' : 'shimmer', rate: 1.2, pitch: 1.2 },
-    'bestie': { voice: voiceGender === 'male' ? 'echo' : 'alloy', rate: 1.05, pitch: 1.1 }
-   };
-   
-   const voiceSettings = personaVoiceMap[activePersona.id] || { voice: voiceGender === 'male' ? 'onyx' : 'nova', rate: 0.9, pitch: 1.0 };
+   // Use Curated Voice Logic
+   const voiceSettings = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
    speakText(response.answer, botMsg.id, voiceSettings);
    
    if (text.length > 10) {
@@ -1088,31 +1090,25 @@ function ChatInterface({
               </p>
               </div>
             </div>
-            
-            {/* Tier Badge */}
-            {persona.requiredTier !== 'free' && (
-              <div className={`absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-              persona.requiredTier === 'max' ? 'bg-yellow-500 text-black' :
-              persona.requiredTier === 'elite' ? 'bg-purple-500 text-white' :
-              'bg-blue-500 text-white'
-              }`}>
-              {persona.requiredTier === 'elite' ? 'ELI' : persona.requiredTier.slice(0,3).toUpperCase()}
-              </div>
-            )}
             </button>
 
             {/* 2. THE AUDIO PREVIEW BUTTON (INDEPENDENT) */}
-            <button 
-              onClick={(e) => handlePreviewAudio(e, persona)}
-              className={`
-                absolute top-2 right-2 p-1.5 rounded-full z-20 transition-all border
-                ${isPreviewPlaying 
-                  ? 'bg-green-500 text-white border-green-400 animate-pulse' 
-                  : 'bg-black/60 text-gray-400 border-white/20 hover:bg-white hover:text-black'}
-              `}
-            >
-              {isPreviewPlaying ? <VolumeX size={12} /> : <Volume2 size={12} />}
-            </button>
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20">
+             <span className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter opacity-70">
+               VOICE PREVIEW
+             </span>
+             <button 
+               onClick={(e) => handlePreviewAudio(e, persona)}
+               className={`
+                 p-1.5 rounded-full transition-all border
+                 ${isPreviewPlaying 
+                   ? 'bg-green-500 text-white border-green-400 animate-pulse' 
+                   : 'bg-black/60 text-gray-400 border-white/20 hover:bg-white hover:text-black'}
+               `}
+             >
+               {isPreviewPlaying ? <VolumeX size={12} /> : <Volume2 size={12} />}
+             </button>
+            </div>
           </div>
          );
         })}
@@ -1268,15 +1264,6 @@ function ChatInterface({
        `}
       >
        {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
-      </button>
-      
-      {/* VOICE GENDER TOGGLE */}
-      <button 
-       onClick={toggleVoiceGender}
-       className="p-3 rounded-xl bg-purple-500/20 border border-purple-400/30 text-purple-300 flex flex-col items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
-      >
-       <span className="text-xs font-black uppercase">{voiceGender === 'male' ? '♂' : '♀'}</span>
-       <span className="text-[8px] font-bold">{voiceGender.toUpperCase()}</span>
       </button>
       
       {/* VOICE TOGGLE */}
