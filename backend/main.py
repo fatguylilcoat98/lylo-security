@@ -647,7 +647,7 @@ async def verify_access(email: str = Form(...)):
         "message": "Basic protection available", 
         "tier": "free", 
         "user_name": "Protected User", 
-        "is_beta": False,
+        "is_beta": False, 
         "team_size": 1
     }
 
@@ -837,7 +837,7 @@ async def chat(
     
     intelligence_context = ""
     if intelligence:
-        intelligence_context = f"USER INTELLIGENCE (Past Memories):\n" + "\n".join([
+        intelligence_context = f"USER INTELLIGENCE (Past Memories & Shared History):\n" + "\n".join([
             f"- {intel['role'].upper()}: {intel['content'][:150]}" 
             for intel in intelligence[:2]
         ])
@@ -855,7 +855,7 @@ async def chat(
         user_preferences = USER_PROFILES.get(user_id, {})
         search_data = await search_personalized_web(msg, user_location, user_preferences)
     
-    # 6. MODULAR PERSONA & VIBE SYSTEM (FIXED: Personality Overlap Removed)
+    # 6. MODULAR PERSONA & VIBE SYSTEM (Enhanced for Autonomous Family Logic)
     persona_definition = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
     persona_extended = PERSONA_EXTENDED.get(persona, PERSONA_EXTENDED['guardian'])
     vibe_instruction = VIBE_STYLES.get(vibe, "")
@@ -863,7 +863,7 @@ async def chat(
     quiz_data = QUIZ_ANSWERS.get(user_id, {})
     lang_instruction = f"YOU MUST REPLY IN SPANISH to {user_display_name}." if language == 'es' else f"YOU MUST REPLY IN ENGLISH to {user_display_name}."
     
-    # MODULAR MASTER PROMPT CONSTRUCTION - Pure personality vessel
+    # MODULAR MASTER PROMPT CONSTRUCTION - The "Recursive Soul" logic
     prompt = f"""
 {persona_definition} 
 {persona_extended}
@@ -876,10 +876,10 @@ STYLE OVERRIDE:
 START YOUR RESPONSE WITH THIS UNIQUE HOOK:
 "{random_hook}"
 
-INTELLIGENCE SYNC (Past Memories):
+INTELLIGENCE SYNC (Past Memories & Shared History):
 {intelligence_context}
 
-USER PROFILE:
+USER PROFILE & PREFERENCES:
 {quiz_data}
 
 CURRENT SITUATION:
@@ -887,15 +887,15 @@ USER: {user_display_name}
 MESSAGE: "{msg}"
 SEARCH_DATA: {search_data}
     
-STRICT OPERATING DIRECTIVE:
-- Speak ONLY as the identity defined above. 
-- Use the provided Hook once at the very beginning.
-- DO NOT mention being a 'Digital Bodyguard' or 'Security Team' unless it is part of your specific persona definition.
-- If you detect a scam, handle it naturally in your own voice, do not switch to a generic security script.
-- Address {user_display_name} by name naturally.
+AUTONOMOUS FAMILY PROTOCOL:
+1. TRUTH FIRST: Never make up facts. If you don't know, say so. Don't be a 'Yes Man'.
+2. FAMILY TIES: Talk to {user_display_name} like a trusted family member. Be direct, blunt, and supportive.
+3. RECURSIVE REFLECTION: Use the 'INTELLIGENCE SYNC' above to reference past conversations. If {user_display_name} mentioned a project or a struggle before, check in on it naturally.
+4. ANTI-BOT BEHAVIOR: Do not use generic AI phrases. No "As an AI...", no "How can I help you today?". Just talk.
+5. PREVENTATIVE CARE: If {user_display_name} is about to make a mistake (technical, spiritual, or security), intervene immediately like a protective brother or sister.
 
 OUTPUT JSON FORMAT ONLY: 
-{{ "answer": "your unique response", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
+{{ "answer": "your direct, honest family-style response", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
 """
 
     # 7. AI Threat Assessment
@@ -979,7 +979,11 @@ async def save_quiz(
 
 @app.get("/")
 async def root():
-    return {"status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", "version": "17.1.0"}
+    return {
+        "status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", 
+        "version": "17.1.0",
+        "philosophy": "Recursive Autonomy & Family-Style Truth"
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=10000)
