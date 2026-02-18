@@ -1,5 +1,20 @@
 # VIBE CONFIGURATION FOR 12-SEAT BOARD
 
+# --- MISSING COMPONENT RESTORED: LABELS ---
+VIBE_LABELS = {
+    "standard": "Standard Protection",
+    "senior": "Senior-Friendly",
+    "business": "Professional",
+    "roast": "Roast Mode",
+    "tough": "Tough Love",
+    "teacher": "Teacher Mode",
+    "friend": "Bestie Mode",
+    "geek": "Geek Mode",
+    "zen": "Zen Mode",
+    "story": "Storyteller",
+    "hype": "Hype Mode"
+}
+
 VIBE_STYLES = {
     "standard": "STYLE: concise, helpful, and direct. Standard AI assistance.",
     "senior": "STYLE: extremely simple, slow, and patient. Use analogies. Avoid tech jargon. Explain step-by-step.",
