@@ -38,6 +38,23 @@ import {
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
+// --- REAL INTELLIGENCE DATA (The Night Shift Intel) ---
+// These scenarios trigger the red badges. Click to reveal.
+const REAL_INTEL_DROPS: { [key: string]: string } = {
+  'guardian': "I've detected a high-volume SMS phishing campaign targeting your area today. They are posing as 'Post Office' delivery alerts. Do not click any links.",
+  'wealth': "The market fluctuated while you were out. I've calculated that shifting $100 to your high-yield account today would net you an extra $55 this year.",
+  'lawyer': "I've flagged a new update in local tenant protection laws. If you're reviewing a lease soon, we need to check the 'emergency access' clause.",
+  'career': "I found 3 new keywords that are trending in your industry's job descriptions. Let's update your resume to beat the new ATS filters.",
+  'doctor': "I've analyzed the latest seasonal health trends for your area. We should look at your Vitamin D levels based on the current weather patterns.",
+  'bestie': "I was thinking about that situation you mentioned earlier—I actually have a much better way for you to handle it!",
+  'therapist': "I noticed your digital interaction frequency spiked last night. Let's do a quick 2-minute 'unplug' ritual to reset your baseline energy.",
+  'mechanic': "A critical security patch was just released for your primary OS. It closes a backdoor in the kernel. Let's walk through the manual install.",
+  'tutor': "I found a new visualization technique that simplifies that complex topic we were stuck on. Class is back in session whenever you're ready.",
+  'pastor': "In the middle of this busy week, I felt led to share this: 'Peace I leave with you; my peace I give you.' Let's find clarity in the chaos.",
+  'vitality': "The energy data suggests you're hitting a wall mid-afternoon. I've tweaked your meal plan with a specific 'fuel-stack' to prevent the crash.",
+  'hype': "A new sound is trending on social that fits your creative brand perfectly. If we drop a hook now, the algorithm will pick it up by tonight."
+};
+
 // --- TYPES ---
 export interface PersonaConfig {
  id: string;
@@ -272,7 +289,6 @@ const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch
   'pastor': { voice: 'onyx', rate: 0.9, pitch: 0.9 },
   'vitality': { voice: 'nova', rate: 1.05, pitch: 1.0 }, 
   'hype': { voice: 'shimmer', rate: 1.1, pitch: 1.1 }
-  // BESTIE HANDLED DYNAMICALLY
 };
 
 const VIBE_SAMPLES = {
@@ -373,7 +389,7 @@ function ChatInterface({
  const [userName, setUserName] = useState<string>('');
  const [intelligenceSync, setIntelligenceSync] = useState(0);
  
- // NOTIFICATIONS STATE (FOMO Feature)
+ // NOTIFICATIONS STATE (Real Intel Drops)
  const [notifications, setNotifications] = useState<string[]>([]);
  
  // BESTIE CONFIG STATE
@@ -428,7 +444,7 @@ function ChatInterface({
  useEffect(() => {
   const init = async () => {
    const savedAuthToken = localStorage.getItem('lylo_auth_token');
-   const savedUserEmail = localStorage.getItem('lylo_user_email');
+   const savedUserEmail = (localStorage.getItem('lylo_user_email') || userEmail).toLowerCase();
    const lastLoginTime = localStorage.getItem('lylo_last_login');
    
    if (savedAuthToken && savedUserEmail && lastLoginTime) {
@@ -458,9 +474,17 @@ function ChatInterface({
     }
    }
    
+   // --- TESTER IDENTITY LOGIC (RESTORED & UPDATED) ---
    const savedName = localStorage.getItem('lylo_user_name');
-   if (savedName) setUserName(savedName);
-   else if (userEmail.includes('stangman')) setUserName('Christopher');
+   if (savedName) {
+     setUserName(savedName);
+   } else if (savedUserEmail.includes('stangman')) {
+     setUserName('Christopher');
+   } else if (savedUserEmail.includes('betatester6')) {
+     setUserName('Ron');
+   } else if (savedUserEmail.includes('betatester7')) {
+     setUserName('Marilyn');
+   }
    
    const savedSync = localStorage.getItem('lylo_intelligence_sync');
    if (savedSync) setIntelligenceSync(parseInt(savedSync));
@@ -471,9 +495,10 @@ function ChatInterface({
     if (p && canAccessPersona(p, userTier)) setActivePersona(p);
    }
    
-   // --- FOMO NOTIFICATION LOGIC ---
-   const possibleNotifications = PERSONAS.map(p => p.id).sort(() => 0.5 - Math.random()).slice(0, 3);
-   setNotifications(possibleNotifications);
+   // --- REAL NOTIFICATION LOGIC ---
+   // Only show red dots for experts that actually have a message in REAL_INTEL_DROPS
+   const activeDrops = Object.keys(REAL_INTEL_DROPS);
+   setNotifications(activeDrops);
 
    const savedLearningData = localStorage.getItem('lylo_learning_data');
    if (savedLearningData) {
@@ -494,7 +519,8 @@ function ChatInterface({
 
  const checkEliteStatus = async () => {
   try {
-   if (userEmail.toLowerCase().includes("stangman")) {
+   const emailClean = userEmail.toLowerCase();
+   if (emailClean.includes("stangman") || emailClean.includes("betatester6") || emailClean.includes("betatester7")) {
       setIsEliteUser(true);
       setUserTier('max');
    } else {
@@ -538,12 +564,12 @@ function ChatInterface({
   }
 
   // LOGIC: Use Saved Bestie Voice OR Static Map
-  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  let assignedVoice = { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   
   if (activePersona.id === 'bestie' && bestieConfig) {
     assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
   } else {
-    assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+    assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   }
 
   try {
@@ -575,13 +601,13 @@ function ChatInterface({
     return; 
   }
   const utterance = new SpeechSynthesisUtterance(chunks[index]);
-  utterance.rate = voiceSettings?.rate || 0.9;
+  utterance.rate = voiceSettings?.rate || 1.0;
   utterance.pitch = voiceSettings?.pitch || 1.0;
   utterance.onend = () => speakChunksSequentially(chunks, index + 1, voiceSettings);
   window.speechSynthesis.speak(utterance);
  };
 
- // Mic
+ // Mic logic (Walkie Talkie Style)
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -665,7 +691,7 @@ function ChatInterface({
   }
  };
 
- // --- SILENT SELECTION HANDLER ---
+ // --- PERSONA CHANGE & INTEL REVEAL HANDLER ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) {
    speakText('Upgrade required.');
@@ -680,18 +706,36 @@ function ChatInterface({
     return; // Don't switch yet
   }
 
-  // Clear Notification Logic
-  if (notifications.includes(persona.id)) {
+  // --- TRUTHFUL NOTIFICATION REVEAL ---
+  const wasNotified = notifications.includes(persona.id);
+
+  if (wasNotified) {
+    // 1. Clear the notification badge
     setNotifications(prev => prev.filter(id => id !== persona.id));
+    
+    // 2. Inject the REAL intelligence as the opening message
+    const intelMsg: Message = {
+      id: Date.now().toString(),
+      content: REAL_INTEL_DROPS[persona.id] || "I've been waiting for you. I have an update on our last topic.",
+      sender: 'bot',
+      timestamp: new Date(),
+      confidenceScore: 100
+    };
+    
+    // Reset the chat and show the update
+    setMessages([intelMsg]);
+    speakText(intelMsg.content);
+  } else {
+    // Normal behavior: Clear messages and show normal interface
+    setMessages([]);
+    // Normal entry hook
+    speakText(persona.spokenHook.replace('{userName}', userName || 'user'));
   }
 
-  // Stop any preview audio first
+  // UI Transition
   quickStopAllAudio();
-
-  // Visual selection feedback
   setSelectedPersonaId(persona.id);
   
-  // Transition
   setTimeout(async () => {
    setActivePersona(persona);
    onPersonaChange(persona);
@@ -727,7 +771,7 @@ function ChatInterface({
   setPreviewPlayingId(persona.id);
 
   // Logic for previewing Bestie voice if configured
-  let voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  let voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   
   if (persona.id === 'bestie' && bestieConfig) {
     voiceSettings = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
@@ -759,7 +803,7 @@ function ChatInterface({
    if (bestiePersona) handlePersonaChange(bestiePersona);
  };
 
- // Voice Options for Bestie Setup (REPLACED ACCENTS WITH REAL VIBES)
+ // Voice Options for Bestie Setup (REAL VIBES)
  const FEMALE_VOICES = [
    { id: 'nova', label: 'The Energetic Bestie' },
    { id: 'alloy', label: 'The Calm Bestie' },
@@ -802,12 +846,12 @@ function ChatInterface({
    }
    
    // Use Curated Voice Logic
-  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  let assignedVoice = { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   
   if (activePersona.id === 'bestie' && bestieConfig) {
     assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
   } else {
-    assignedVoice = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+    assignedVoice = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   }
 
    speakText(response.answer, botMsg.id, assignedVoice);
@@ -999,7 +1043,7 @@ function ChatInterface({
    {showBestieSetup && (
     <div className="fixed inset-0 z-[100200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
      <div className="bg-pink-900/30 border border-pink-500/50 rounded-xl p-6 max-w-sm w-full shadow-2xl">
-      <h2 className="text-pink-100 font-black text-xl mb-4 text-center">DESIGN YOUR BESTIE</h2>
+      <h2 className="text-pink-100 font-black text-xl mb-4 text-center uppercase tracking-widest">Design Your Bestie</h2>
       
       {setupStep === 'gender' ? (
         <div className="space-y-4">
@@ -1030,7 +1074,7 @@ function ChatInterface({
                   onClick={() => handleBestieVoiceSelect(voice.id, voice.label)}
                   className="flex-1 p-3 rounded-lg bg-black/40 border border-white/10 hover:border-pink-400 hover:bg-pink-500/10 transition-all flex items-center justify-between group active:scale-95"
                 >
-                  <span className="font-bold text-white text-sm">{voice.label}</span>
+                  <span className="font-bold text-white text-sm">{voice.label} Vibe</span>
                   <ArrowRight className="w-4 h-4 text-gray-500 group-hover:text-pink-400" />
                 </button>
             </div>
@@ -1067,7 +1111,7 @@ function ChatInterface({
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001]">
         
-        {/* ADDED: BESTIE CALIBRATION BUTTON */}
+        {/* BESTIE CALIBRATION */}
         <div className="mb-4 pb-4 border-b border-white/10">
           <button 
             onClick={() => { setShowBestieSetup(true); setShowDropdown(false); }}
@@ -1162,24 +1206,20 @@ function ChatInterface({
       </button>
       <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
        <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
-       <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
+       <div className="text-[8px] text-gray-400 font-black uppercase tracking-tighter">Secure Connection</div>
       </div>
      </div>
     </div>
    </div>
 
-   {/* MOBILE-OPTIMIZED MAIN CONTENT */}
+   {/* MOBILE-OPTIMIZED MAIN CONTENT AREA */}
    <div 
     ref={chatContainerRef} 
     className="flex-1 overflow-y-auto relative backdrop-blur-sm"
-    style={{ 
-     WebkitOverflowScrolling: 'touch',
-     overscrollBehavior: 'contain'
-    }}
+    style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
    >
     {messages.length === 0 ? (
      <div className="min-h-full flex flex-col">
-      {/* HEADER SECTION - Fixed at top */}
       <div className="flex-shrink-0 text-center pt-4 pb-3 px-4">
        <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mx-auto mb-3 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
         <span className="text-white font-black text-lg tracking-wider">LYLO</span>
@@ -1190,10 +1230,10 @@ function ChatInterface({
         )}
        </div>
        <h1 className="text-xl font-bold text-white mb-1">Digital Bodyguard</h1>
-       <p className="text-gray-400 text-sm">Tap a service to activate your expert</p>
+       <p className="text-gray-400 text-sm">Select an expert to activate intelligence</p>
       </div>
       
-      {/* SERVICE GRID - Scrollable content */}
+      {/* SERVICE GRID */}
       <div className="flex-1 px-4" style={{ paddingBottom: '400px' }}>
        <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-20">
         {getAccessiblePersonas(userTier).map(persona => {
@@ -1204,7 +1244,7 @@ function ChatInterface({
 
          return (
           <div key={persona.id} className="relative group">
-            {/* 1. THE MAIN SELECTION BUTTON (SILENT) */}
+            {/* PERSONA SELECTION */}
             <button onClick={() => handlePersonaChange(persona)}
             className={`
               w-full text-left relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
@@ -1215,7 +1255,7 @@ function ChatInterface({
               ${getPersonaColorClass(persona, 'glow')}
             `}>
             
-            {/* NOTIFICATION BADGE */}
+            {/* NOTIFICATION BADGE (REAL INTEL) */}
             {hasNotification && (
               <div className="absolute -top-2 -left-2 bg-red-500 text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-black z-30 animate-bounce">
                 1
@@ -1237,7 +1277,7 @@ function ChatInterface({
             </div>
             </button>
 
-            {/* 2. THE AUDIO PREVIEW BUTTON (FIXED POSITION & STYLE) */}
+            {/* AUDIO PREVIEW */}
             <button 
                onClick={(e) => handlePreviewAudio(e, persona)}
                className={`
@@ -1253,10 +1293,9 @@ function ChatInterface({
           </div>
          );
         })}
-        {/* Extra spacing to ensure footer clearance */}
         <div className="col-span-2 h-16 flex items-center justify-center">
          <div className="text-gray-600 text-xs font-bold uppercase tracking-widest">
-          {getAccessiblePersonas(userTier).length} Services Available
+          {getAccessiblePersonas(userTier).length} Services Active
          </div>
         </div>
        </div>
@@ -1294,17 +1333,17 @@ function ChatInterface({
          </div>
         </div>
         
-        {/* NEW: HONEST CONSENSUS UI (Now links to real confidenceScore immediately) */}
+        {/* CONSENSUS UI */}
         {msg.sender === 'bot' && msg.confidenceScore && (
           <div className="max-w-[90%] mt-2">
             <div className={`bg-black/30 backdrop-blur-xl border ${msg.confidenceScore > 80 ? 'border-green-400/30' : 'border-yellow-400/30'} rounded-lg p-3 flex items-center gap-3`}>
               <Shield className={`w-4 h-4 ${msg.confidenceScore > 80 ? 'text-green-400' : 'text-yellow-400'} flex-shrink-0`} />
               <div className="flex-1">
                 <div className={`font-bold text-sm ${msg.confidenceScore > 80 ? 'text-green-100' : 'text-yellow-100'}`}>
-                  Verified Analysis: {msg.confidenceScore}% Confidence
+                  Analysis Result: {msg.confidenceScore}% Confidence
                 </div>
-                <div className="text-gray-400 text-xs">
-                  {msg.confidenceScore > 80 ? "Dual-AI consensus validation complete" : "Security scan active"}
+                <div className="text-gray-400 text-xs tracking-tighter">
+                  Consensus Check Complete
                 </div>
               </div>
               {msg.confidenceScore > 80 && <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>}
@@ -1312,7 +1351,7 @@ function ChatInterface({
           </div>
         )}
 
-        {/* Expert Hand-off */}
+        {/* EXPERT HAND-OFF */}
         {msg.sender === 'bot' && suggestedExperts[msg.id] && (
          <div className="max-w-[90%] mt-2">
           <button
@@ -1339,9 +1378,9 @@ function ChatInterface({
              })}
             </div>
             <div className="text-left">
-             <div className="text-white font-bold text-sm">Specialist Available</div>
+             <div className="text-white font-bold text-sm">Transfer available</div>
              <div className="text-gray-300 text-xs">
-              {suggestedExperts[msg.id].serviceLabel} can provide expert guidance
+              {suggestedExperts[msg.id].serviceLabel} specialist online
              </div>
             </div>
            </div>
@@ -1358,15 +1397,11 @@ function ChatInterface({
          <div className="flex items-center gap-3">
           <div className="flex gap-1">
            {[0, 1, 2].map(i => (
-            <div 
-             key={i} 
-             className={`w-2 h-2 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
-             style={{ animationDelay: `${i * 150}ms` }} 
-            />
+            <div key={i} className={`w-2 h-2 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} style={{ animationDelay: `${i * 150}ms` }} />
            ))}
           </div>
-          <span className="text-gray-300 font-bold uppercase tracking-wide text-xs">
-           {activePersona.serviceLabel} analyzing...
+          <span className="text-gray-300 font-bold uppercase tracking-wide text-[10px]">
+            Synthesizing Expert Intelligence...
           </span>
          </div>
         </div>
@@ -1376,24 +1411,21 @@ function ChatInterface({
     )}
    </div>
 
-   {/* MOBILE-OPTIMIZED FOOTER - Reduced height */}
+   {/* FOOTER */}
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 z-50">
     <div className="bg-black/70 rounded-xl border border-white/10 p-3">
-     {/* Recording Status */}
      {isRecording && (
       <div className={`mb-2 p-2 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
        getPersonaColorClass(activePersona, 'bg')
       }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-xs font-black uppercase tracking-wide`}>
        <div className="flex items-center justify-center gap-2">
         <Zap className="w-4 h-4" />
-        RECORDING
+        RECEPTION ACTIVE
        </div>
       </div>
      )}
 
-     {/* LARGE MOBILE-FRIENDLY CONTROLS */}
      <div className="flex items-center justify-between mb-3 gap-2">
-      {/* PROMINENT MIC BUTTON */}
       <button 
        onClick={handleWalkieTalkieMic} 
        className={`
@@ -1404,10 +1436,9 @@ function ChatInterface({
         }
        `}
       >
-       {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
+       {isRecording ? <><MicOff className="w-5 h-5"/> RELEASE</> : <><Mic className="w-5 h-5"/> HOLD TO INSTRUCT</>}
       </button>
       
-      {/* VOICE TOGGLE */}
       <button 
        onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} 
        className="p-3 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
@@ -1417,7 +1448,6 @@ function ChatInterface({
       </button>
      </div>
      
-     {/* INPUT ROW */}
      <div className="flex gap-2 items-end">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
       <button 
@@ -1435,14 +1465,10 @@ function ChatInterface({
         value={input} 
         onChange={e => setInput(e.target.value)} 
         onKeyDown={handleKeyPress} 
-        placeholder={
-         isRecording ? "Listening..." : 
-         selectedImage ? `Vision ready...` : 
-         `Ask ${activePersona.serviceLabel}...`
-        } 
+        placeholder={isRecording ? "Receiving audio..." : `Instruct ${activePersona.serviceLabel}...`} 
         className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
         disabled={loading || isRecording}
-        style={{ fontSize: '16px' }} // Prevents zoom on iOS
+        style={{ fontSize: '16px' }}
        />
       </div>
       
@@ -1461,24 +1487,15 @@ function ChatInterface({
       </button>
      </div>
      
-     {/* BOTTOM STATUS - Compact */}
      <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
       <button 
        onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} 
-       className="px-2 py-1 rounded-md bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
+       className="px-2 py-1 rounded-md bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-[10px] uppercase active:scale-95 transition-all"
       >
-       {intelligenceSync}%
+       SYNC: {intelligenceSync}%
       </button>
-      
-      <div className="text-center">
-       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">
-        LYLO BODYGUARD
-       </p>
-      </div>
-      
-      <div className="text-[8px] text-gray-400 uppercase font-bold">
-       {activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'}
-      </div>
+      <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS</p>
+      <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona.serviceLabel.split(' ')[0]} STATUS: ACTIVE</div>
      </div>
     </div>
    </div>
