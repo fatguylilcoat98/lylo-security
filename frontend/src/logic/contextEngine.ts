@@ -11,255 +11,105 @@ export const EXPERT_CONTEXTS: ContextPattern[] = [
     id: 'lawyer',
     weight: 2.8, 
     clusters: [
-      // Tenant & Real Estate
-      ['evicted', 'notice', 'lease', 'landlord', 'tenant', 'rent', 'housing', 'occupancy', 'habitable', 'deposit', 'sublet', 'squatter', 'premises', 'zoning', 'easement', 'escrow', 'foreclosure', 'deed', 'title', 'lien'],
-      ['repair', 'withhold', 'deduct', 'habitability', 'infestation', 'mold', 'plumbing', 'heating', 'ordinance', 'code', 'violation', 'inspector', 'retaliation'],
-      // Civil Litigation
-      ['sue', 'sued', 'lawsuit', 'litigation', 'damages', 'court', 'summons', 'complaint', 'judge', 'plaintiff', 'defendant', 'jury', 'testify', 'subpoena', 'deposition', 'affidavit', 'jurisdiction', 'venue', 'appeal', 'verdict'],
-      ['settlement', 'mediation', 'arbitration', 'negotiation', 'discovery', 'interrogatory', 'pleading', 'motion', 'injunction', 'restraining'],
-      // Corporate & Contracts
-      ['contract', 'agreement', 'clause', 'terms', 'binding', 'signed', 'notary', 'breach', 'nda', 'incorporation', 'llc', 'bylaws', 'shareholder', 'merger', 'acquisition', 'partnership', 'liability', 'indemnity', 'void', 'null'],
-      ['vendor', 'supplier', 'procurement', 'invoice', 'payment', 'dispute', 'fulfillment', 'warranty', 'guarantee', 'default'],
-      // Criminal Defense
-      ['arrest', 'police', 'miranda', 'rights', 'detained', 'warrant', 'bail', 'custody', 'charge', 'felony', 'misdemeanor', 'parole', 'probation', 'indictment', 'plea', 'prosecutor', 'defense', 'conviction', 'acquittal', 'sentence'],
-      ['search', 'seizure', 'probable', 'cause', 'interrogation', 'suspect', 'evidence', 'confession', 'alibi', 'accomplice', 'accessory'],
-      // Employment Law
-      ['employment', 'fired', 'wrongful', 'severance', 'discrimination', 'harassment', 'unpaid', 'overtime', 'whistleblower', 'retaliation', 'union', 'strike', 'osha', 'workers comp', 'fmla', 'ada', 'wage', 'hour', 'classification', 'exempt'],
-      ['non-compete', 'solicitation', 'trade', 'secret', 'resignation', 'constructive', 'discharge', 'hostile', 'environment'],
-      // Family Law
-      ['divorce', 'custody', 'alimony', 'support', 'prenup', 'separation', 'family', 'probate', 'estate', 'will', 'trust', 'inheritance', 'guardian', 'adoption', 'emancipation', 'paternity', 'visitation', 'annulment', 'assets', 'marital'],
-      // Personal Injury
-      ['injury', 'accident', 'liability', 'insurance', 'claim', 'negligence', 'malpractice', 'tort', 'settlement', 'compensation', 'crash', 'slip', 'fall', 'whiplash', 'concussion', 'fault', 'premium', 'adjuster', 'policy'],
-      // IP & Copyright
-      ['copyright', 'trademark', 'patent', 'infringement', 'intellectual', 'property', 'licensing', 'royalties', 'plagiarism', 'piracy', 'trade', 'secret', 'cease', 'desist', 'fair', 'use', 'author', 'creator', 'domain'],
-      // Traffic & Citations
-      ['ticket', 'citation', 'dui', 'reckless', 'impound', 'suspended', 'license', 'dmv', 'speeding', 'moving', 'violation', 'points', 'registration', 'insurance', 'breathalyzer'],
-      // Immigration
-      ['visa', 'passport', 'citizenship', 'green', 'card', 'deportation', 'asylum', 'immigration', 'customs', 'border', 'sponsor', 'h1b', 'f1', 'naturalization']
+      /* import { PersonaConfig } from '../data/personas';
+
+interface ContextPattern {
+  id: string;
+  weight: number;
+  clusters: string[][];
+}
+
+export const EXPERT_CONTEXTS: ContextPattern[] = [
+  {
+    id: 'lawyer',
+    weight: 2.8, 
+    clusters: [
+      /* PASTE ALL LAWYER CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'doctor',
     weight: 2.8,
     clusters: [
-      // Cardiovascular
-      ['chest', 'pain', 'heart', 'pressure', 'tightness', 'palpitations', 'arrhythmia', 'tachycardia', 'bradycardia', 'pulse', 'bp', 'hypertension', 'stroke', 'attack', 'valve', 'artery', 'vein', 'circulation', 'clot'],
-      // Respiratory
-      ['breathing', 'shortness', 'asthma', 'wheezing', 'lung', 'cough', 'phlegm', 'mucus', 'pneumonia', 'bronchitis', 'inhaler', 'oxygen', 'cpap', 'apnea', 'choking'],
-      // Gastrointestinal
-      ['stomach', 'ulcer', 'bowel', 'digestion', 'acid', 'reflux', 'cramps', 'nausea', 'vomiting', 'diarrhea', 'constipation', 'bloating', 'gas', 'appendix', 'liver', 'kidney', 'gallbladder', 'hernia'],
-      // Dermatological
-      ['rash', 'swelling', 'allergic', 'hives', 'anaphylaxis', 'sting', 'reaction', 'itching', 'lesion', 'melanoma', 'eczema', 'dermatitis', 'burn', 'blister', 'acne', 'psoriasis', 'cyst', 'wart', 'mole'],
-      // Trauma / Hemorrhage
-      ['blood', 'bleeding', 'wound', 'cut', 'laceration', 'hemorrhage', 'bruising', 'tourniquet', 'stitch', 'suture', 'puncture', 'trauma', 'scab', 'scar', 'gauze', 'bandage'],
-      // Neurological
-      ['dizzy', 'faint', 'unconscious', 'seizure', 'numbness', 'slurred', 'vision', 'migraine', 'concussion', 'vertigo', 'tingling', 'paralysis', 'tremor', 'memory', 'nerve', 'sciatica', 'neuropathy'],
-      // Pharmacology
-      ['medicine', 'prescription', 'dosage', 'antibiotic', 'side-effect', 'interaction', 'pill', 'pharmacy', 'refill', 'overdose', 'toxicity', 'mg', 'vaccine', 'injection', 'iv', 'drip', 'steroid', 'painkiller', 'nsaid'],
-      // Infection & Systemic
-      ['fever', 'chills', 'dehydration', 'flu', 'symptoms', 'infection', 'pus', 'inflamed', 'throbbing', 'tender', 'redness', 'warmth', 'abscess', 'bacteria', 'viral', 'fungal', 'sepsis', 'lymph', 'node', 'swollen', 'gland'],
-      // Orthopedic
-      ['bone', 'fracture', 'sprain', 'joint', 'arthritis', 'cartilage', 'ligament', 'tendon', 'spine', 'vertebrae', 'scoliosis', 'cast', 'splint', 'brace', 'crutches', 'knee', 'shoulder', 'hip', 'ankle'],
-      // ENT (Ear, Nose, Throat)
-      ['ear', 'throat', 'sinus', 'congestion', 'hearing', 'tinnitus', 'strep', 'tonsil', 'nosebleed', 'swallow', 'vocal', 'cords', 'mucus', 'drainage'],
-      // Optical
-      ['eye', 'vision', 'blur', 'cornea', 'retina', 'pupil', 'cataract', 'glaucoma', 'astigmatism', 'glasses', 'contacts', 'dilation', 'blindness'],
-      // Urological / Reproductive
-      ['urine', 'bladder', 'uti', 'kidney', 'stones', 'prostate', 'pelvic', 'menstrual', 'cramps', 'pregnancy', 'fertility', 'hormone', 'testosterone', 'estrogen']
+      /* PASTE ALL DOCTOR CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'wealth',
     weight: 2.2,
     clusters: [
-      // Banking & Transactions
-      ['bank', 'account', 'unauthorized', 'transfer', 'withdrawal', 'wire', 'checking', 'routing', 'overdraft', 'fee', 'chargeback', 'deposit', 'teller', 'atm', 'balance', 'insufficient', 'funds', 'cleared', 'pending'],
-      // Fraud & Disputed Charges
-      ['scam', 'fraud', 'stolen', 'hacked', 'dispute', 'merchant', 'transaction', 'claim', 'stolen', 'card', 'identity', 'theft', 'compromised', 'frozen', 'locked'],
-      // Taxes & IRS
-      ['tax', 'irs', 'refund', 'filing', 'deduction', 'audit', 'income', 'capital', 'gains', 'w2', '1099', 'write-off', 'dependents', 'bracket', 'evasion', 'schedule', 'cpa', 'return', 'withholding'],
-      // Markets, Trading & Investing
-      ['stock', 'market', 'portfolio', 'dividend', 'index', 'etf', 'brokerage', 'trading', 'options', 'margin', 'bull', 'bear', 'nasdaq', 'spy', 'bonds', 'yield', 'shares', 'equity', 'ipo', 'broker'],
-      // Crypto & Web3
-      ['crypto', 'wallet', 'seed', 'private', 'blockchain', 'bitcoin', 'ethereum', 'exchange', 'ledger', 'cold', 'storage', 'gas', 'token', 'nft', 'defi', 'staking', 'altcoin', 'mining'],
-      // Credit & Debt Management
-      ['debt', 'credit', 'score', 'loan', 'mortgage', 'interest', 'apr', 'collection', 'bankruptcy', 'equifax', 'experian', 'transunion', 'utilization', 'default', 'consolidation', 'payoff', 'principal', 'garnishment'],
-      // Personal Finance & Budgeting
-      ['budget', 'spending', 'savings', 'expenses', 'frugal', 'retirement', '401k', 'ira', 'pension', 'roth', 'compound', 'yield', 'apy', 'inflation', 'fire', 'net', 'worth', 'emergency', 'fund'],
-      // Corporate Finance & Income
-      ['salary', 'bonus', 'commission', 'equity', 'worth', 'assets', 'liability', 'financial', 'revenue', 'profit', 'margin', 'valuation', 'startup', 'seed', 'funding', 'vc', 'angel', 'cashflow', 'p&l', 'balance', 'sheet'],
-      // Real Estate Investing
-      ['property', 'reit', 'rental', 'cashflow', 'appreciation', 'depreciation', 'equity', 'escrow', 'appraisal', 'closing', 'refinance', 'heloc', 'mortgage', 'amortization', 'down', 'payment', 'interest', 'rate'],
-      // Paycheck & Wage Issues
-      ['paycheck', 'short-changed', 'dollars', '$', 'wages', 'stub', 'deduction', 'gross', 'net', 'hourly', 'salary', 'reimbursement', 'expense', 'report']
+      /* PASTE ALL WEALTH ARCHITECT CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'guardian',
     weight: 2.5,
     clusters: [
-      // Data Breaches & Auth
-      ['password', 'compromised', 'leak', 'data', 'breach', 'auth', 'security', 'login', '2fa', 'mfa', 'biometric', 'credential', 'stuffing', 'dark', 'web', 'hacker', 'exploit', 'zero-day'],
-      // Social Engineering & Scams
-      ['scam', 'phishing', 'smishing', 'link', 'text', 'email', 'fraudulent', 'identity', 'catfish', 'blackmail', 'extortion', 'spoofing', 'impersonation', 'nigerian', 'prince', 'gift', 'card', 'wire', 'urgent'],
-      // Physical & Cyber Stalking
-      ['stalker', 'threat', 'harassment', 'tracking', 'location', 'hidden', 'camera', 'privacy', 'airtag', 'gps', 'doxxing', 'swatting', 'restraining', 'order', 'followed', 'watched', 'surveillance'],
-      // Malware & Network Security
-      ['malware', 'virus', 'trojan', 'ransomware', 'spyware', 'infected', 'pop-up', 'blocked', 'firewall', 'vpn', 'encryption', 'ddos', 'botnet', 'rootkit', 'keylogger', 'antivirus', 'scan', 'quarantine'],
-      // Physical Security & Hardware
-      ['perimeter', 'security', 'alarm', 'intrusion', 'motion', 'sensor', 'alert', 'lock', 'deadbolt', 'safe', 'cctv', 'footage', 'breached', 'keypad', 'rfid', 'biometrics', 'guard', 'patrol'],
-      // Device Protection
-      ['lost', 'stolen', 'wipe', 'remote', 'lock', 'find', 'my', 'iphone', 'android', 'tracker', 'imei', 'blacklist', 'sim', 'swap', 'hijack']
+      /* PASTE ALL GUARDIAN CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'mechanic',
     weight: 1.5,
     clusters: [
-      // ICE Powertrain & Underhood
-      ['engine', 'oil', 'transmission', 'overheating', 'coolant', 'shaking', 'stalling', 'exhaust', 'spark', 'plug', 'cylinder', 'gasket', 'radiator', 'muffler', 'belt', 'timing', 'pump', 'alternator', 'filter', 'valves'],
-      // Chassis, Suspension & Brakes
-      ['brakes', 'grinding', 'squeaking', 'rotor', 'caliper', 'pedal', 'fluid', 'stopping', 'pads', 'abs', 'suspension', 'strut', 'shock', 'steering', 'alignment', 'axel', 'cv', 'joint', 'bearings', 'tie', 'rod'],
-      // Auto Electrical & EV
-      ['battery', 'alternator', 'starter', 'ignition', 'wires', 'electrical', 'fuse', 'tesla', 'ev', 'charging', 'inverter', 'motor', 'range', 'sensor', 'dashboard', 'lights', 'obd2', 'scanner', 'code'],
-      // Tires & Wheels
-      ['tire', 'flat', 'alignment', 'tread', 'pressure', 'psi', 'puncture', 'patch', 'plug', 'rim', 'alloy', 'lug', 'nut', 'torque', 'balance', 'rotation'],
-      // PC Hardware & Custom Builds
-      ['laptop', 'software', 'crash', 'reboot', 'update', 'drivers', 'bios', 'hardware', 'motherboard', 'cpu', 'gpu', 'ram', 'psu', 'thermal', 'paste', 'boot', 'ssd', 'hdd', 'nvme', 'cooler', 'overclock'],
-      // Networking & IT
-      ['wifi', 'internet', 'router', 'connection', 'signal', 'bandwidth', 'ethernet', 'modem', 'isp', 'latency', 'ping', 'packet', 'loss', 'dns', 'ip', 'mac', 'address', 'port', 'forwarding', 'mesh'],
-      // Mobile Devices & Gadgets
-      ['iphone', 'android', 'screen', 'cracked', 'port', 'lightning', 'usb-c', 'glitch', 'frozen', 'bricked', 'factory', 'reset', 'jailbreak', 'root', 'digitizer', 'oled', 'battery', 'degradation'],
-      // Home Appliances & HVAC
-      ['fridge', 'refrigerator', 'compressor', 'hvac', 'ac', 'heater', 'furnace', 'washing', 'dryer', 'dishwasher', 'plumbing', 'leak', 'clog', 'valve', 'thermostat', 'freon', 'duct', 'vent', 'filter'],
-      // Tools & DIY
-      ['wrench', 'socket', 'drill', 'saw', 'hammer', 'pliers', 'screwdriver', 'impact', 'torque', 'multimeter', 'soldering', 'iron', 'welding', 'compressor', 'jack', 'stands']
+      /* PASTE ALL MECHANIC CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'career',
     weight: 1.8,
     clusters: [
-      // Application & Resume Process
-      ['resume', 'cv', 'profile', 'ats', 'optimization', 'keyword', 'application', 'portfolio', 'cover', 'letter', 'linkedin', 'github', 'references', 'formatting', 'bullet', 'points', 'summary'],
-      // Interviewing & Hiring
-      ['interview', 'hiring', 'recruiter', 'hr', 'offer', 'negotiation', 'benefits', 'onboarding', 'technical', 'behavioral', 'panel', 'whiteboard', 'ghosted', 'follow-up', 'thank', 'you', 'screening', 'assessment'],
-      // Workplace Dynamics & Politics
-      ['boss', 'manager', 'leadership', 'corporate', 'office', 'politics', 'feedback', 'review', 'coworker', 'micromanager', 'culture', 'performance', 'pip', 'meeting', 'agile', 'sprint', 'scrum', 'stakeholder'],
-      // Growth, Promotion & Salary
-      ['promotion', 'raise', 'advance', 'trajectory', 'career', 'pivot', 'networking', 'referral', 'mentor', 'upskill', 'certification', 'degree', 'transition', 'evaluation', 'goals', 'kpi', 'okr', 'compensation', 'equity'],
-      // Exit, Burnout & Termination
-      ['burnout', 'toxic', 'culture', 'quit', 'notice', 'resignation', 'layoff', 'severance', 'unemployment', 'fired', 'restructuring', 'two-weeks', 'exit', 'interview', 'coap', 'non-compete'],
-      // Freelance & Consulting
-      ['freelance', 'contractor', '1099', 'client', 'retainer', 'agency', 'consulting', 'proposal', 'pitch', 'rates', 'invoicing', 'deliverable', 'scope', 'creep', 'portfolio', 'marketing', 'outreach'],
-      // Work-Life Balance
-      ['remote', 'hybrid', 'commute', 'wfh', 'pto', 'vacation', 'leave', 'sabbatical', 'boundaries', 'overworked', 'delegate']
+      /* PASTE ALL CAREER COACH CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'therapist',
     weight: 2.0,
     clusters: [
-      // Anxiety & Stress Disorders
-      ['anxiety', 'panic', 'stress', 'overwhelmed', 'pacing', 'heart-rate', 'unfocused', 'worry', 'racing', 'thoughts', 'dread', 'nervous', 'breakdown', 'hyperventilation', 'attack', 'social', 'phobia', 'ocd', 'compulsion', 'obsession'],
-      // Depression & Grief
-      ['depressed', 'sad', 'hopeless', 'lonely', 'grief', 'loss', 'mourning', 'heavy', 'empty', 'numb', 'apathy', 'motivation', 'crying', 'bed', 'dark', 'suicidal', 'ideation', 'harm', 'melancholy', 'isolation'],
-      // Relationship Psychology & Dynamics
-      ['boundary', 'relationship', 'conflict', 'argument', 'toxic', 'gaslight', 'narcissist', 'healing', 'codependent', 'attachment', 'avoidant', 'anxious', 'abandonment', 'enmeshment', 'manipulation', 'couples', 'communication'],
-      // Trauma & PTSD
-      ['trauma', 'ptsd', 'trigger', 'flashback', 'nightmare', 'therapy', 'counseling', 'session', 'abuse', 'neglect', 'childhood', 'emdr', 'dissociation', 'cptsd', 'somatic', 'nervous', 'system', 'regulation'],
-      // Self-Worth, Identity & Ego
-      ['self-esteem', 'worth', 'confidence', 'imposter', 'shame', 'guilt', 'forgiveness', 'peace', 'validation', 'inadequate', 'perfectionism', 'inner-critic', 'identity', 'crisis', 'purpose', 'meaning', 'acceptance'],
-      // Neurodivergence & Cognitive
-      ['adhd', 'autism', 'spectrum', 'focus', 'executive', 'dysfunction', 'hyperfocus', 'overstimulation', 'sensory', 'burnout', 'masking', 'dopamine', 'regulation', 'task', 'paralysis'],
-      // Addiction & Recovery
-      ['addiction', 'substance', 'relapse', 'sobriety', 'craving', 'withdrawal', 'alcohol', 'drugs', 'rehab', 'sponsor', 'meetings', '12-step', 'compulsive', 'gambling', 'dependence'],
-      // Emotional Regulation
-      ['anger', 'rage', 'outburst', 'frustration', 'irritability', 'mood', 'swings', 'bipolar', 'mania', 'hypomania', 'grounding', 'mindfulness', 'meditation', 'breathing']
+      /* PASTE ALL THERAPIST CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'vitality',
     weight: 1.6,
     clusters: [
-      // Hypertrophy & Strength Training
-      ['workout', 'exercise', 'gym', 'training', 'routine', 'sets', 'reps', 'muscle', 'hypertrophy', 'lifting', 'squat', 'bench', 'deadlift', 'pr', 'barbell', 'dumbbell', 'form', 'progressive', 'overload', 'split', 'push', 'pull', 'legs'],
-      // Nutrition, Diet & Macros
-      ['diet', 'nutrition', 'calories', 'protein', 'macros', 'meal-prep', 'intermittent', 'fasting', 'keto', 'vegan', 'carbs', 'fats', 'deficit', 'surplus', 'bulking', 'cutting', 'tracking', 'myfitnesspal', 'sugar', 'fiber', 'micronutrients'],
-      // Sleep, Recovery & Wearables
-      ['sleep', 'rem', 'recovery', 'strain', 'rest', 'insomnia', 'circadian', 'melatonin', 'fatigue', 'deep', 'wearable', 'whoop', 'oura', 'hrv', 'apple', 'watch', 'garmin', 'rhr', 'temperature', 'rhythm'],
-      // Physiology, Hormones & Supplements
-      ['weight', 'loss', 'shred', 'bulk', 'metabolism', 'supplements', 'vitamins', 'performance', 'creatine', 'pre-workout', 'whey', 'testosterone', 'hormones', 'cortisol', 'insulin', 'thyroid', 'amino', 'bcaas'],
-      // Mobility, Endurance & Cardio
-      ['stretching', 'mobility', 'yoga', 'pilates', 'flexibility', 'running', 'marathon', 'sprint', 'zone2', 'aerobic', 'anaerobic', 'vo2', 'endurance', 'cycling', 'swimming', 'rowing', 'hiit', 'plyometrics', 'warmup', 'cooldown'],
-      // Biohacking & Optimization
-      ['cold', 'plunge', 'sauna', 'heat', 'exposure', 'red', 'light', 'therapy', 'nootropics', 'caffeine', 'l-theanine', 'ashwagandha', 'magnesium', 'zinc', 'bloodwork', 'panel', 'optimization']
+      /* PASTE ALL VITALITY COACH CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'tutor',
     weight: 1.5,
     clusters: [
-      // General Academics & Study Skills
-      ['study', 'exam', 'test', 'grades', 'homework', 'assignment', 'essay', 'thesis', 'research', 'flashcards', 'memorize', 'syllabus', 'cramming', 'pomodoro', 'notes', 'lecture', 'professor', 'gpa', 'transcript', 'plagiarism'],
-      // STEM: Math & Physics
-      ['math', 'algebra', 'calculus', 'physics', 'geometry', 'equations', 'logic', 'proof', 'trigonometry', 'statistics', 'probability', 'derivatives', 'integrals', 'vectors', 'kinematics', 'thermodynamics', 'quantum', 'mechanics', 'formulas'],
-      // STEM: Computer Science & IT
-      ['code', 'python', 'javascript', 'react', 'typescript', 'algorithm', 'syntax', 'debugging', 'compile', 'html', 'css', 'database', 'sql', 'api', 'git', 'terminal', 'oop', 'data', 'structures', 'loops', 'functions', 'variables', 'arrays'],
-      // Humanities, Science & Liberal Arts
-      ['history', 'literature', 'language', 'science', 'biology', 'chemistry', 'concept', 'simplify', 'geography', 'philosophy', 'sociology', 'grammar', 'molecules', 'cells', 'dna', 'periodic', 'table', 'reactions', 'essay', 'structure', 'citations', 'mla', 'apa'],
-      // Standardized Testing & Admissions
-      ['sat', 'act', 'gre', 'gmat', 'lsat', 'mcat', 'prep', 'score', 'percentile', 'admissions', 'college', 'university', 'scholarship', 'application', 'essay', 'prompt', 'extracurriculars', 'ivy', 'league']
+      /* PASTE ALL TUTOR CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'pastor',
     weight: 1.8,
     clusters: [
-      // Scripture, Theology & Study
-      ['bible', 'scripture', 'verse', 'chapter', 'gospel', 'testament', 'psalm', 'proverbs', 'theology', 'doctrine', 'revelation', 'genesis', 'epistles', 'torah', 'prophets', 'exegesis', 'hermeneutics', 'commentary', 'concordance'],
-      // Worship, Church Life & Community
-      ['prayer', 'intercede', 'worship', 'praise', 'fellowship', 'church', 'ministry', 'faith', 'congregation', 'sermon', 'pastor', 'sacrament', 'baptism', 'communion', 'tithe', 'offering', 'small', 'group', 'volunteering', 'missions'],
-      // Soteriology, Morality & Salvation
-      ['sin', 'repent', 'grace', 'mercy', 'redemption', 'holy', 'spirit', 'god', 'jesus', 'lord', 'christ', 'salvation', 'forgiveness', 'cross', 'resurrection', 'atonement', 'justification', 'sanctification', 'glorification'],
-      // Spiritual Warfare, Guidance & Counseling
-      ['temptation', 'doubt', 'spiritual', 'warfare', 'discernment', 'wisdom', 'blessing', 'purpose', 'calling', 'peace', 'fasting', 'sanctification', 'trials', 'tribulation', 'demonic', 'oppression', 'armor', 'god', 'fast', 'retreat'],
-      // Life Milestones & Pastoral Care
-      ['marriage', 'counseling', 'premarital', 'wedding', 'vows', 'funeral', 'eulogy', 'grief', 'comfort', 'visitation', 'hospital', 'chaplain', 'dedication', 'christening']
+      /* PASTE ALL PASTOR CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'hype',
     weight: 1.4,
     clusters: [
-      // Social Media, Virality & Algorithms
-      ['viral', 'tiktok', 'reels', 'algorithm', 'content', 'strategy', 'hook', 'trending', 'engagement', 'views', 'followers', 'foryou', 'fyp', 'shorts', 'shadowban', 'analytics', 'retention', 'watch', 'time', 'ctr', 'thumbnail'],
-      // Comedy, Scripting & Entertainment
-      ['joke', 'funny', 'prank', 'comedy', 'humor', 'script', 'skit', 'punchline', 'satire', 'roast', 'meme', 'irony', 'parody', 'bit', 'standup', 'crowd', 'work', 'heckler'],
-      // Culture, Aesthetics & Slang
-      ['slang', 'rizz', 'cap', 'aura', 'hype', 'energy', 'vibe', 'aesthetic', 'drop', 'launch', 'drip', 'fit', 'based', 'cringe', 'era', 'mid', 'sus', 'bussin', 'bet', 'no', 'shot', 'w', 'l', 'ratio'],
-      // Brand, Monetization & Creator Economy
-      ['sponsor', 'brand', 'deal', 'monetize', 'collab', 'merch', 'creator', 'influencer', 'ad', 'revenue', 'affiliate', 'conversion', 'patreon', 'onlyfans', 'twitch', 'stream', 'sub', 'donation', 'superchat', 'cpm', 'rpm'],
-      // Production & Editing
-      ['edit', 'capcut', 'premiere', 'final', 'cut', 'transition', 'b-roll', 'audio', 'lighting', 'ring', 'light', 'mic', 'camera', 'setup', 'vlog', 'stream', 'obs', 'layout']
+      /* PASTE ALL HYPE SPECIALIST CLUSTER ARRAYS HERE */
     ]
   },
   {
     id: 'bestie',
     weight: 1.2,
     clusters: [
-      // Gossip, Venting & Friend Drama
-      ['drama', 'tea', 'gossip', 'spill', 'shady', 'fake', 'friends', 'bestie', 'vent', 'rant', 'annoying', 'bitch', 'petty', 'spiteful', 'two-faced', 'backstab', 'jealous', 'rumor', 'receipts', 'screenshot', 'group', 'chat'],
-      // Dating, Romance & Situationships
-      ['date', 'crush', 'hookup', 'hinge', 'tinder', 'red-flag', 'situationship', 'ghosted', 'blocked', 'text', 'reply', 'ex', 'boyfriend', 'girlfriend', 'bumble', 'raya', 'ick', 'talking', 'stage', 'flirting', 'roster', 'soft', 'launch'],
-      // Fashion, Beauty & Lifestyle
-      ['outfit', 'style', 'slay', 'look', 'shopping', 'makeup', 'hair', 'nails', 'confidence', 'glow-up', 'cute', 'gorgeous', 'skincare', 'routine', 'haul', 'zara', 'sephora', 'aesthetic', 'inspo', 'pinterest'],
-      // Casual Emotion, Reactions & Hangouts
-      ['mood', 'tired', 'bored', 'obsessed', 'literally', 'crying', 'screaming', 'love', 'hate', 'delusional', 'unbothered', 'manifesting', 'weekend', 'brunch', 'drinks', 'club', 'party', 'trip', 'girls', 'night', 'vibing']
+      /* PASTE ALL BESTIE CLUSTER ARRAYS HERE */
     ]
   }
 ];
 
+/**
+ * THE BRAIN: Scans input text for multi-word phrases and single keywords.
+ * Uses a "Double-Lock" (2 matches per cluster) to trigger handoff suggestions.
+ */
 export const detectExpertSuggestion = (
   text: string, 
   currentId: string, 
@@ -267,42 +117,701 @@ export const detectExpertSuggestion = (
 ): PersonaConfig | null => {
   const lower = text.toLowerCase();
   
-  // Normalize the text: remove punctuation so words match perfectly against the array
-  const cleanText = lower.replace(/[^\w\s-]/g, '');
-  const words = cleanText.split(/\s+/);
+  // Clean text for better matching, but keep spaces for phrases
+  const cleanText = lower.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ');
   
   let bestMatch: { id: string, score: number } | null = null;
 
   EXPERT_CONTEXTS.forEach(config => {
-    // 1. Skip if the expert is already active
     if (config.id === currentId) return;
 
     let totalScore = 0;
     
-    // 2. Scan every massive cluster
     config.clusters.forEach(cluster => {
-      // Find exact word matches within the text array to avoid partial matches (e.g., "car" matching "career")
-      const matches = cluster.filter(keyword => words.includes(keyword));
+      // Find matches in this specific cluster
+      const matches = cluster.filter(keyword => {
+        // Handle phrases (e.g., "real estate") and hyphenated terms
+        const hyphenated = keyword.replace(/\s+/g, '-');
+        return lower.includes(keyword) || lower.includes(hyphenated);
+      });
       
-      // DOUBLE-LOCK: At least 2 distinct keywords from the SAME cluster must be present
+      // DOUBLE-LOCK: Requires 2 distinct matches from the SAME cluster
       if (matches.length >= 2) {
-        // High-definition scoring:
-        // 2 matches = 2.82 * weight
-        // 3 matches = 5.19 * weight
-        // 4 matches = 8.00 * weight
         totalScore += (Math.pow(matches.length, 1.5) * config.weight);
       }
     });
 
-    // 3. Keep the highest scoring expert
     if (totalScore > 0 && (!bestMatch || totalScore > bestMatch.score)) {
       bestMatch = { id: config.id, score: totalScore };
     }
   });
 
-  // 4. Final verification threshold. 
-  // A score of 5.0 ensures that at least one highly weighted cluster double-locked, 
-  // or multiple lower-weighted clusters double-locked.
+  // Score threshold for handoff button to appear
+  if (bestMatch && bestMatch.score >= 5.0) {
+    return personas.find(p => p.id === bestMatch!.id) || null;
+  }
+  
+  return null;
+}; */
+    ]
+  },
+  {
+    id: 'doctor',
+    weight: 2.8,
+    clusters: [
+      /* const doctorExpertDictionary = {
+  cardiology: [
+    'arrhythmia', 'myocardial infarction', 'echocardiogram', 'angioplasty', 'atherosclerosis',
+    'bradycardia', 'cardiomyopathy', 'cholesterol', 'hypertension', 'mitral valve',
+    'pericarditis', 'stent', 'tachycardia', 'ventricular', 'atrial fibrillation',
+    'electrocardiogram', 'heart failure', 'pacemaker', 'thrombosis', 'atheroma',
+    // Add more terms here
+  ],
+  neurology: [
+    'neurons', 'synapse', 'epilepsy', 'multiple sclerosis', 'neuropathy',
+    'alzheimer’s', 'parkinson’s', 'migraine', 'stroke', 'cerebral palsy',
+    'dementia', 'tremor', 'myelin', 'seizures', 'neurological disorder',
+    'cerebellum', 'brainstem', 'axons', 'dyskinesia', 'neurotransmitter',
+    // Add more terms here
+  ],
+  oncology: [
+    'tumor', 'chemotherapy', 'radiation', 'benign', 'malignant',
+    'metastasis', 'carcinoma', 'sarcoma', 'lymphoma', 'biopsy',
+    'immunotherapy', 'remission', 'palliative care', 'oncogenes', 'neoplasm',
+    'screening', 'cytotoxic', 'brachytherapy', 'melanoma', 'cancer staging',
+    // Add more terms here
+  ],
+  pediatrics: [
+    'vaccination', 'neonatology', 'growth chart', 'asthma', 'ADHD',
+    'immunization', 'congenital', 'pediatrician', 'developmental milestones', 'autism',
+    'infant', 'colic', 'nursery', 'adolescence', 'puberty',
+    'well-baby exam', 'SIDS', 'teething', 'tonsillitis', 'otitis media',
+    // Add more terms here
+  ],
+  orthopedics: [
+    'fracture', 'osteoporosis', 'arthritis', 'scoliosis', 'ligament',
+    'tendon', 'bursitis', 'cartilage', 'prosthetics', 'orthotics',
+    'spinal fusion', 'arthroscopy', 'vertebrae', 'meniscus', 'joint replacement',
+    'osteotomy', 'skeletal', 'musculoskeletal', 'fibromyalgia', 'kyphosis',
+    // Add more terms here
+  ],
+  dermatology: [
+    'psoriasis', 'eczema', 'melanoma', 'dermatitis', 'acne',
+    'rosacea', 'biopsy', 'cryotherapy', 'laser therapy', 'keratosis',
+    'ulcer', 'alopecia', 'histology', 'basal cell carcinoma', 'squamous cell carcinoma',
+    'cosmetic dermatology', 'pigmentation', 'dermal', 'botox', 'phototherapy',
+    // Add more terms here
+  ],
+  psychiatry: [
+    'bipolar disorder', 'schizophrenia', 'depression', 'anxiety', 'psychotherapy',
+    'cognitive behavioral therapy', 'antidepressants', 'psychosis', 'mood disorder', 'PTSD',
+    'obsessive-compulsive disorder', 'borderline personality disorder', 'mental health', 'psychiatrist', 'counseling',
+    'somatic', 'psychosomatic', 'addiction', 'anxiolytics', 'schizoaffective',
+    // Add more terms here
+  ],
+  endocrinology: [
+    'diabetes', 'insulin', 'thyroid', 'metabolism', 'hormones',
+    'endocrine glands', 'cushing’s syndrome', 'adrenal', 'pituitary', 'parathyroid',
+    'glucose', 'glycated hemoglobin', 'hypoglycemia', 'hypercorticism', 'hypothyroidism',
+    'islets of langerhans', 'pancreatic', 'osteopenia', 'thyrotoxicosis', 'hormonal imbalance',
+    // Add more terms here
+  ],
+  gastroenterology: [
+    'gastroesophageal reflux', 'ulcer', 'crohn’s disease', 'colitis', 'hepatitis',
+    'liver', 'pancreas', 'endoscopy', 'probiotics', 'gallstones',
+    'biliary', 'constipation', 'bariatric', 'gut microbiome', 'celiac disease',
+    'digestive system', 'small intestine', 'enteritis', 'polyps', 'fecal transplants',
+    // Add more terms here
+  ],
+  ophthalmology: [
+    'cataract', 'glaucoma', 'retina', 'optometry', 'ophthalmoscope',
+    'astigmatism', 'myopia', 'retinopathy', 'cornea', 'ocular',
+    'vision therapy', 'intraocular', 'laser surgery', 'strabismus', 'visual acuity',
+    'lens', 'presbyopia', 'sclera', 'color blindness', 'macular degeneration',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'wealth',
+    weight: 2.2,
+    clusters: [
+      /* const wealthArchitectDictionary = {
+  investment: [
+    'portfolio', 'diversification', 'asset allocation', 'mutual fund', 'ETF',
+    'equities', 'bonds', 'commodities', 'real estate investment trust', 'hedge fund',
+    'DER derivatives', 'index fund', 'market capitalization', 'penny stock', 'bull market',
+    'bear market', 'blue-chip stocks', 'yield', 'volatility', 'risk management',
+    // Add more terms here
+  ],
+  personalFinance: [
+    'budgeting', 'savings account', 'checking account', 'interest rate', 'credit score',
+    'debt consolidation', 'emergency fund', 'cash flow', 'expense ratio', 'financial planning',
+    '401(k)', 'IRA', 'Roth IRA', 'compound interest', 'liquidity',
+    'annuities', 'retirement planning', 'life insurance', 'net worth', 'financial literacy',
+    // Add more terms here
+  ],
+  taxPlanning: [
+    'tax bracket', 'deductions', 'credits', 'capital gains tax', 'estate planning',
+    'gift tax', 'income tax', 'tax-deferred', 'tax-exempt', 'withholding',
+    'alternative minimum tax', 'tax audit', 'tax shelter', 'tax liability', 'standard deduction',
+    'itemized deduction', 'tax loophole', 'country by country reporting', 'foreign tax credit', 'inheritance tax',
+    // Add more terms here
+  ],
+  wealthManagement: [
+    'fiduciary', 'estate', 'trust', 'endowment', 'wealth preservation',
+    'asset protection', 'succession planning', 'charitable giving', 'philanthropy', 'family office',
+    'capital preservation', 'income distribution', 'asset rebalancing', 'risk profile', 'financial advisor',
+    // Add more terms here
+  ],
+  realEstateInvestment: [
+    'mortgage', 'appreciation', 'cash flow', 'rental income', 'property management',
+    'flipping', 'land development', 'foreclosure', 'turnkey property', 'capital improvements',
+    'home equity', 'real estate agent', 'real estate market', 'landlord', 'tenant rights',
+    'buy and hold', 'short sale', 'zoning laws', 'tax lien', 'property tax',
+    // Add more terms here
+  ],
+  entrepreneurship: [
+    'startup', 'angel investor', 'venture capital', 'bootstrapping', 'scalable',
+    'minimum viable product', 'equity crowdfunding', 'business plan', 'cash burn rate', 'exit strategy',
+    'intellectual property', 'branding', 'seed funding', 'business model canvas', 'product-market fit',
+    'lean startup', 'pivot', 'acquisition', 'valuation', 'co-founder',
+    // Add more terms here
+  ],
+  economicIndicators: [
+    'gross domestic product', 'inflation rate', 'unemployment rate', 'consumer confidence index', 'producer price index',
+    'balance of trade', 'interest rates', 'money supply', 'quantitative easing', 'fiscal policy',
+    'monetary policy', 'exchange rates', 'national debt', 'budget deficit', 'economic growth',
+    'recession', 'depression', 'stagflation', 'hyperinflation', 'economic cycle',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'guardian',
+    weight: 2.5,
+    clusters: [
+      /* const guardianExpertDictionary = {
+  cybersecurity: [
+    'firewall', 'encryption', 'malware', 'phishing', 'ransomware',
+    'zero-day exploit', 'penetration testing', 'VPN', 'two-factor authentication', 'intrusion detection',
+    'cyber threat', 'botnet', 'cipher', 'data breach', 'social engineering',
+    'DDoS attack', 'endpoint security', 'hashing', 'digital certificate', 'cyber forensics',
+    // Add more terms here
+  ],
+  physicalSecurity: [
+    'access control', 'CCTV', 'biometrics', 'perimeter security', 'alarm systems',
+    'intrusion detection', 'security guards', 'turnstiles', 'security barriers', 'video surveillance',
+    'motion detectors', 'reinforced doors', 'surveillance cameras', 'security protocols', 'mantraps',
+    'magnetic locks', 'security lighting', 'panic buttons', 'guard patrol', 'intrusion prevention',
+    // Add more terms here
+  ],
+  informationSecurity: [
+    'data encryption', 'information governance', 'data integrity', 'privacy policy', 'data loss prevention',
+    'confidentiality', 'authentication', 'authorization', 'access control', 'data classification',
+    'cyber hygiene', 'security policy', 'compliance', 'data masking', 'threat modeling',
+    'security token', 'intrusion prevention system', 'sensitive data', 'log monitoring', 'security posture',
+    // Add more terms here
+  ],
+  networkSecurity: [
+    'firewall rules', 'DMZ (demilitarized zone)', 'proxy server', 'network segmentation', 'sniffing',
+    'packet filtering', 'network intrusion detection', 'Wi-Fi security', 'SSL/TLS encryption', 'IPsec',
+    'network protocol', 'VPN tunneling', 'network access control', 'router security', 'network threat',
+    'bandwidth monitoring', 'man-in-the-middle attack', 'wireless security', 'traffic analysis', 'secure VPN',
+    // Add more terms here
+  ],
+  emergencyManagement: [
+    'contingency planning', 'disaster recovery', 'crisis management', 'evacuation procedures', 'risk assessment',
+    'business continuity', 'emergency response', 'incident management', 'resilience', 'vulnerability analysis',
+    'emergency communication', 'first responders', 'shelter-in-place', 'recovery time objective', 'critical infrastructure',
+    'evacuation plan', 'natural disasters', 'emergency drills', 'response time', 'continuity of operations',
+    // Add more terms here
+  ],
+  personalSecurity: [
+    'self-defense', 'situational awareness', 'personal alarms', 'bulletproof vest', 'home security',
+    'pepper spray', 'safeguarding', 'trust but verify', 'personal safety app', 'background checks',
+    'identity theft protection', 'safe zones', 'security advice', 'public safety', 'stalking prevention',
+    'bodyguard', 'personal protection', 'risk avoidance', 'social media privacy', 'awareness training',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'mechanic',
+    weight: 1.5,
+    clusters: [
+      /* const mechanicExpertDictionary = {
+  automotive: [
+    'transmission', 'alternator', 'catalytic converter', 'spark plug', 'fuel injector',
+    'drive shaft', 'suspension', 'brake caliper', 'torque converter', 'oxygen sensor',
+    'radiator', 'exhaust manifold', 'axle', 'power steering', 'timing belt',
+    'tire rotation', 'engine diagnostics', 'oil filter', 'camshaft', 'wheel alignment',
+    'differential', 'turbocharger', 'clutch', 'serpentine belt', 'fuel pump',
+    'shock absorber', 'crankshaft', 'overhead camshaft', 'ignition coil', 'ABS system',
+    // Add more terms here
+  ],
+  homeRepair: [
+    'HVAC', 'plumbing', 'circuit breaker', 'fuse box', 'insulation',
+    'drywall', 'roofing', 'sump pump', 'pest control', 'appliance repair',
+    'toolbox', 'wiring', 'caulking', 'water heater', 'foundation',
+    'gutter cleaning', 'leak detection', 'smoke detector', 'home automation', 'energy efficiency',
+    'flooring', 'tile setting', 'grout', 'cabinet installation', 'landscaping',
+    'septic system', 'window installation', 'drainage', 'window glazing', 'security system',
+    // Add more terms here
+  ],
+  technology: [
+    'motherboard', 'CPU', 'RAM', 'SSD', 'graphics card',
+    'network router', 'USB port', 'operating system', 'firewall', 'software patch',
+    'bluetooth', 'Wi-Fi', 'cloud storage', 'virtual machine', 'encryption',
+    'firmware update', 'data recovery', 'hardware interface', 'system integration', 'IT support',
+    'peripheral', 'IoT (Internet of Things)', 'machine learning', 'AI algorithms', 'data mining',
+    'software development', 'version control', 'cybersecurity', 'network topology', 'multi-factor authentication',
+    // Add more terms here
+  ],
+  electrical: [
+    'circuit', 'voltage', 'amperage', 'resistance', 'conduit',
+    'transformer', 'alternating current', 'direct current', 'fuse', 'switchgear',
+    'relay', 'generator', 'power distribution', 'load center', 'thermal overload',
+    'grounding', 'surge protection', 'electrical panel', 'wattage', 'breaker panel',
+    'insulation resistance', 'solar panels', 'inverter', 'microcontroller', 'semiconductors',
+    'diode', 'availability management', 'power standards', 'circuit breaker', 'electric meter',
+    // Add more terms here
+  ],
+  HVAC: [
+    'thermostat', 'refrigerant', 'ductwork', 'heat pump', 'evaporator coil',
+    'furnace', 'air conditioning', 'dehumidifier', 'ventilation', 'zone control',
+    'filter replacement', 'compressor', 'air handler', 'chiller', 'humidistat',
+    'BTU (British Thermal Unit)', 'indoor air quality', 'draft prevention', 'cooling cycle', 'HVAC zoning',
+    'venturi effect', 'heat exchanger', 'condensing unit', 'dryer systems', 'airflow distribution',
+    'condenser coil', 'thermodynamics', 'system efficiency', 'environmental controls', 'energy audit',
+    // Add more terms here
+  ],
+  carpentry: [
+    'joinery', 'saw', 'lathe', 'chisel', 'sanding',
+    'wood grain', 'dovetail', 'tenon', 'miter cut', 'planer',
+    'cabinet making', 'woodworking', 'framing', 'finish carpentry', 'veneer',
+    'craftsmanship', 'measure twice, cut once', 'lumber', 'block plane', 'hinges',
+    'mortise', 'hand plane', 'band saw', 'router table', 'drill press',
+    'jigsaw', 'timber framing', 'veneer press', 'hand tools', 'wood finishing',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'career',
+    weight: 1.8,
+    clusters: [
+      /* const careerCoachDictionary = {
+  careerDevelopment: [
+    'goal setting', 'networking', 'mentoring', 'strengths finder', 'personal branding',
+    'career assessment', 'skill gap analysis', 'career ladder', 'job shadowing', 'professional development',
+    'career transition', 'job satisfaction', 'promotability', 'career pathing', 'time management',
+    'performance review', '360-degree feedback', 'interpersonal skills', 'work-life balance', 'career vision',
+    // Add more terms here
+  ],
+  jobSearch: [
+    'resume writing', 'cover letter', 'job application', 'interview preparation', 'job fair',
+    'LinkedIn optimization', 'job board', 'networking event', 'informational interview', 'elevator pitch',
+    'follow-up email', 'reference check', 'job offer negotiation', 'headhunter', 'applicant tracking system',
+    'job market research', 'gig economy', 'freelancing', 'online portfolio', 'virtual interview',
+    // Add more terms here
+  ],
+  leadership: [
+    'emotional intelligence', 'team building', 'conflict resolution', 'executive presence', 'strategic planning',
+    'delegation', 'decision making', 'visionary leadership', 'transformational leadership', 'coaching and mentoring',
+    'change management', 'cross-functional team', 'performance metrics', 'stakeholder management', 'leadership pipeline',
+    'ethical leadership', 'accountability', 'negotiation skills', 'diversity and inclusion', 'public speaking',
+    // Add more terms here
+  ],
+  entrepreneurship: [
+    'business plan', 'start-up', 'market research', 'product development', 'scalability',
+    'value proposition', 'minimum viable product', 'seed funding', 'angel investor', 'bootstrapping',
+    'marketing strategy', 'customer acquisition', 'business model innovation', 'pitch deck', 'venture capital',
+    'exit strategy', 'market validation', 'revenue streams', 'competitive advantage', 'lean startup',
+    // Add more terms here
+  ],
+  productivity: [
+    'time management', 'focus techniques', 'productivity tools', 'task prioritization', 'workflow optimization',
+    'procrastination avoidance', 'goal alignment', 'efficiency improvement', 'project management software', 'agile methodologies',
+    'scrum', 'Kanban', 'calendar management', 'batch processing', 'mind mapping',
+    'Pomodoro technique', 'deep work', 'digital detox', 'habit tracking', 'remote work optimization',
+    // Add more terms here
+  ],
+  personalDevelopment: [
+    'growth mindset', 'empathy development', 'self-reflection', 'mindfulness', 'positive psychology',
+    'cognitive behavioral techniques', 'emotional regulation', 'assertiveness training', 'self-discipline', 'confidence building',
+    'boundaries setting', 'stress management', 'resilience', 'influencing skills', 'development plan',
+    'values alignment', 'personal mission statement', 'life coaching', 'communication skills', 'creative thinking',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'therapist',
+    weight: 2.0,
+    clusters: [
+      /* const therapistExpertDictionary = {
+  cognitiveBehavioralTherapy: [
+    'automatic thoughts', 'cognitive restructuring', 'exposure therapy', 'behavioral activation', 'core beliefs',
+    'thought record', 'schema', 'cognitive distortion', 'mindfulness', 'emotional regulation',
+    'rational emotive behavior therapy', 'self-monitoring', 'relaxation techniques', 'problem-solving therapy', 'motivational interviewing',
+    'desensitization', 'self-efficacy', 'stimulus control', 'behavior modification', 'cognitive restructuring',
+    // Add more terms here
+  ],
+  psychodynamicTherapy: [
+    'transference', 'countertransference', 'defense mechanisms', 'free association', 'repression',
+    'unconscious mind', 'dream analysis', 'object relations', 'ego psychology', 'attachment theory',
+    'id', 'super ego', 'Oedipus complex', 'projection', 'sublimation',
+    'psychosexual stages', 'internal conflict', 'psychodynamic model', 'interpreting resistance', 'fantasy',
+    // Add more terms here
+  ],
+  familyTherapy: [
+    'family dynamics', 'systemic therapy', 'genogram', 'triangulation', 'enmeshment',
+    'differentiation', 'nuclear family emotional system', 'family projection process', 'multigenerational transmission', 'family roles',
+    'conflict resolution', 'communication patterns', 'emotional cutoff', 'sibling rivalry', 'parenting styles',
+    'structural family therapy', 'intergenerational trauma', 'family lifecycle stages', 'narrative therapy', 'open communication',
+    // Add more terms here
+  ],
+  traumaTherapy: [
+    'PTSD', 'EMDR', 'trauma-informed care', 'flashbacks', 'dissociation',
+    'somatic experiencing', 'resilience building', 'grounding techniques', 'memory reconsolidation', 'vicarious trauma',
+    'attachment trauma', 'trauma bonding', 'hyperarousal', 'emotional numbing', 'neuroplasticity',
+    'trigger response', 'post-traumatic growth', 'complex trauma', 'exposure therapy', 'trauma processing',
+    // Add more terms here
+  ],
+  humanisticTherapy: [
+    'self-actualization', 'client-centered therapy', 'unconditional positive regard', 'existential therapy', 'Gestalt therapy',
+    'phenomenology', 'authentic self', 'empathy', 'personal growth', 'meaning-making',
+    'Rogers’ six core conditions', 'self-concept', 'existential anxiety', 'congruence', 'creative self-expression',
+    'hierarchy of needs', 'person-centered approach', 'contact boundary', 'experiential learning', 'self-exploration',
+    // Add more terms here
+  ],
+  groupTherapy: [
+    'group cohesion', 'interpersonal learning', 'feedback exchange', 'group dynamics', 'psychodrama',
+    'Therapeutic factors', 'role play', 'scapegoating', 'co-facilitation', 'group norms',
+    'altruism', 'universality', 'installation of hope', 'risk-taking', 'sculpting',
+    'intergroup conflict', 'peer support', 'shared experiences', 'facilitator roles', 'confidentiality',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'vitality',
+    weight: 1.6,
+    clusters: [
+      /* const vitalityCoachDictionary = {
+  strengthTraining: [
+    'hypertrophy', 'resistance training', 'free weights', 'compound exercises', 'isolation exercises',
+    'progressive overload', 'set and rep', 'muscular endurance', 'barbell', 'dumbbell',
+    'kettlebell', 'squat', 'deadlift', 'bench press', 'pull-up',
+    'push-up', 'circuit training', 'core stabilization', 'strength periodization', 'powerlifting',
+    // Add more terms here
+  ],
+  cardiovascularFitness: [
+    'aerobic capacity', 'VO2 max', 'endurance', 'interval training', 'anaerobic threshold',
+    'heart rate zone', 'treadmill', 'cycling', 'HIIT (High-Intensity Interval Training)', 'cardio-respiratory',
+    'marathon training', 'spin class', 'rowing', 'jump rope', 'pacing strategies',
+    'cool down', 'warm-up', 'lactate threshold', 'steady-state cardio', 'fitness tracker',
+    // Add more terms here
+  ],
+  flexibilityTraining: [
+    'dynamic stretching', 'static stretching', 'proprioceptive neuromuscular facilitation', 'range of motion', 'mobility drills',
+    'yoga', 'Pilates', 'foam rolling', 'joint health', 'flexibility routine',
+    'active stretching', 'ballistic stretching', 'fascial release', 'muscle elasticity', 'stretch reflex',
+    'flexibility assessment', 'breathing techniques', 'balance training', 'spinal alignment', 'injury prevention',
+    // Add more terms here
+  ],
+  nutrition: [
+    'macronutrients', 'micronutrients', 'caloric intake', 'protein synthesis', 'meal prep',
+    'carbohydrate loading', 'glycemic index', 'supplements', 'hydration', 'electrolytes',
+    'dietary fiber', 'omega-3 fatty acids', 'vitamins', 'minerals', 'nutrient timing',
+    'metabolic rate', 'dietary restrictions', 'plant-based diet', 'paleo diet', 'ketogenic diet',
+    // Add more terms here
+  ],
+  mentalFitness: [
+    'mind-body connection', 'meditation', 'visualization', 'stress reduction', 'focus techniques',
+    'positive affirmations', 'resilience', 'progressive muscle relaxation', 'biofeedback', 'self-talk',
+    'goal setting', 'mindfulness practice', 'mental toughness', 'relaxation techniques', 'cognitive flexibility',
+    'emotion regulation', 'mental endurance', 'sleep hygiene', 'neuroplasticity', 'holistic wellness',
+    // Add more terms here
+  ],
+  sportsPerformance: [
+    'agility', 'quickness', 'reaction time', 'sport-specific training', 'plyometrics',
+    'skill acquisition', 'muscle memory', 'endurance', 'balance', 'speed development',
+    'athletic conditioning', 'cross-training', 'competitive mindset', 'performance nutrition', 'sports psychology',
+    'video analysis', 'injury recovery', 'tactical training', 'athlete monitoring', 'periodization',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'tutor',
+    weight: 1.5,
+    clusters: [
+      /* const tutorExpertDictionary = {
+  mathematics: [
+    'algebra', 'calculus', 'geometry', 'trigonometry', 'differential equations',
+    'linear algebra', 'probability', 'statistics', 'pre-calculus', 'mathematical modeling',
+    'functions', 'integrals', 'derivatives', 'vector calculus', 'numerical methods',
+    'matrix operations', 'mathematical proofs', 'combinatorics', 'set theory', 'complex numbers',
+    // Add more terms here
+  ],
+  languageArts: [
+    'sentence structure', 'literary analysis', 'poetry', 'prose', 'grammar',
+    'vocabulary', 'essay writing', 'creative writing', 'rhetoric', 'linguistics',
+    'comprehension', 'phonetics', 'syntax', 'semantics', 'literary devices',
+    'narrative techniques', 'editing', 'thesis statement', 'argumentative essay', 'fiction',
+    // Add more terms here
+  ],
+  science: [
+    'biology', 'physics', 'chemistry', 'earth science', 'astronomy',
+    'ecosystems', 'genetics', 'thermodynamics', 'organic chemistry', 'inorganic chemistry',
+    'periodic table', 'cellular biology', 'quantum mechanics', 'forces and motion', 'scientific method',
+    'biochemistry', 'photosynthesis', 'ecosystem dynamics', 'geology', 'astronomical phenomena',
+    // Add more terms here
+  ],
+  socialStudies: [
+    'history', 'geography', 'economics', 'political science', 'sociology',
+    'anthropology', 'civics', 'cultural studies', 'global studies', 'government systems',
+    'historical events', 'social movements', 'international relations', 'democracy', 'human rights',
+    'archaeology', 'ethics', 'cultural heritage', 'historical interpretation', 'case studies',
+    // Add more terms here
+  ],
+  examPreparation: [
+    'test-taking strategies', 'time management', 'practice exams', 'SAT', 'ACT',
+    'GRE', 'GMAT', 'standardized testing', 'multiple-choice questions', 'essay questions',
+    'score improvement', 'review sessions', 'flashcards', 'study groups', 'critical thinking',
+    'mind mapping', 'active recall', 'mnemonics', 'reading comprehension', 'problem-solving',
+    // Add more terms here
+  ],
+  studySkills: [
+    'note-taking', 'organization', 'goal setting', 'focus techniques', 'learning styles',
+    'active listening', 'research skills', 'time allocation', 'critical analysis', 'peer learning',
+    'SQ3R (Survey, Question, Read, Recite, Review)', 'Cornell Method', 'information retention', 'concentration', 'academic motivation',
+    'study planner', 'self-assessment', 'learning objectives', 'academic resilience', 'digital literacy',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'pastor',
+    weight: 1.8,
+    clusters: [
+      /* const pastorExpertDictionary = {
+  theology: [
+    'doctrine', 'eschatology', 'atonement', 'exegesis', 'soteriology',
+    'ecclesiology', 'hermeneutics', 'trinity', 'covenant theology', 'dispensationalism',
+    'sanctification', 'justification', 'inspiration', 'revelation', 'theodicy',
+    'sacraments', 'predestination', 'apostolic', 'creed', 'incarnation',
+    'charismatics', 'omnipotence', 'omniscience', 'providence', 'divine attributes',
+    'asceticism', 'blasphemy', 'Christology', 'holiness', 'imago Dei',
+    // Add more terms here
+  ],
+  biblicalStudies: [
+    'Old Testament', 'New Testament', 'Pentateuch', 'Gospels', 'Epistles',
+    'apocrypha', 'septuagint', 'parables', 'psalms', 'prophecy',
+    'biblical archaeology', 'manuscript', 'canon', 'synoptic', 'translation',
+    'dead sea scrolls', 'historical context', 'scripture interpretation', 'biblical languages', 'textual criticism',
+    'patriarchs', 'wisdom literature', 'minor prophets', 'major prophets', 'apocalyptic literature',
+    // Add more terms here
+  ],
+  churchHistory: [
+    'reformation', 'early church', 'martyrs', 'patristics', 'council of Nicaea',
+    'great schism', 'revival movements', 'missionary work', 'monasticism', 'reformation leaders',
+    'Protestantism', 'Catholicism', 'Orthodoxy', 'denomination', 'Vatican councils',
+    'iconoclasm', 'church fathers', 'ecumenism', 'crusades', 'awakening',
+    'apostolic succession', 'heresy', 'anathema', 'creedal development', 'saints',
+    // Add more terms here
+  ],
+  pastoralCare: [
+    'counseling', 'grief support', 'marriage counseling', 'spiritual guidance', 'visitation',
+    'pastoral ethics', 'confidentiality', 'emotional support', 'hospital ministry', 'bereavement',
+    'listening skills', 'life transitions', 'interpersonal skills', 'spiritual growth', 'support group',
+    'community engagement', 'conflict resolution', 'addiction support', 'mentor', 'youth ministry',
+    'chaplaincy', 'pastoral theology', 'prayer chain', 'pastoral visit', 'life coaching',
+    // Add more terms here
+  ],
+  worship: [
+    'liturgy', 'sacraments', 'hymns', 'prayer', 'sermon',
+    'worship planning', 'communion', 'baptism', 'Eucharist', 'praise',
+    'worship leadership', 'service structure', 'seasonal themes', 'choir', 'music ministry',
+    'adoration', 'invocation', 'benediction', 'response readings', 'worship technology',
+    'call to worship', 'responsive reading', 'offertory', 'doxology', 'worship arts',
+    // Add more terms here
+  ],
+  ethics: [
+    'moral theology', 'social justice', 'bioethics', 'sexual ethics', 'just war theory',
+    'ethical dilemmas', 'stewardship', 'tithing', 'charity', 'integrity',
+    'value systems', 'conscience', 'virtues', 'commandments', 'absolution',
+    'duty ethics', 'moral conscience', 'moral decision-making', 'virtue ethics', 'ethical teachings',
+    'natural law', 'divine command theory', 'consequentialism', 'moral relativism', 'canon law',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'hype',
+    weight: 1.4,
+    clusters: [
+      /* const hypeSpecialistDictionary = {
+  contentCreation: [
+    'viral content', 'engagement rate', 'influencer marketing', 'content calendar', 'brand storytelling',
+    'visual content', 'user-generated content', 'hashtags', 'SEO', 'copywriting',
+    'audience analysis', 'content curation', 'video editing', 'graphic design', 'brand voice',
+    'long-form content', 'short-form content', 'blogging', 'content pillars', 'call to action',
+    // Add more terms here
+  ],
+  socialMediaPlatforms: [
+    'Facebook', 'Instagram', 'Twitter', 'LinkedIn', 'TikTok',
+    'Snapchat', 'YouTube', 'Pinterest', 'Reddit', 'Clubhouse',
+    'social listening', 'algorithm', 'live streaming', 'stories', 'reels',
+    'social media integration', 'platform analytics', 'subscription models', 'community building', 'direct messaging',
+    // Add more terms here
+  ],
+  analyticsAndMetrics: [
+    'click-through rate', 'impressions', 'reach', 'conversion rate', 'bounce rate',
+    'traffic analysis', 'engagement metrics', 'key performance indicators', 'A/B testing', 'follower growth',
+    'data mining', 'sentiment analysis', 'trend analysis', 'social ROI', 'analytics dashboard',
+    'heatmaps', 'influencer analytics', 'social listening tools', 'audience segmentation', 'behavioral analytics',
+    // Add more terms here
+  ],
+  advertising: [
+    'pay-per-click', 'social ads', 'target audience', 'ad placement', 'remarketing',
+    'ad creatives', 'budget allocation', 'ad copy', 'sponsored content', 'native advertising',
+    'lead generation', 'conversion funnel', 'ad spend', 'media buying', 'impression share',
+    'audience targeting', 'campaign management', 'cost per acquisition', 'ad retargeting', 'banner ads',
+    // Add more terms here
+  ],
+  communityManagement: [
+    'customer feedback', 'reputation management', 'community guidelines', 'moderation', 'engagement strategy',
+    'social interaction', 'user loyalty', 'fan base', 'online forums', 'community events',
+    'brand advocates', 'crisis management', 'relationship building', 'community insights', 'networking events',
+    'public relations', 'member support', 'feedback loop', 'user engagement', 'membership growth',
+    // Add more terms here
+  ],
+  trendsAndInnovation: [
+    'influencer trends', 'content virality', 'emerging platforms', 'social media trends', 'innovation strategy',
+    'digital transformation', 'augmented reality', 'virtual reality', 'interactive content', 'meme culture',
+    'digital storytelling', 'AR filters', 'social VR', 'tech advancements', 'trend forecasting',
+    'innovation labs', 'creative disruption', 'future tech', 'early adoption', 'cutting-edge technology',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  },
+  {
+    id: 'bestie',
+    weight: 1.2,
+    clusters: [
+      /* const bestieExpertDictionary = {
+  emotionalSupport: [
+    'active listening', 'empathy', 'compassion', 'encouragement', 'emotional intelligence',
+    'validation', 'trust building', 'support system', 'positive reinforcement', 'confidentiality',
+    'stress relief', 'non-judgmental', 'reassurance', 'emotion sharing', 'emotional availability',
+    'positive vibes', 'prioritizing connection', 'vulnerability', 'strength acknowledgment', 'honesty',
+    // Add more terms here
+  ],
+  socialActivities: [
+    'movie nights', 'dining out', 'hiking', 'road trips', 'game night',
+    'concerts', 'brunch', 'karaoke', 'book club', 'shopping spree',
+    'coffee dates', 'travel adventures', 'festival outings', 'beach day', 'picnics',
+    'crafting sessions', 'sports events', 'cultural experiences', 'spa days', 'birthday celebrations',
+    // Add more terms here
+  ],
+  communication: [
+    'texting', 'calling', 'video chats', 'memes', 'GIFs',
+    'social media interactions', 'inside jokes', 'group chats', 'emoji communication', 'snail mail',
+    'voice messages', 'photo sharing', 'storytelling', 'expressive communication', 'engagement',
+    'updates', 'checking in', 'facetiming', 'feedback loops', 'nurturing dialogue',
+    // Add more terms here
+  ],
+  conflictResolution: [
+    'problem-solving', 'de-escalation', 'compromising', 'negotiation', 'mediation',
+    'finding common ground', 'peacekeeping', 'active resolution', 'understanding differences', 'apology',
+    'forgiveness', 'boundary setting', 'open discussions', 'rebuilding trust', 'mutual respect',
+    'agreement crafting', 'conflict awareness', 'listening to understand', 'patience', 'resolution strategies',
+    // Add more terms here
+  ],
+  personalGrowth: [
+    'goal setting', 'motivation', 'accountability partner', 'life coaching', 'growth mindset',
+    'self-improvement', 'aspiration sharing', 'skill development', 'habit building', 'reflective listening',
+    'confidence building', 'encouraging challenges', 'adventure seeking', 'vision boarding', 'success celebration',
+    'mentoring', 'positive affirmations', 'life goals', 'achievement recognition', 'support in transitions',
+    // Add more terms here
+  ],
+  sharedExperiences: [
+    'nostalgia', 'memory making', 'adventure memories', 'shared milestones', 'laughter',
+    'traditions', 'cultural rituals', 'heritage sharing', 'family gatherings', 'childhood connections',
+    'bonding moments', 'sentimental journeys', 'historic moments', 'legacy conversations', 'time capsules',
+    'holiday celebrations', 'seasonal changes', 'life benchmarks', 'journey reflection', 'reminiscence',
+    // Add more terms here
+  ],
+};
+ */
+    ]
+  }
+];
+
+/**
+ * THE BRAIN: Scans input text for multi-word phrases and single keywords.
+ * Uses a "Double-Lock" (2 matches per cluster) to trigger handoff suggestions.
+ */
+export const detectExpertSuggestion = (
+  text: string, 
+  currentId: string, 
+  personas: PersonaConfig[]
+): PersonaConfig | null => {
+  const lower = text.toLowerCase();
+  
+  // Clean text for better matching, but keep spaces for phrases
+  const cleanText = lower.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ');
+  
+  let bestMatch: { id: string, score: number } | null = null;
+
+  EXPERT_CONTEXTS.forEach(config => {
+    if (config.id === currentId) return;
+
+    let totalScore = 0;
+    
+    config.clusters.forEach(cluster => {
+      // Find matches in this specific cluster
+      const matches = cluster.filter(keyword => {
+        // Handle phrases (e.g., "real estate") and hyphenated terms
+        const hyphenated = keyword.replace(/\s+/g, '-');
+        return lower.includes(keyword) || lower.includes(hyphenated);
+      });
+      
+      // DOUBLE-LOCK: Requires 2 distinct matches from the SAME cluster
+      if (matches.length >= 2) {
+        totalScore += (Math.pow(matches.length, 1.5) * config.weight);
+      }
+    });
+
+    if (totalScore > 0 && (!bestMatch || totalScore > bestMatch.score)) {
+      bestMatch = { id: config.id, score: totalScore };
+    }
+  });
+
+  // Score threshold for handoff button to appear
   if (bestMatch && bestMatch.score >= 5.0) {
     return personas.find(p => p.id === bestMatch!.id) || null;
   }
