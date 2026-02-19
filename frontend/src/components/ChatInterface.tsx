@@ -176,6 +176,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const recognitionRef = useRef<any>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const transcriptRef = useRef<string>(''); 
+ const accumulatedRef = useRef<string>(''); // NEW: Accumulates text for infinite recording
 
  // --- NOTIFICATION ENGINE ---
  const setupNotifications = async () => {
@@ -301,42 +302,41 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   window.speechSynthesis.speak(utterance);
  };
 
- // --- WALKIE-TALKIE MIC (CLAUDE STYLE) ---
+ // --- INFINITE WALKIE-TALKIE ENGINE (CLAUDE STYLE) ---
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   
-   // KEY CHANGE: Continuous listening allowed. No cut-offs.
    recognition.continuous = true; 
    recognition.interimResults = true; 
    
    recognition.onresult = (event: any) => {
-    let finalTranscript = '';
-    for (let i = 0; i < event.results.length; i++) {
-     const result = event.results[i];
-     if (result.isFinal) {
-      finalTranscript += result[0].transcript + ' ';
-     }
+    let interim = '';
+    let final = '';
+    
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
     }
-    // Update visual input, but DO NOT SEND YET
-    if (finalTranscript.trim()) {
-     const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
-     transcriptRef.current = cleanedTranscript;
-     setInput(cleanedTranscript);
+    
+    // Accumulate final results immediately
+    if (final) {
+      accumulatedRef.current += final + ' ';
     }
+    
+    // Show total (Accumulated + Current Interim)
+    const fullText = accumulatedRef.current + interim;
+    setInput(fullText);
    };
 
    recognition.onend = () => {
-    setIsRecording(false);
-    isRecordingRef.current = false;
-    
-    // TRIGGER SEND ONLY WHEN STOPPED
-    const cleanTranscript = transcriptRef.current?.trim();
-    if (cleanTranscript && cleanTranscript.length > 1) {
-     handleSend(); 
+    // CRITICAL FIX: If user is still recording, RESTART IMMEDIATELY
+    if (isRecordingRef.current) {
+      try { recognition.start(); } catch(e) {}
     }
-    transcriptRef.current = '';
    };
    
    recognitionRef.current = recognition;
@@ -344,28 +344,31 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   }
  }, []);
 
- const cleanUpSpeech = (text: string): string => {
-  let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1');
-  cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, '');
-  cleaned = cleaned.replace(/\s+/g, ' ');
-  return cleaned;
- };
-
  const handleWalkieTalkieMic = () => {
   if (!micSupported) return alert('Mic not supported');
   
   if (isRecording) {
-   // STOP ACTION: This triggers onend -> which triggers handleSend
+   // STOP COMMAND: User clicked Stop
    setIsRecording(false);
-   recognitionRef.current?.stop(); 
+   isRecordingRef.current = false;
+   if (recognitionRef.current) recognitionRef.current.stop();
+   
+   // TRIGGER SEND
+   if (input.trim().length > 0) {
+     handleSend();
+   }
+   // Reset accumulators
+   accumulatedRef.current = '';
   } else {
-   // START ACTION: Clear everything and listen indefinitely
-   quickStopAllAudio(); // Kill any echo
+   // START COMMAND
+   quickStopAllAudio(); // Kill echo
    setIsRecording(true);
    isRecordingRef.current = true;
    setInput('');
-   transcriptRef.current = '';
-   recognitionRef.current?.start();
+   accumulatedRef.current = ''; // Reset buffer
+   if (recognitionRef.current) {
+     try { recognitionRef.current.start(); } catch(e) {}
+   }
   }
  };
 
@@ -441,7 +444,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   finally { setLoading(false); setSelectedImage(null); }
  };
 
- // FIX: handleBackToServices must clear message to show grid
  const handleBackToServices = () => { 
    quickStopAllAudio(); 
    setMessages([]); // This triggers the 'messages.length === 0' check to show Grid
