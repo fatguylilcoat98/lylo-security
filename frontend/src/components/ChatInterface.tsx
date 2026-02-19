@@ -100,11 +100,29 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
  return colorMap[persona.color]?.[type] || colorMap.blue[type];
 };
 
+// --- GLOBAL ACCESS FUNCTIONS (FIXES TS ERROR) ---
 const canAccessPersona = (persona: PersonaConfig, tier: string) => {
  const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
  return tiers[tier] >= tiers[persona.requiredTier];
 };
 
+const getAccessiblePersonas = (tier: string) => {
+ return PERSONAS.filter(p => canAccessPersona(p, tier));
+};
+
+const detectExpertSuggestion = (text: string, currentId: string, userTier: string): PersonaConfig | null => {
+ const lower = text.toLowerCase();
+ for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
+  if (id === currentId) continue;
+  if (keywords.some(k => lower.includes(k))) {
+   const expert = PERSONAS.find(p => p.id === id);
+   if (expert && canAccessPersona(expert, userTier)) return expert;
+  }
+ }
+ return null;
+};
+
+// --- MAIN COMPONENT ---
 function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLevel = 100, onZoomChange = () => {}, onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {} }: ChatInterfaceProps) {
  
  // State
@@ -113,7 +131,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const [input, setInput] = useState('');
  const [loading, setLoading] = useState(false);
  const [userName, setUserName] = useState<string>('');
- const [intelligenceSync, setIntelligenceSync] = useState(0);
  const [notifications, setNotifications] = useState<string[]>([]);
  const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
  const [showBestieSetup, setShowBestieSetup] = useState(false);
@@ -124,7 +141,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
  const [previewPlayingId, setPreviewPlayingId] = useState<string | null>(null);
  const [showDropdown, setShowDropdown] = useState(false);
- const [showUserDetails, setShowUserDetails] = useState(false);
  const [userStats, setUserStats] = useState<UserStats | null>(null);
  const [micSupported, setMicSupported] = useState(false);
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -316,19 +332,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   }
  };
 
- // --- EXPERT HANDOFF DETECTION ---
- const detectExpertSuggestion = (text: string, currentId: string): PersonaConfig | null => {
-  const lower = text.toLowerCase();
-  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-   if (id === currentId) continue;
-   if (keywords.some(k => lower.includes(k))) {
-    const expert = PERSONAS.find(p => p.id === id);
-    if (expert && canAccessPersona(expert, userTier)) return expert;
-   }
-  }
-  return null;
- };
-
  // --- PERSONA SWITCHING ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.'); return; }
@@ -513,6 +516,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">{messages.length > 0 ? activePersona.serviceLabel : 'Operating System'}</p>
      </div>
      <div className="flex items-center gap-2">
+      {/* SHOW BACK ARROW IF MESSAGES > 0, OTHERWISE SHOW SHIELD */}
       {messages.length > 0 ? (
         <button onClick={handleBackToServices} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
           <div className="w-5 h-5 text-white">
@@ -551,6 +555,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
           </div>
         );
       })}
+      {/* CLEAR ALL BUTTON */}
       {notifications.length > 0 && (
        <div className="col-span-2 mt-4">
         <button onClick={clearAllNotifications} className="w-full py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 hover:bg-red-500/30 transition-all">
@@ -564,7 +569,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
         {messages.map((msg, idx) => {
           // Detect Expert Handoff ONLY on latest bot response
           const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-          const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m => m.content).join(' '), activePersona.id) : null;
+          const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m => m.content).join(' '), activePersona.id, userTier) : null;
 
           return (
           <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
@@ -590,7 +595,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
               )}
             </div>
 
-            {/* EXPERT HANDOFF BUTTON */}
+            {/* EXPERT HANDOFF BUTTON (FIXED AND VISIBLE) */}
             {suggestion && (
               <div className="mt-3 w-full max-w-[85%] p-4 bg-indigo-600 border border-indigo-400 rounded-xl shadow-lg">
                 <p className="text-[10px] font-black text-white uppercase mb-2 flex items-center gap-2">
