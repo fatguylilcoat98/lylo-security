@@ -297,9 +297,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    window.speechSynthesis.cancel();
  };
 
- // Dynamic font sizing based on user selection
+ // THE FONT MAGNIFIER: Massively increased the text size and line height for Senior mode
  const getDynamicFontSize = () => {
-   return communicationStyle === 'senior' ? 'text-lg' : 'text-sm';
+   return communicationStyle === 'senior' ? 'text-2xl leading-relaxed tracking-wide' : 'text-sm';
  };
 
  return (
@@ -395,7 +395,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
         <button onClick={() => setNotifications(prev => prev.filter(n => n !== id))} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
         <div className="flex gap-4">
          <div className="p-2 bg-yellow-500/20 rounded-xl"><Zap className="w-4 h-4 text-yellow-400" /></div>
-         <p className={`${getDynamicFontSize()} leading-relaxed text-gray-200 font-bold`}>{REAL_INTEL_DROPS[id]}</p>
+         <p className={`${getDynamicFontSize()} text-gray-200 font-bold`}>{REAL_INTEL_DROPS[id]}</p>
         </div>
        </div>
       ))}
@@ -458,7 +458,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      <div className="flex gap-2">
       <button onClick={() => fileInputRef.current?.click()} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400"><Camera className="w-6 h-6" /></button>
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
-      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className="flex-1 bg-white/10 border border-white/10 rounded-2xl px-6 py-5 text-sm text-white outline-none font-bold" />
+      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-6 py-5 ${communicationStyle === 'senior' ? 'text-xl' : 'text-sm'} text-white outline-none font-bold`} />
       <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl"><ArrowRight className="w-6 h-6" /></button>
      </div>
      <div className="flex items-center justify-between pt-2 border-t border-white/10">
