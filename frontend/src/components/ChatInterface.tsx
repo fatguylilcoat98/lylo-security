@@ -4,11 +4,12 @@ import {
  Shield, Wrench, Gavel, Monitor, BookOpen, Laugh, ChefHat, Activity, Camera, 
  Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, Phone, CreditCard, 
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
- StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2, Heart
+ StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2, Heart,
+ UserCheck
 } from 'lucide-react';
 
 // --- IMPORT EXTRACTED LOGIC & DATA ---
-import { PERSONAS, REAL_INTEL_DROPS, VIBE_SAMPLES, canAccessPersona, getAccessiblePersonas, PersonaConfig } from '../data/personas';
+import { PERSONAS, REAL_INTEL_DROPS, canAccessPersona, getAccessiblePersonas, PersonaConfig } from '../data/personas';
 import { getPersonaColorClass } from '../utils/theme';
 import { detectExpertSuggestion } from '../logic/contextEngine';
 import { useAudioEngine } from '../logic/audioEngine';
@@ -52,10 +53,12 @@ function ChatInterface({
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
- const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
  const [pushEnabled, setPushEnabled] = useState(false);
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [isEliteUser, setIsEliteUser] = useState(true);
+ 
+ // --- NEW: SENIOR MODE TOGGLE ---
+ const [isSeniorMode, setIsSeniorMode] = useState(false);
  
  // --- REFS ---
  const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -86,8 +89,8 @@ function ChatInterface({
    const savedBestie = localStorage.getItem('lylo_bestie_config');
    if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
    
-   const savedStyle = localStorage.getItem('lylo_communication_style');
-   if (savedStyle) setCommunicationStyle(savedStyle);
+   const savedSeniorMode = localStorage.getItem('lylo_senior_mode');
+   if (savedSeniorMode) setIsSeniorMode(savedSeniorMode === 'true');
 
    const allDrops = Object.keys(REAL_INTEL_DROPS);
    const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
@@ -103,7 +106,7 @@ function ChatInterface({
   return () => quickStopAllAudio();
  }, [userEmail]);
 
- // Init STT logic and hook it to UI state
+ // Init STT logic
  useEffect(() => {
    initMic(
      (liveText) => setInput(liveText), 
@@ -112,7 +115,7 @@ function ChatInterface({
        handleSend(finalText); 
      }
    );
- }, [activePersona, messages, selectedImage, communicationStyle]);
+ }, [activePersona, messages, selectedImage, isSeniorMode]);
 
  useEffect(() => {
   if (chatContainerRef.current) {
@@ -157,7 +160,7 @@ function ChatInterface({
 
  // --- CORE ACTIONS ---
 
- // 1. Standard Switch (Clears Board)
+ // 1. Standard Switch
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.', 'onyx'); return; }
   if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
@@ -184,7 +187,7 @@ function ChatInterface({
   setTimeout(() => { setActivePersona(persona); onPersonaChange(persona); setSelectedPersonaId(null); setShowDropdown(false); }, 300);
  };
 
- // 2. Expert Handoff (Keeps History & Auto-Replies)
+ // 2. Expert Handoff 
  const handleExpertHandoff = async (newPersona: PersonaConfig) => {
   if (!canAccessPersona(newPersona, userTier)) { speakText('Upgrade required.', 'onyx'); return; }
   
@@ -202,13 +205,12 @@ function ChatInterface({
   setMessages(prev => [...prev, transitionMsg]);
 
   try {
-    // FORCE CONTEXT: Grab the user's actual last message to shove into the API
     const lastUserMsg = messages.slice().reverse().find(m => m.sender === 'user')?.content || 'Review my previous messages.';
-    
-    // The Sledgehammer Prompt
     const handoffPrompt = `[CRITICAL HANDOFF]: Do NOT give a generic greeting. The user is currently dealing with this specific situation: "${lastUserMsg}". As ${newPersona.name}, give an immediate, step-by-step strategy to resolve this exact issue.`;
     
-    const response = await sendChatMessage(handoffPrompt, messages, newPersona.id, userEmail, null, 'en', communicationStyle);
+    // Pass 'senior' or 'standard' to the backend based on the toggle
+    const apiStyle = isSeniorMode ? 'senior' : 'standard';
+    const response = await sendChatMessage(handoffPrompt, messages, newPersona.id, userEmail, null, 'en', apiStyle);
     
     const botMsg: Message = { 
       id: (Date.now() + 1).toString(), 
@@ -253,7 +255,10 @@ function ChatInterface({
   setMessages(prev => [...prev, userMsg]);
 
   try {
-   const response = await sendChatMessage(textToSend, messages, activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
+   // Pass 'senior' or 'standard' to the backend based on the toggle
+   const apiStyle = isSeniorMode ? 'senior' : 'standard';
+   const response = await sendChatMessage(textToSend, messages, activePersona.id, userEmail, selectedImage, 'en', apiStyle);
+   
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
    setMessages(prev => [...prev, botMsg]);
    
@@ -276,23 +281,23 @@ function ChatInterface({
  let crisisTitle = "Emergency OS";
  let crisisWarning = "Call your bank immediately. Report unauthorized access.";
  let crisisAction = "General Support Hub";
- let crisisLink = "#"; // Replace with actual affiliate links
+ let crisisLink = "#"; 
 
  if (activePersona.id === 'lawyer') {
    crisisTitle = "LEGAL ESCALATION";
    crisisWarning = "AI cannot represent you in court. You need a licensed attorney to establish attorney-client privilege and take legal action.";
    crisisAction = "Find a Verified Attorney";
-   crisisLink = "https://www.legalmatch.com"; // Example affiliate
+   crisisLink = "https://www.legalmatch.com"; 
  } else if (activePersona.id === 'doctor') {
    crisisTitle = "MEDICAL ESCALATION";
    crisisWarning = "AI cannot diagnose medical emergencies. If this is life-threatening, dial 911 immediately.";
    crisisAction = "Connect with Telehealth";
-   crisisLink = "https://www.teladoc.com"; // Example affiliate
+   crisisLink = "https://www.teladoc.com"; 
  } else if (activePersona.id === 'wealth') {
    crisisTitle = "FINANCIAL ESCALATION";
    crisisWarning = "AI is not a certified fiduciary. For major financial moves or severe fraud, speak to a licensed advisor.";
    crisisAction = "Find a Financial Advisor";
-   crisisLink = "https://smartasset.com"; // Example affiliate
+   crisisLink = "https://smartasset.com"; 
  }
 
  // --- RENDER UI ---
@@ -361,6 +366,20 @@ function ChatInterface({
       <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-lg active:scale-95 transition-all"><Settings className="w-5 h-5 text-white" /></button>
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
+        
+        {/* SENIOR MODE TOGGLE */}
+        <button onClick={() => { 
+          const newState = !isSeniorMode;
+          setIsSeniorMode(newState);
+          localStorage.setItem('lylo_senior_mode', String(newState));
+          setShowDropdown(false);
+        }} className={`w-full p-3 ${isSeniorMode ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300' : 'bg-white/5 border-white/10 text-gray-300'} border rounded-lg font-bold flex items-center justify-between mb-4 active:scale-95 transition-all`}>
+          <div className="flex items-center gap-2"><UserCheck className="w-4 h-4"/> Senior Mode</div>
+          <div className={`text-xs font-black uppercase ${isSeniorMode ? 'text-indigo-400' : 'text-gray-500'}`}>{isSeniorMode ? 'ON' : 'OFF'}</div>
+        </button>
+
+        <div className="h-px bg-white/10 w-full mb-4"></div>
+
         <button onClick={() => { setupNotifications(); setShowDropdown(false); }} className={`w-full p-3 ${pushEnabled ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-blue-500/10 border-blue-400/30 text-blue-400'} border rounded-lg font-bold flex items-center justify-center gap-2 mb-4 active:scale-95`}>
           {pushEnabled ? <><CheckCircle className="w-4 h-4"/> Alerts Active</> : <><Bell className="w-4 h-4"/> Enable Alerts</>}
         </button>
@@ -368,23 +387,6 @@ function ChatInterface({
           <Trash2 className="w-4 h-4" /> Clear Intelligence
         </button>
         <button onClick={() => { setShowBestieSetup(true); setShowDropdown(false); }} className="w-full p-3 bg-pink-500/20 border border-pink-400/50 rounded-lg text-white font-bold flex items-center justify-center gap-2 mb-4 active:scale-95"><Sliders className="w-4 h-4" /> Calibrate Bestie</button>
-        
-        <div className="mb-4 pb-4 border-b border-white/10">
-         <h3 className="text-white font-bold text-sm mb-3">Communication Style</h3>
-         <select 
-          value={communicationStyle}
-          onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }}
-          className="w-full p-2 bg-black/50 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:border-blue-400 mb-3"
-         >
-          {Object.keys(VIBE_SAMPLES).map(key => (
-            <option key={key} value={key}>{key.charAt(0).toUpperCase() + key.slice(1)}</option>
-          ))}
-         </select>
-         <div className="bg-black/30 border border-white/10 rounded-lg p-3">
-          <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-bold">Preview Sample</div>
-          <div className="text-gray-200 text-xs italic leading-relaxed">"{VIBE_SAMPLES[communicationStyle as keyof typeof VIBE_SAMPLES] || VIBE_SAMPLES.standard}"</div>
-         </div>
-        </div>
 
         {messages.length > 0 && <div className="mb-4 pb-4 border-b border-white/10"><h3 className="text-white font-bold text-sm mb-3">Switch Expert</h3><div className="grid grid-cols-2 gap-2">{getAccessiblePersonas(userTier).slice(0, 6).map(persona => (<button key={persona.id} onClick={() => handlePersonaChange(persona)} className="p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 text-xs font-bold flex items-center gap-2"><span className="truncate">{persona.serviceLabel.split(' ')[0]}</span></button>))}</div></div>}
         <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95"><LogOut className="w-4 h-4"/> <span className="font-bold text-sm">Exit OS</span></button>
@@ -509,7 +511,7 @@ function ChatInterface({
      </div>
      <div className="flex gap-2 items-end">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) setSelectedImage(e.target.files[0]); }} />
-      <button onClick={() => fileInputRef.current?.click()} className={`p-2 rounded-xl backdrop-blur-xl transition-all active:scale-scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}`}><Camera className="w-4 h-4" /></button>
+      <button onClick={() => fileInputRef.current?.click()} className={`p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}`}><Camera className="w-4 h-4" /></button>
       <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
        <input 
         value={input} 
@@ -526,7 +528,7 @@ function ChatInterface({
      {/* PERMANENT LEGAL DISCLAIMER & VERSIONING */}
      <div className="flex flex-col items-center mt-2 pt-2 border-t border-white/10">
        <div className="w-full flex justify-between items-center mb-1">
-         <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v32.0</p>
+         <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v33.0</p>
          <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
        </div>
        <p className="text-[8px] text-gray-500 text-center leading-tight">
