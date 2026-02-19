@@ -16,9 +16,9 @@ const REAL_INTEL_DROPS: { [key: string]: string } = {
   'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility.",
   'career': "ATS ALERT: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms. We need to update your resume stack.",
   'doctor': "HEALTH INTEL: CDPH issued a Sacramento-area alert for measles. Also, with the current winter cloud cover, your bone-density markers suggest a critical Vitamin D window is closing.",
-  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts. We need to patch the kernel.",
+  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts.",
   'bestie': "Okay, I've been thinking about that drama you told me about... I did some digging and I have a much better plan to handle it. You're gonna love this.",
-  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a burnout wall.",
+  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a wall.",
   'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched. They have a new method for simplifying complex data sets that is perfect for your current project.",
   'pastor': "FAITH INTEL: In the chaos of this week, remember: 'Peace I leave with you.' I've prepared a mid-week spiritual reset for you to find clarity.",
   'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure. We need to implement a 10-minute 'light-stack'.",
@@ -127,7 +127,7 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
 
 const detectExpertSuggestion = (message: string, currentPersona: string, confidenceScore: number, userTier: string): PersonaConfig | null => {
  const lowerMessage = message.toLowerCase();
- const threshold = 80;
+ const threshold = CONFIDENCE_THRESHOLDS[currentPersona as keyof typeof CONFIDENCE_THRESHOLDS] || 80;
  if (confidenceScore >= threshold) return null;
  
  for (const [expertId, keywords] of Object.entries(EXPERT_TRIGGERS)) {
@@ -207,7 +207,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    }
  };
 
- // --- CLEAR INTEL (PERSISTENT & TOP LEVEL) ---
+ // --- CLEAR INTEL (PERSISTENT) ---
  const clearAllNotifications = () => {
    setNotifications([]);
    localStorage.setItem('lylo_cleared_intel', JSON.stringify(Object.keys(REAL_INTEL_DROPS)));
@@ -229,17 +229,12 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    const savedBestie = localStorage.getItem('lylo_bestie_config');
    if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
 
-   // --- RANDOMIZED INTEL ENGINE (NO SPAM) ---
+   // --- RANDOMIZED INTEL ENGINE ---
    const allDrops = Object.keys(REAL_INTEL_DROPS);
    const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
-   
-   // Filter out what is already cleared
    const available = allDrops.filter(id => !cleared.includes(id));
-   
-   // Select ONLY 3 random experts to notify (simulates organic activity)
+   // Select 3 random experts to notify
    const randomSelection = available.sort(() => 0.5 - Math.random()).slice(0, 3);
-   
-   // If we have less than 3 available, just show what is left
    setNotifications(randomSelection);
    
    if ('Notification' in window && Notification.permission === 'granted') setPushEnabled(true);
@@ -329,28 +324,32 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   else { quickStopAllAudio(); setIsRecording(true); isRecordingRef.current = true; setInput(''); recognitionRef.current?.start(); }
  };
 
- // --- PERSONA CHANGE & WORTHY INTEL REVEAL (SILENT MODE) ---
+ // --- PERSONA CHANGE & WORTHY INTEL REVEAL (FIXED NAV) ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
-  if (persona.id === 'bestie' && !bestieConfig) {
-    setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return;
-  }
+  if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.'); return; }
+  if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
+  
   const wasNotified = notifications.includes(persona.id);
   quickStopAllAudio();
   setSelectedPersonaId(persona.id);
   
+  // FIX: Push a real message to 'messages' so the view switches to Chat
   if (wasNotified) {
-    // 1. Mark as cleared persistently
     const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
     localStorage.setItem('lylo_cleared_intel', JSON.stringify([...cleared, persona.id]));
     setNotifications(prev => prev.filter(id => id !== persona.id));
     
-    // 2. Show Mission Briefing (DO NOT SPEAK YET)
+    // Intel Message (Not Spoken Yet)
     const intelMsg: Message = { id: Date.now().toString(), content: REAL_INTEL_DROPS[persona.id], sender: 'bot', timestamp: new Date(), confidenceScore: 100 };
     setMessages([intelMsg]);
   } else {
-    setMessages([]);
-    speakText(persona.spokenHook.replace('{userName}', userName || 'user'));
+    // Standard Hook Message (Spoken + Visible)
+    const hookContent = persona.spokenHook.replace('{userName}', userName || 'user');
+    const hookMsg: Message = { id: Date.now().toString(), content: hookContent, sender: 'bot', timestamp: new Date() };
+    setMessages([hookMsg]);
+    speakText(hookContent);
   }
+  
   setTimeout(() => { setActivePersona(persona); onPersonaChange(persona); setSelectedPersonaId(null); }, 300);
  };
 
@@ -393,8 +392,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   finally { setLoading(false); setSelectedImage(null); }
  };
 
+ // FIX: handleBackToServices must clear message to show grid
+ const handleBackToServices = () => { 
+   quickStopAllAudio(); 
+   setMessages([]); // This triggers the 'messages.length === 0' check to show Grid
+   setInput(''); 
+   setSelectedImage(null); 
+ };
+ 
  const handleReplay = (messageContent: string, messageId?: string) => { quickStopAllAudio(); speakText(messageContent, messageId); };
- const handleBackToServices = () => { quickStopAllAudio(); setMessages([]); setInput(''); };
  const handleQuickPersonaSwitch = (persona: PersonaConfig) => { if (canAccessPersona(persona, userTier)) { quickStopAllAudio(); setActivePersona(persona); onPersonaChange(persona); setShowDropdown(false); } };
 
  const handleGetFullGuide = async () => {
@@ -461,6 +467,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
         <button onClick={() => { setupNotifications(); setShowDropdown(false); }} className={`w-full p-3 ${pushEnabled ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-blue-500/10 border-blue-400/30 text-blue-400'} border rounded-lg font-bold flex items-center justify-center gap-2 mb-4 active:scale-95`}>
           {pushEnabled ? <><CheckCircle className="w-4 h-4"/> Alerts Active</> : <><Bell className="w-4 h-4"/> Enable Alerts</>}
         </button>
+        <button onClick={() => { clearAllNotifications(); setShowDropdown(false); }} className="w-full p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg font-bold flex items-center justify-center gap-2 mb-4 active:scale-95">
+          <Trash2 className="w-4 h-4" /> Clear Intelligence
+        </button>
         <button onClick={() => { setShowBestieSetup(true); setShowDropdown(false); }} className="w-full p-3 bg-pink-500/20 border border-pink-400/50 rounded-lg text-white font-bold flex items-center justify-center gap-2 mb-4 active:scale-95"><Sliders className="w-4 h-4" /> Calibrate Bestie</button>
         {messages.length > 0 && <div className="mb-4 pb-4 border-b border-white/10"><h3 className="text-white font-bold text-sm mb-3">Switch Expert</h3><div className="grid grid-cols-2 gap-2">{getAccessiblePersonas(userTier).slice(0, 6).map(persona => (<button key={persona.id} onClick={() => handleQuickPersonaSwitch(persona)} className="p-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 text-xs font-bold flex items-center gap-2"><span className="truncate">{persona.serviceLabel.split(' ')[0]}</span></button>))}</div></div>}
         <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95"><LogOut className="w-4 h-4"/> <span className="font-bold text-sm">Exit OS</span></button>
@@ -472,7 +481,16 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">{messages.length > 0 ? activePersona.serviceLabel : 'Operating System'}</p>
      </div>
      <div className="flex items-center gap-2">
-      <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
+      {/* SHOW BACK ARROW IF MESSAGES > 0, OTHERWISE SHOW SHIELD */}
+      {messages.length > 0 ? (
+        <button onClick={handleBackToServices} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
+          <div className="w-5 h-5 text-white">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </div>
+        </button>
+      ) : (
+        <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
+      )}
       <div className="text-right">
        <div className="text-white font-bold text-xs uppercase">{userName || 'Owner'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
        <div className="text-[8px] text-gray-400 font-black">SECURE</div>
@@ -502,14 +520,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
           </div>
         );
       })}
-      {/* CLEAR ALL BUTTON */}
-      {notifications.length > 0 && (
-       <div className="col-span-2 mt-4">
-        <button onClick={clearAllNotifications} className="w-full py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 hover:bg-red-500/30 transition-all">
-         <Trash2 className="w-4 h-4" /> ACKNOWLEDGE & CLEAR ALL
-        </button>
-       </div>
-      )}
      </div>
     ) : (
       <div className="space-y-4 max-w-2xl mx-auto">
