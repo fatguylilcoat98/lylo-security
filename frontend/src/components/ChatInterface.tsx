@@ -150,7 +150,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const [setupStep, setSetupStep] = useState<'gender' | 'voice'>('gender');
  const [tempGender, setTempGender] = useState<'male' | 'female'>('female');
  const [isRecording, setIsRecording] = useState(false);
- const isRecordingRef = useRef(false);
  const [autoTTS, setAutoTTS] = useState(true);
  const [isSpeaking, setIsSpeaking] = useState(false);
  const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
@@ -175,8 +174,12 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const inputRef = useRef<HTMLTextAreaElement>(null);
  const recognitionRef = useRef<any>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
+ 
+ // STUTTER-FREE MIC REFS
+ const isRecordingRef = useRef(false);
  const transcriptRef = useRef<string>(''); 
- const accumulatedRef = useRef<string>(''); // MASTER BUFFER
+ const accumulatedRef = useRef<string>(''); 
+ const inputTextRef = useRef<string>(''); // Absolute Truth for sending
 
  // --- NOTIFICATION ENGINE ---
  const setupNotifications = async () => {
@@ -264,12 +267,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   if (messageId) { setShowReplayButton(messageId); setTimeout(() => setShowReplayButton(null), 5000); }
   
   let assignedVoice = { voice: activePersona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
-  
-  if (activePersona.id === 'bestie' && bestieConfig) {
-    assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
-  } else if (voiceSettings) {
-    assignedVoice = voiceSettings;
-  }
+  if (activePersona.id === 'bestie' && bestieConfig) { assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 }; } 
+  else if (voiceSettings) { assignedVoice = voiceSettings; }
 
   try {
    const formData = new FormData();
@@ -300,14 +299,14 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   window.speechSynthesis.speak(utterance);
  };
 
- // --- INFINITE RECORDING ENGINE (CLAUDE STYLE) ---
+ // --- STUTTER-FREE INFINITE RECORDING ENGINE ---
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
    recognition.continuous = true; 
    recognition.interimResults = true; 
-   recognition.lang = 'en-US'; // Explicitly set Lang
+   recognition.lang = 'en-US';
    
    recognition.onresult = (event: any) => {
     let interim = '';
@@ -321,21 +320,28 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       }
     }
     
-    // 1. Commit final text to the Safe Buffer
-    if (final) {
-      accumulatedRef.current += final + ' ';
-    }
+    // Master Buffer: Lock in completed sentences immediately
+    if (final) { accumulatedRef.current += final + ' '; }
     
-    // 2. Display Buffer + Current Interim (No Flicker)
-    setInput(accumulatedRef.current + interim);
+    const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ');
+    setInput(fullText); // For UI
+    inputTextRef.current = fullText; // Absolute Truth for Sending
+   };
+
+   // If the OS tries to kill it, ignore errors that aren't hard failures
+   recognition.onerror = (event: any) => {
+     if (event.error === 'not-allowed' || event.error === 'audio-capture') {
+       setIsRecording(false);
+       isRecordingRef.current = false;
+     }
    };
 
    recognition.onend = () => {
-    // 3. MASTER BUFFER LOGIC:
-    // If the browser stopped listening (silence), but the user DID NOT click stop...
-    // RESTART INSTANTLY. Do not send. Do not stop.
+    // If the user DID NOT click stop, force the mic back on seamlessly
     if (isRecordingRef.current) {
-      try { recognition.start(); } catch(e) { console.log('Mic restart catch'); }
+      setTimeout(() => {
+        try { recognition.start(); } catch(e) {}
+      }, 10);
     }
    };
    
@@ -348,39 +354,29 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   if (!micSupported) return alert('Mic not supported');
   
   if (isRecording) {
-   // --- STOP & SEND COMMAND ---
-   isRecordingRef.current = false; // Flag to tell onEnd NOT to restart
+   // 1. STOP COMMAND
+   isRecordingRef.current = false; // Kills the auto-restart loop
    setIsRecording(false);
+   if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
    
-   if (recognitionRef.current) {
-     try { recognitionRef.current.stop(); } catch(e) {}
-   }
-   
-   // Clean up the accumulated text and send
-   const fullMessage = (accumulatedRef.current + input).trim(); 
-   // We use 'input' here because 'accumulatedRef' might lag by one render cycle on the very last word
-   // Ideally, onend logic handles this, but forcing a check here ensures speed.
-   
-   if (input.trim().length > 0) {
+   // 2. SEND COMMAND (Reads from absolute truth ref to prevent dropped words)
+   if (inputTextRef.current.trim().length > 0) {
      handleSend(); 
    }
    
-   // Reset everything
-   accumulatedRef.current = '';
-   
   } else {
-   // --- START RECORDING COMMAND ---
+   // START COMMAND
    quickStopAllAudio();
    setIsRecording(true);
-   isRecordingRef.current = true; // Flag to Keep Alive
+   isRecordingRef.current = true;
    setInput('');
    accumulatedRef.current = '';
-   if (recognitionRef.current) {
-     try { recognitionRef.current.start(); } catch(e) {}
-   }
+   inputTextRef.current = '';
+   if (recognitionRef.current) { try { recognitionRef.current.start(); } catch(e) {} }
   }
  };
 
+ // --- PERSONA CHANGE ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.'); return; }
   if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
@@ -429,10 +425,18 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const FEMALE_VOICES = [{ id: 'nova', label: 'Energetic' }, { id: 'alloy', label: 'Chill' }, { id: 'shimmer', label: 'Boss' }];
  const MALE_VOICES = [{ id: 'echo', label: 'Chill Guy' }, { id: 'onyx', label: 'Deep Voice' }, { id: 'fable', label: 'Storyteller' }];
 
+ // Message Send
  const handleSend = async () => {
-  const text = input.trim();
+  const text = inputTextRef.current.trim() || input.trim();
   if (!text && !selectedImage) return;
-  quickStopAllAudio(); setLoading(true); setInput('');
+  quickStopAllAudio(); 
+  setLoading(true); 
+  
+  // Wipe inputs
+  setInput('');
+  inputTextRef.current = '';
+  accumulatedRef.current = '';
+  
   const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
   setMessages(prev => [...prev, userMsg]);
   try {
@@ -448,13 +452,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   finally { setLoading(false); setSelectedImage(null); }
  };
 
- const handleBackToServices = () => { 
-   quickStopAllAudio(); 
-   setMessages([]); // Clears chat to show Grid
-   setInput(''); 
-   setSelectedImage(null); 
- };
- 
+ const handleBackToServices = () => { quickStopAllAudio(); setMessages([]); setInput(''); inputTextRef.current = ''; accumulatedRef.current = ''; setSelectedImage(null); };
  const handleReplay = (messageContent: string, messageId?: string) => { quickStopAllAudio(); speakText(messageContent, messageId); };
  const handleQuickPersonaSwitch = (persona: PersonaConfig) => { if (canAccessPersona(persona, userTier)) { quickStopAllAudio(); setActivePersona(persona); onPersonaChange(persona); setShowDropdown(false); } };
 
@@ -536,7 +534,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">{messages.length > 0 ? activePersona.serviceLabel : 'Operating System'}</p>
      </div>
      <div className="flex items-center gap-2">
-      {/* SHOW BACK ARROW IF MESSAGES > 0, OTHERWISE SHOW SHIELD */}
       {messages.length > 0 ? (
         <button onClick={handleBackToServices} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
           <div className="w-5 h-5 text-white">
@@ -575,7 +572,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
           </div>
         );
       })}
-      {/* CLEAR ALL BUTTON */}
       {notifications.length > 0 && (
        <div className="col-span-2 mt-4">
         <button onClick={clearAllNotifications} className="w-full py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 hover:bg-red-500/30 transition-all">
@@ -619,7 +615,16 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
      <div className="flex gap-2 items-end">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) setSelectedImage(e.target.files[0]); }} />
       <button onClick={() => fileInputRef.current?.click()} className={`p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}`}><Camera className="w-4 h-4" /></button>
-      <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center"><input value={input} onChange={e => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder={isRecording ? "Listening..." : `Command ${activePersona?.serviceLabel?.split(' ')?.[0] || 'expert'}...`} className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" style={{ fontSize: '16px' }} /></div>
+      <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
+       <input 
+        value={input} 
+        onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} 
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+        placeholder={isRecording ? "Listening..." : `Command ${activePersona?.serviceLabel?.split(' ')?.[0] || 'expert'}...`} 
+        className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
+        style={{ fontSize: '16px' }} 
+       />
+      </div>
       <button onClick={handleSend} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all min-w-[60px] min-h-[40px] active:scale-95 ${input.trim() || selectedImage ? `${getPersonaColorClass(activePersona, 'bg')} text-white` : 'bg-gray-800 text-gray-500'}`}>SEND</button>
      </div>
      <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10"><p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v28.0</p><div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div></div>
