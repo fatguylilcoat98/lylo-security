@@ -358,7 +358,10 @@ function ChatInterface({
         {messages.map((msg, idx) => {
           // INTERCEPT LOGIC: Detect Handoff ONLY on latest bot response
           const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-          const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m => m.content).join(' '), activePersona.id, PERSONAS) : null;
+          
+          // THE FIX: Only feed the user's typed history into the context engine
+          const userHistory = messages.filter(m => m.sender === 'user').map(m => m.content).join(' ');
+          const suggestion = isLatestBot ? detectExpertSuggestion(userHistory, activePersona.id, PERSONAS) : null;
 
           return (
           <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
@@ -435,7 +438,7 @@ function ChatInterface({
       <button onClick={() => handleSend()} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all min-w-[60px] min-h-[40px] active:scale-95 ${input.trim() || selectedImage ? `${getPersonaColorClass(activePersona, 'bg')} text-white` : 'bg-gray-800 text-gray-500'}`}>SEND</button>
      </div>
      <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
-       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v29.0</p>
+       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v30.0</p>
        <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
      </div>
     </div>
