@@ -424,15 +424,17 @@ function ChatInterface({
   }
  };
 
- const sendPushAlert = (title: string, body: string) => {
+const sendPushAlert = (title: string, body: string) => {
    if (!pushEnabled) return;
    if ('serviceWorker' in navigator) {
      navigator.serviceWorker.ready.then(registration => {
-       registration.showNotification(title, {
-         body: body,
-         icon: '/logo192.png',
-         vibrate: [200, 100, 200]
-       });
+       // We cast to 'any' here to stop TypeScript from complaining about the 'vibrate' property
+       const options: any = { 
+         body: body, 
+         icon: '/logo192.png', 
+         vibrate: [200, 100, 200] 
+       };
+       registration.showNotification(title, options);
      });
    }
  };
