@@ -106,10 +106,10 @@ function ChatInterface({
  // Init STT logic and hook it to UI state
  useEffect(() => {
    initMic(
-     (liveText) => setInput(liveText), // Updates UI as you speak
+     (liveText) => setInput(liveText), 
      (finalText) => {
        setInput(finalText);
-       handleSend(finalText); // Triggers send when mic auto-stops or user stops it
+       handleSend(finalText); 
      }
    );
  }, [activePersona, messages, selectedImage, communicationStyle]);
@@ -192,7 +192,6 @@ function ChatInterface({
   setActivePersona(newPersona);
   setLoading(true);
 
-  // Show a temporary transition message
   const transitionId = Date.now().toString();
   const transitionMsg: Message = { 
     id: transitionId, 
@@ -203,8 +202,11 @@ function ChatInterface({
   setMessages(prev => [...prev, transitionMsg]);
 
   try {
-    // Send a silent prompt telling the new backend expert to read the history and answer
-    const handoffPrompt = `[SYSTEM MESSAGE]: I am transferring this secure line to you. Please review the chat history above and immediately provide your expert assessment on my current situation.`;
+    // FORCE CONTEXT: Grab the user's actual last message to shove into the API
+    const lastUserMsg = messages.slice().reverse().find(m => m.sender === 'user')?.content || 'Review my previous messages.';
+    
+    // The Sledgehammer Prompt
+    const handoffPrompt = `[CRITICAL HANDOFF]: Do NOT give a generic greeting. The user is currently dealing with this specific situation: "${lastUserMsg}". As ${newPersona.name}, give an immediate, step-by-step strategy to resolve this exact issue.`;
     
     const response = await sendChatMessage(handoffPrompt, messages, newPersona.id, userEmail, null, 'en', communicationStyle);
     
@@ -217,7 +219,6 @@ function ChatInterface({
       scamDetected: response.scam_detected
     };
     
-    // Remove the transition message and show the real answer
     setMessages(prev => [...prev.filter(m => m.id !== transitionId), botMsg]);
     
     let voiceToUse = newPersona.fixedVoice || 'onyx';
@@ -271,22 +272,53 @@ function ChatInterface({
 
  const handleBackToServices = () => { quickStopAllAudio(); setMessages([]); setInput(''); clearMicBuffer(); setSelectedImage(null); };
 
+ // --- DYNAMIC CRISIS LOGIC ---
+ let crisisTitle = "Emergency OS";
+ let crisisWarning = "Call your bank immediately. Report unauthorized access.";
+ let crisisAction = "General Support Hub";
+ let crisisLink = "#"; // Replace with actual affiliate links
+
+ if (activePersona.id === 'lawyer') {
+   crisisTitle = "LEGAL ESCALATION";
+   crisisWarning = "AI cannot represent you in court. You need a licensed attorney to establish attorney-client privilege and take legal action.";
+   crisisAction = "Find a Verified Attorney";
+   crisisLink = "https://www.legalmatch.com"; // Example affiliate
+ } else if (activePersona.id === 'doctor') {
+   crisisTitle = "MEDICAL ESCALATION";
+   crisisWarning = "AI cannot diagnose medical emergencies. If this is life-threatening, dial 911 immediately.";
+   crisisAction = "Connect with Telehealth";
+   crisisLink = "https://www.teladoc.com"; // Example affiliate
+ } else if (activePersona.id === 'wealth') {
+   crisisTitle = "FINANCIAL ESCALATION";
+   crisisWarning = "AI is not a certified fiduciary. For major financial moves or severe fraud, speak to a licensed advisor.";
+   crisisAction = "Find a Financial Advisor";
+   crisisLink = "https://smartasset.com"; // Example affiliate
+ }
+
  // --- RENDER UI ---
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
    
-   {/* CRISIS OVERLAY */}
+   {/* CRISIS OVERLAY - DYNAMIC SHIELD */}
    {showCrisisShield && (
     <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
      <div className="bg-red-900/20 border border-red-400/50 rounded-xl p-5 max-w-sm w-full shadow-2xl">
       <div className="flex justify-between items-center mb-5">
-       <h2 className="text-red-100 font-black text-lg uppercase">Emergency OS</h2>
+       <h2 className="text-red-100 font-black text-lg uppercase">{crisisTitle}</h2>
        <button onClick={() => setShowCrisisShield(false)} className="p-2"><X className="text-white" /></button>
       </div>
-      <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4 text-center">
-       <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2"><AlertTriangle /> STOP PAYMENTS</h3>
-       <p className="text-red-100 text-sm">Call your bank immediately. Report unauthorized access.</p>
+      <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4 text-center mb-4">
+       <h3 className="text-red-200 font-bold mb-3 flex items-center justify-center gap-2"><AlertTriangle /> SYSTEM WARNING</h3>
+       <p className="text-red-100 text-sm">{crisisWarning}</p>
       </div>
+      <a 
+        href={crisisLink} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="w-full block text-center py-3 bg-red-600 hover:bg-red-500 text-white font-black uppercase rounded-lg shadow-lg transition-all active:scale-95"
+      >
+        {crisisAction} <ArrowRight className="w-4 h-4 inline ml-2" />
+      </a>
      </div>
     </div>
    )}
@@ -382,7 +414,7 @@ function ChatInterface({
    </div>
 
    {/* MAIN CONTENT */}
-   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4" style={{ paddingBottom: '200px' }}>
+   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4" style={{ paddingBottom: '220px' }}>
     {messages.length === 0 ? (
      <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
       {PERSONAS.map(persona => {
@@ -477,7 +509,7 @@ function ChatInterface({
      </div>
      <div className="flex gap-2 items-end">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) setSelectedImage(e.target.files[0]); }} />
-      <button onClick={() => fileInputRef.current?.click()} className={`p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}`}><Camera className="w-4 h-4" /></button>
+      <button onClick={() => fileInputRef.current?.click()} className={`p-2 rounded-xl backdrop-blur-xl transition-all active:scale-scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}`}><Camera className="w-4 h-4" /></button>
       <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
        <input 
         value={input} 
@@ -490,9 +522,16 @@ function ChatInterface({
       </div>
       <button onClick={() => handleSend()} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all min-w-[60px] min-h-[40px] active:scale-95 ${input.trim() || selectedImage ? `${getPersonaColorClass(activePersona, 'bg')} text-white` : 'bg-gray-800 text-gray-500'}`}>SEND</button>
      </div>
-     <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
-       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v31.0</p>
-       <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
+     
+     {/* PERMANENT LEGAL DISCLAIMER & VERSIONING */}
+     <div className="flex flex-col items-center mt-2 pt-2 border-t border-white/10">
+       <div className="w-full flex justify-between items-center mb-1">
+         <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v32.0</p>
+         <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
+       </div>
+       <p className="text-[8px] text-gray-500 text-center leading-tight">
+         LYLO AI can make mistakes. This OS provides informational guidance, not official legal, medical, or financial advice. Always verify critical information.
+       </p>
      </div>
     </div>
    </div>
