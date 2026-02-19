@@ -176,7 +176,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const recognitionRef = useRef<any>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const transcriptRef = useRef<string>(''); 
- const accumulatedRef = useRef<string>(''); // NEW: Accumulates text for infinite recording
+ const accumulatedRef = useRef<string>(''); // MASTER BUFFER
 
  // --- NOTIFICATION ENGINE ---
  const setupNotifications = async () => {
@@ -200,7 +200,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    }
  };
 
- // --- CLEAR INTEL (PERSISTENT) ---
  const clearAllNotifications = () => {
    setNotifications([]);
    localStorage.setItem('lylo_cleared_intel', JSON.stringify(Object.keys(REAL_INTEL_DROPS)));
@@ -212,6 +211,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  useEffect(() => {
   const init = async () => {
    const emailRaw = (localStorage.getItem('lylo_user_email') || userEmail).toLowerCase();
+   
    if (emailRaw.includes('stangman')) setUserName('Christopher');
    else if (emailRaw.includes('betatester6')) setUserName('Ron');
    else if (emailRaw.includes('betatester7')) setUserName('Marilyn');
@@ -220,7 +220,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    const savedBestie = localStorage.getItem('lylo_bestie_config');
    if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
 
-   // --- RANDOMIZED INTEL ENGINE ---
    const allDrops = Object.keys(REAL_INTEL_DROPS);
    const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
    const available = allDrops.filter(id => !cleared.includes(id));
@@ -264,7 +263,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   setIsSpeaking(true);
   if (messageId) { setShowReplayButton(messageId); setTimeout(() => setShowReplayButton(null), 5000); }
   
-  // --- VOICE LOCK LOGIC ---
   let assignedVoice = { voice: activePersona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
   
   if (activePersona.id === 'bestie' && bestieConfig) {
@@ -302,13 +300,14 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   window.speechSynthesis.speak(utterance);
  };
 
- // --- INFINITE WALKIE-TALKIE ENGINE (CLAUDE STYLE) ---
+ // --- INFINITE RECORDING ENGINE (CLAUDE STYLE) ---
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
    recognition.continuous = true; 
    recognition.interimResults = true; 
+   recognition.lang = 'en-US'; // Explicitly set Lang
    
    recognition.onresult = (event: any) => {
     let interim = '';
@@ -322,20 +321,21 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       }
     }
     
-    // Accumulate final results immediately
+    // 1. Commit final text to the Safe Buffer
     if (final) {
       accumulatedRef.current += final + ' ';
     }
     
-    // Show total (Accumulated + Current Interim)
-    const fullText = accumulatedRef.current + interim;
-    setInput(fullText);
+    // 2. Display Buffer + Current Interim (No Flicker)
+    setInput(accumulatedRef.current + interim);
    };
 
    recognition.onend = () => {
-    // CRITICAL FIX: If user is still recording, RESTART IMMEDIATELY
+    // 3. MASTER BUFFER LOGIC:
+    // If the browser stopped listening (silence), but the user DID NOT click stop...
+    // RESTART INSTANTLY. Do not send. Do not stop.
     if (isRecordingRef.current) {
-      try { recognition.start(); } catch(e) {}
+      try { recognition.start(); } catch(e) { console.log('Mic restart catch'); }
     }
    };
    
@@ -348,31 +348,39 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   if (!micSupported) return alert('Mic not supported');
   
   if (isRecording) {
-   // STOP COMMAND: User clicked Stop
+   // --- STOP & SEND COMMAND ---
+   isRecordingRef.current = false; // Flag to tell onEnd NOT to restart
    setIsRecording(false);
-   isRecordingRef.current = false;
-   if (recognitionRef.current) recognitionRef.current.stop();
    
-   // TRIGGER SEND
-   if (input.trim().length > 0) {
-     handleSend();
+   if (recognitionRef.current) {
+     try { recognitionRef.current.stop(); } catch(e) {}
    }
-   // Reset accumulators
+   
+   // Clean up the accumulated text and send
+   const fullMessage = (accumulatedRef.current + input).trim(); 
+   // We use 'input' here because 'accumulatedRef' might lag by one render cycle on the very last word
+   // Ideally, onend logic handles this, but forcing a check here ensures speed.
+   
+   if (input.trim().length > 0) {
+     handleSend(); 
+   }
+   
+   // Reset everything
    accumulatedRef.current = '';
+   
   } else {
-   // START COMMAND
-   quickStopAllAudio(); // Kill echo
+   // --- START RECORDING COMMAND ---
+   quickStopAllAudio();
    setIsRecording(true);
-   isRecordingRef.current = true;
+   isRecordingRef.current = true; // Flag to Keep Alive
    setInput('');
-   accumulatedRef.current = ''; // Reset buffer
+   accumulatedRef.current = '';
    if (recognitionRef.current) {
      try { recognitionRef.current.start(); } catch(e) {}
    }
   }
  };
 
- // --- PERSONA CHANGE & WORTHY INTEL REVEAL ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.'); return; }
   if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
@@ -391,7 +399,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
     const hookContent = persona.spokenHook.replace('{userName}', userName || 'user');
     const hookMsg: Message = { id: Date.now().toString(), content: hookContent, sender: 'bot', timestamp: new Date() };
     setMessages([hookMsg]);
-    // Speak with locked voice
     let voiceToUse = { voice: persona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
     if (persona.id === 'bestie' && bestieConfig) voiceToUse = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
     speakText(hookContent, undefined, voiceToUse);
@@ -410,7 +417,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   speakText(persona.spokenHook.replace('{userName}', userName || 'user'), undefined, voiceSettings);
  };
 
- // --- BESTIE SETUP HANDLERS ---
  const handleBestieVoiceSelect = (voiceId: string, label: string) => {
    const newConfig: BestieConfig = { gender: tempGender, voiceId, vibeLabel: label };
    setBestieConfig(newConfig);
@@ -423,7 +429,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const FEMALE_VOICES = [{ id: 'nova', label: 'Energetic' }, { id: 'alloy', label: 'Chill' }, { id: 'shimmer', label: 'Boss' }];
  const MALE_VOICES = [{ id: 'echo', label: 'Chill Guy' }, { id: 'onyx', label: 'Deep Voice' }, { id: 'fable', label: 'Storyteller' }];
 
- // Message Send
  const handleSend = async () => {
   const text = input.trim();
   if (!text && !selectedImage) return;
@@ -435,7 +440,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
    setMessages(prev => [...prev, botMsg]);
    
-   // Auto-speak response
    let voiceToUse = { voice: activePersona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
    if (activePersona.id === 'bestie' && bestieConfig) voiceToUse = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
    speakText(botMsg.content, botMsg.id, voiceToUse);
@@ -446,7 +450,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
 
  const handleBackToServices = () => { 
    quickStopAllAudio(); 
-   setMessages([]); // This triggers the 'messages.length === 0' check to show Grid
+   setMessages([]); // Clears chat to show Grid
    setInput(''); 
    setSelectedImage(null); 
  };
