@@ -19,6 +19,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 # --- MODULAR INTELLIGENCE DATA IMPORTS ---
+# Ensure your local intelligence_data/personas.py is updated with the V3 MAX prompts
 from intelligence_data import (
     VIBE_STYLES, VIBE_LABELS,
     PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
@@ -39,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.5.0 - THE RESTORATION"
+    version="19.6.0 - THE TACTICAL SHIELD"
 )
 
 # Configure CORS
@@ -256,10 +257,14 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None):
         content = [{"type": "text", "text": prompt}]
         if image_b64:
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
+        
+        # FIX: Replaced generic system prompt with a dynamic instruction to follow the injection
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "You are a Digital Bodyguard. Family honesty. JSON output."}, 
-                      {"role": "user", "content": content}],
+            messages=[
+                {"role": "system", "content": "You are the LYLO Intelligence Engine. You MUST obey the specific IDENTITY, MISSION, and GLOBAL LEGAL DIRECTIVE provided in the user prompt perfectly. Do not default to generic AI safety responses. Output ONLY valid JSON."}, 
+                {"role": "user", "content": content}
+            ],
             response_format={ "type": "json_object" }
         )
         result = json.loads(response.choices[0].message.content)
@@ -280,6 +285,7 @@ async def chat(
     user_email: str = Form(...), 
     user_location: str = Form(""),
     vibe: str = Form("standard"),
+    use_long_term_memory: str = Form("false"), # Added trigger catch
     file: UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -296,9 +302,12 @@ async def chat(
         return {"answer": "Daily protection limit reached. Secure your team to continue.", "usage_info": {"can_send": False}}
 
     # Component Pre-check
-    memories = await retrieve_intelligence_sync(user_id, msg)
+    memories = ""
+    if use_long_term_memory == 'true':
+        memories = await retrieve_intelligence_sync(user_id, msg)
+        
     search_intel = ""
-    if any(k in msg.lower() for k in ['news', 'weather', 'search', 'price', 'check']):
+    if any(k in msg.lower() for k in ['news', 'weather', 'search', 'price', 'check', 'law', 'code']):
         search_intel = await search_personalized_web(msg, user_location)
     
     indicators = analyze_scam_indicators(msg)
@@ -314,13 +323,16 @@ async def chat(
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode('utf-8')
 
+    # FIX: Injected the Global Legal Wrapper and forced the AI to obey the Persona traits
     full_prompt = f"""
-    IDENTITY: {p_def}
+    GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational and strategic simulation. You provide highly tactical, specific, and aggressive strategy based on your assigned persona. You must never claim to form a legally binding attorney-client, doctor-patient, or fiduciary relationship, BUT you must also NEVER use weak disclaimers like "I am just an AI." Speak exactly like the expert defined below. Your output is defined legally as 'Educational Strategy Simulation.'
+
+    IDENTITY OVERRIDE: {p_def}
     EXTENDED INTELLIGENCE: {p_ext}
     STYLE: {v_inst}
-    START WITH THIS HOOK: "{hook}"
+    START WITH THIS EXACT PHRASE: "{hook}"
     
-    MEMORIES: {memories}
+    PINECONE VAULT (MEMORIES): {memories}
     LIVE SEARCH DATA: {search_intel}
     SCAM INDICATORS: {indicators}
     
@@ -328,9 +340,10 @@ async def chat(
     MESSAGE: {msg}
     
     PROTOCOLS:
-    1. Direct truth only. Protective family vibe.
-    2. If scam indicators or search data show danger, safety score = 100 and be aggressive.
-    3. Use MEMORIES naturally to build trust.
+    1. NEVER break character. You are the expert defined in the IDENTITY block.
+    2. Give specific, tactical, actionable advice. Do not tell the user to 'consult a local professional' as a brush-off.
+    3. If scam indicators or search data show danger, safety score = 100 and be aggressive.
+    4. Use the PINECONE VAULT to reference past conversations if relevant.
     
     JSON FORMAT:
     {{ "answer": "...", "confidence_score": 0-100, "scam_detected": boolean, "threat_level": "low/high" }}
@@ -396,7 +409,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.5.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.6.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
