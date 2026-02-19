@@ -5,7 +5,7 @@ import {
  Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, Phone, CreditCard, 
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
  StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
- Filter, Sparkles, ChevronRight, MessageSquare, Heart, Info
+ Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -24,6 +24,57 @@ const REAL_INTEL_DROPS: { [key: string]: string } = {
   'pastor': "FAITH INTEL: I've prepared a mid-week spiritual reset for you to find clarity in the chaos of this week.",
   'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure.",
   'hype': "ALGORITHM INTEL: Instagram just opened a viral window for 'Original Audio' creators. If we drop a hook in the next 3 hours, we hit the Explore page."
+};
+
+// --- EMERGENCY RESOURCE HUB (THE RED SHIELD) ---
+const CRISIS_LINKS: { [key: string]: { label: string, url: string, description: string }[] } = {
+  'guardian': [
+    { label: "FBI IC3 Fraud Reporting", url: "https://www.ic3.gov/", description: "Report stolen funds or digital extortion immediately." },
+    { label: "IdentityTheft.gov", url: "https://www.identitytheft.gov/", description: "Federal hub to lock down compromised SSNs." }
+  ],
+  'lawyer': [
+    { label: "Legal Services Corporation", url: "https://www.lsc.gov/", description: "Find immediate, free legal aid in your area." },
+    { label: "Consumer Financial Protection Bureau", url: "https://www.consumerfinance.gov/complaint/", description: "File a complaint against a predatory lender or bank." }
+  ],
+  'doctor': [
+    { label: "Call 911", url: "tel:911", description: "For immediate, life-threatening medical emergencies." },
+    { label: "WebMD Symptom Checker", url: "https://symptoms.webmd.com/", description: "Verify non-emergency symptoms." }
+  ],
+  'therapist': [
+    { label: "988 Suicide & Crisis Lifeline", url: "tel:988", description: "Call or text 988 for immediate mental health support." },
+    { label: "Crisis Text Line", url: "sms:741741", description: "Text HOME to 741741 to connect with a crisis counselor." }
+  ],
+  'wealth': [
+    { label: "AnnualCreditReport.com", url: "https://www.annualcreditreport.com/", description: "The only federally authorized free credit report site." },
+    { label: "National Foundation for Credit Counseling", url: "https://www.nfcc.org/", description: "Find legitimate, non-profit debt relief." }
+  ],
+  'career': [
+    { label: "Department of Labor (Worker Rights)", url: "https://www.dol.gov/agencies/whd", description: "Report wage theft or unsafe working conditions." },
+    { label: "Glassdoor Salaries", url: "https://www.glassdoor.com/Salaries/index.htm", description: "Benchmark your salary before negotiations." }
+  ],
+  'mechanic': [
+    { label: "RepairPal Estimates", url: "https://repairpal.com/", description: "Get a verified, fair-price estimate before going to a shop." },
+    { label: "NHTSA Recalls", url: "https://www.nhtsa.gov/recalls", description: "Check if your vehicle has an active safety recall." }
+  ],
+  'tutor': [
+    { label: "Khan Academy", url: "https://www.khanacademy.org/", description: "Free, world-class education for anyone, anywhere." },
+    { label: "Coursera", url: "https://www.coursera.org/", description: "Professional certificates and degrees." }
+  ],
+  'pastor': [
+    { label: "Bible Gateway", url: "https://www.biblegateway.com/", description: "Searchable online Bible in over 200 versions." },
+    { label: "Focus on the Family Counseling", url: "https://www.focusonthefamily.com/get-help/", description: "Christian counseling consultations." }
+  ],
+  'vitality': [
+    { label: "Examine.com", url: "https://examine.com/", description: "Independent clinical research on supplements and nutrition." },
+    { label: "CDC Physical Activity Guidelines", url: "https://www.cdc.gov/physicalactivity/basics/index.htm", description: "Federal guidelines for health and fitness." }
+  ],
+  'hype': [
+    { label: "Google Trends", url: "https://trends.google.com/trends/", description: "See what the world is searching for right now." },
+    { label: "Answer The Public", url: "https://answerthepublic.com/", description: "Discover what questions people are asking." }
+  ],
+  'bestie': [
+    { label: "Meetup.com", url: "https://www.meetup.com/", description: "Find local groups and communities based on your interests." }
+  ]
 };
 
 export interface PersonaConfig {
@@ -239,45 +290,100 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   speakText(hook, persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice);
  };
 
+ // THE BACK BUTTON FIX: Wipes current chat and returns to Persona Grid without leaving app
+ const handleInternalBack = () => {
+   setMessages([]);
+   setShowPersonaGrid(true);
+   window.speechSynthesis.cancel();
+ };
+
+ // Dynamic font sizing based on user selection
+ const getDynamicFontSize = () => {
+   return communicationStyle === 'senior' ? 'text-lg' : 'text-sm';
+ };
+
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
    
    {/* HEADER */}
    <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
-     <div className="relative">
-      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white"><Settings /></button>
+     <div className="relative flex gap-2">
+      {/* INTERNAL BACK BUTTON */}
+      {!showPersonaGrid && (
+        <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+      
+      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white"><Settings className="w-5 h-5" /></button>
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
         <div className="mb-6">
-          <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style</p>
+          <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style & Display</p>
           <select value={communicationStyle} onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }} className="w-full bg-white/10 text-white p-3 rounded-xl font-bold">
-            <option value="standard">Standard</option>
-            <option value="senior">Senior-Friendly</option>
+            <option value="standard">Standard Text</option>
+            <option value="senior">Large Text (Senior Friendly)</option>
             <option value="business">Business Professional</option>
             <option value="roast">Roast Mode</option>
-            <option value="hype">Hype Strategist</option>
           </select>
         </div>
         <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl"><LogOut className="w-4 h-4"/> Terminate Session</button>
        </div>
       )}
      </div>
-     <div className="text-center">
+     
+     <div className="text-center absolute left-1/2 -translate-x-1/2">
       <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">
         L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
       </h1>
       <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1">{activePersona.serviceLabel}</p>
      </div>
+
      <div className="flex items-center gap-3">
-      <button onClick={() => { setMessages([]); setShowPersonaGrid(true); }} className="p-3 bg-white/5 rounded-xl text-white"><RotateCcw /></button>
-      <div className="text-right">
-        <p className="text-white font-black text-xs uppercase leading-none">{userName}</p>
-        <p className="text-[8px] text-green-500 font-black mt-1 uppercase">OS SECURE</p>
-      </div>
+      {/* THE RED SHIELD EMERGENCY HUB BUTTON */}
+      <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
+        <Shield className="w-5 h-5 fill-current" />
+      </button>
      </div>
     </div>
    </div>
+
+   {/* RED SHIELD EMERGENCY MODAL */}
+   {showCrisisShield && (
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100002] flex items-center justify-center p-4">
+      <div className="bg-[#111] border border-red-500/50 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <Shield className="w-8 h-8 text-red-500 fill-current" />
+            <div>
+              <h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2>
+              <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mt-1">Direct Federal & Professional Links</p>
+            </div>
+          </div>
+          <button onClick={() => setShowCrisisShield(false)} className="p-2 bg-white/5 rounded-full text-white"><X className="w-6 h-6" /></button>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          <p className="text-sm text-gray-300">You are currently consulting with <strong>{activePersona.name}</strong>. Here are direct, verified links to official resources regarding this specific sector:</p>
+          
+          <div className="space-y-3">
+            {(CRISIS_LINKS[activePersona.id] || []).map((link, idx) => (
+              <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-white font-bold">{link.label}</span>
+                  <ExternalLink className="w-4 h-4 text-gray-400" />
+                </div>
+                <p className="text-xs text-gray-400">{link.description}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl tracking-widest">Return to OS</button>
+      </div>
+    </div>
+   )}
 
    {/* MAIN CONVERSATION AREA */}
    <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: '300px' }}>
@@ -289,7 +395,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
         <button onClick={() => setNotifications(prev => prev.filter(n => n !== id))} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
         <div className="flex gap-4">
          <div className="p-2 bg-yellow-500/20 rounded-xl"><Zap className="w-4 h-4 text-yellow-400" /></div>
-         <p className="text-xs leading-relaxed text-gray-200 font-bold">{REAL_INTEL_DROPS[id]}</p>
+         <p className={`${getDynamicFontSize()} leading-relaxed text-gray-200 font-bold`}>{REAL_INTEL_DROPS[id]}</p>
         </div>
        </div>
       ))}
@@ -301,7 +407,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       {PERSONAS.map(p => (
        <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-4 transition-all ${activePersona.id === p.id ? `${getPersonaColorClass(p, 'bg')} border-transparent` : 'bg-white/5 border-white/10'}`}>
         <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getPersonaColorClass(p, 'text')}`} />
-        <span className="text-[10px] text-white font-black uppercase tracking-widest">{p.name}</span>
+        <span className="text-[10px] text-white font-black uppercase tracking-widest text-center">{p.name}</span>
        </button>
       ))}
      </div>
@@ -312,7 +418,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-       <div className={`p-5 rounded-3xl max-w-[85%] text-sm shadow-lg ${msg.sender === 'user' ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
+       <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
         {msg.content}
         {msg.sender === 'bot' && msg.confidenceScore && (
           <div className="mt-4 pt-4 border-t border-white/10">
