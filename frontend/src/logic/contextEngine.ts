@@ -1,4 +1,4 @@
-import { PersonaConfig } from '../components/ChatInterface';
+import { PersonaConfig } from '../data/personas';
 
 interface ContextPattern {
   id: string;
