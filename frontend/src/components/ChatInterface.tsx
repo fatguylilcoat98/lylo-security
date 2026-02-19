@@ -177,7 +177,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  
  // STUTTER-FREE MIC REFS
  const isRecordingRef = useRef(false);
- const transcriptRef = useRef<string>(''); 
  const accumulatedRef = useRef<string>(''); 
  const inputTextRef = useRef<string>(''); // Absolute Truth for sending
 
@@ -309,21 +308,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    recognition.lang = 'en-US';
    
    recognition.onresult = (event: any) => {
-    let interim = '';
-    let final = '';
+    let sessionTranscript = '';
     
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) {
-        final += event.results[i][0].transcript;
-      } else {
-        interim += event.results[i][0].transcript;
-      }
+    // We grab EVERYTHING from the current recording block and overwrite.
+    // This stops the "duplicate words" bug in Android.
+    for (let i = 0; i < event.results.length; ++i) {
+      sessionTranscript += event.results[i][0].transcript;
     }
     
-    // Master Buffer: Lock in completed sentences immediately
-    if (final) { accumulatedRef.current += final + ' '; }
-    
-    const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ');
+    const fullText = (accumulatedRef.current + ' ' + sessionTranscript).replace(/\s+/g, ' ').trim();
     setInput(fullText); // For UI
     inputTextRef.current = fullText; // Absolute Truth for Sending
    };
@@ -339,6 +332,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    recognition.onend = () => {
     // If the user DID NOT click stop, force the mic back on seamlessly
     if (isRecordingRef.current) {
+      accumulatedRef.current = inputTextRef.current + ' '; // Lock in progress
       setTimeout(() => {
         try { recognition.start(); } catch(e) {}
       }, 10);
@@ -359,7 +353,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    setIsRecording(false);
    if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
    
-   // 2. SEND COMMAND (Reads from absolute truth ref to prevent dropped words)
+   // 2. SEND COMMAND
    if (inputTextRef.current.trim().length > 0) {
      handleSend(); 
    }
@@ -432,7 +426,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   quickStopAllAudio(); 
   setLoading(true); 
   
-  // Wipe inputs
   setInput('');
   inputTextRef.current = '';
   accumulatedRef.current = '';
@@ -534,6 +527,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">{messages.length > 0 ? activePersona.serviceLabel : 'Operating System'}</p>
      </div>
      <div className="flex items-center gap-2">
+      {/* SHOW BACK ARROW IF MESSAGES > 0, OTHERWISE SHOW SHIELD */}
       {messages.length > 0 ? (
         <button onClick={handleBackToServices} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
           <div className="w-5 h-5 text-white">
