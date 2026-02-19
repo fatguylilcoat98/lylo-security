@@ -38,15 +38,15 @@ import {
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
-// --- REAL INTELLIGENCE DATA (The Night Shift Intel) ---
-// These scenarios trigger the red badges. Click to reveal.
+// --- REAL INTELLIGENCE DATA (The Night Shift Results) ---
+// Red badges appear ONLY for these experts. Click them to reveal the update.
 const REAL_INTEL_DROPS: { [key: string]: string } = {
-  'guardian': "I've detected a high-volume SMS phishing campaign targeting your area today. They are posing as 'Post Office' delivery alerts. Do not click any links.",
+  'guardian': "I've detected a high-volume SMS phishing campaign targeting your area today. They are posing as 'Delivery Alerts'. Do not click any links.",
   'wealth': "The market fluctuated while you were out. I've calculated that shifting $100 to your high-yield account today would net you an extra $55 this year.",
   'lawyer': "I've flagged a new update in local tenant protection laws. If you're reviewing a lease soon, we need to check the 'emergency access' clause.",
   'career': "I found 3 new keywords that are trending in your industry's job descriptions. Let's update your resume to beat the new ATS filters.",
   'doctor': "I've analyzed the latest seasonal health trends for your area. We should look at your Vitamin D levels based on the current weather patterns.",
-  'bestie': "I was thinking about that situation you mentioned earlier—I actually have a much better way for you to handle it!",
+  'bestie': "I was thinking about that situation you mentioned earlier—I actually have a much better way for you to handle it! Let's talk.",
   'therapist': "I noticed your digital interaction frequency spiked last night. Let's do a quick 2-minute 'unplug' ritual to reset your baseline energy.",
   'mechanic': "A critical security patch was just released for your primary OS. It closes a backdoor in the kernel. Let's walk through the manual install.",
   'tutor': "I found a new visualization technique that simplifies that complex topic we were stuck on. Class is back in session whenever you're ready.",
@@ -276,7 +276,7 @@ const CONFIDENCE_THRESHOLDS = {
  'career': 85
 };
 
-// --- CURATED VOICE CAST (PERMANENT ASSIGNMENT) ---
+// --- CURATED VOICE CAST ---
 const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch: number } } = {
   'guardian': { voice: 'onyx', rate: 1.0, pitch: 0.8 }, 
   'lawyer': { voice: 'fable', rate: 1.0, pitch: 0.9 }, 
@@ -474,7 +474,7 @@ function ChatInterface({
     }
    }
    
-   // --- TESTER IDENTITY LOGIC (RESTORED & UPDATED) ---
+   // --- MASTER IDENTITY LOGIC (RON & MARILYN ADDED) ---
    const savedName = localStorage.getItem('lylo_user_name');
    if (savedName) {
      setUserName(savedName);
@@ -495,8 +495,7 @@ function ChatInterface({
     if (p && canAccessPersona(p, userTier)) setActivePersona(p);
    }
    
-   // --- REAL NOTIFICATION LOGIC ---
-   // Only show red dots for experts that actually have a message in REAL_INTEL_DROPS
+   // --- REAL NOTIFICATION LOGIC (NO FAKES) ---
    const activeDrops = Object.keys(REAL_INTEL_DROPS);
    setNotifications(activeDrops);
 
@@ -520,6 +519,7 @@ function ChatInterface({
  const checkEliteStatus = async () => {
   try {
    const emailClean = userEmail.toLowerCase();
+   // AUTHORITY BYPASS FOR RON AND MARILYN
    if (emailClean.includes("stangman") || emailClean.includes("betatester6") || emailClean.includes("betatester7")) {
       setIsEliteUser(true);
       setUserTier('max');
@@ -563,7 +563,7 @@ function ChatInterface({
    setTimeout(() => setShowReplayButton(null), 5000);
   }
 
-  // LOGIC: Use Saved Bestie Voice OR Static Map
+  // Use Saved Bestie Voice OR Static Map
   let assignedVoice = { voice: 'onyx', rate: 1.0, pitch: 1.0 };
   
   if (activePersona.id === 'bestie' && bestieConfig) {
@@ -722,7 +722,7 @@ function ChatInterface({
       confidenceScore: 100
     };
     
-    // Reset the chat and show the update
+    // Reset the chat and show the update immediately
     setMessages([intelMsg]);
     speakText(intelMsg.content);
   } else {
@@ -732,7 +732,7 @@ function ChatInterface({
     speakText(persona.spokenHook.replace('{userName}', userName || 'user'));
   }
 
-  // UI Transition
+  // UI Transitions
   quickStopAllAudio();
   setSelectedPersonaId(persona.id);
   
@@ -1049,11 +1049,11 @@ function ChatInterface({
         <div className="space-y-4">
           <p className="text-pink-200 text-center text-sm mb-6">Who do you feel most comfortable talking to?</p>
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleBestieGenderSelect('female')} className="p-6 rounded-xl bg-pink-500/20 border border-pink-400/50 hover:bg-pink-500/40 transition-all flex flex-col items-center gap-3">
+            <button onClick={() => { setTempGender('female'); setSetupStep('voice'); }} className="p-6 rounded-xl bg-pink-500/20 border border-pink-400/50 hover:bg-pink-500/40 transition-all flex flex-col items-center gap-3">
               <div className="text-4xl">👩</div>
               <span className="font-bold text-white">Female</span>
             </button>
-            <button onClick={() => handleBestieGenderSelect('male')} className="p-6 rounded-xl bg-blue-500/20 border border-blue-400/50 hover:bg-blue-500/40 transition-all flex flex-col items-center gap-3">
+            <button onClick={() => { setTempGender('male'); setSetupStep('voice'); }} className="p-6 rounded-xl bg-blue-500/20 border border-blue-400/50 hover:bg-blue-500/40 transition-all flex flex-col items-center gap-3">
               <div className="text-4xl">👨</div>
               <span className="font-bold text-white">Male</span>
             </button>
@@ -1085,7 +1085,7 @@ function ChatInterface({
     </div>
    )}
 
-   {/* MOBILE-OPTIMIZED HEADER */}
+   {/* HEADER */}
    <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
      
@@ -1212,7 +1212,7 @@ function ChatInterface({
     </div>
    </div>
 
-   {/* MOBILE-OPTIMIZED MAIN CONTENT AREA */}
+   {/* MAIN CONTENT AREA */}
    <div 
     ref={chatContainerRef} 
     className="flex-1 overflow-y-auto relative backdrop-blur-sm"
@@ -1436,7 +1436,7 @@ function ChatInterface({
         }
        `}
       >
-       {isRecording ? <><MicOff className="w-5 h-5"/> RELEASE</> : <><Mic className="w-5 h-5"/> HOLD TO INSTRUCT</>}
+       {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
       </button>
       
       <button 
@@ -1465,7 +1465,7 @@ function ChatInterface({
         value={input} 
         onChange={e => setInput(e.target.value)} 
         onKeyDown={handleKeyPress} 
-        placeholder={isRecording ? "Receiving audio..." : `Instruct ${activePersona.serviceLabel}...`} 
+        placeholder={isRecording ? "Receiving audio..." : `Instruct ${activePersona?.serviceLabel?.split(' ')?.[0] || 'expert'}...`} 
         className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
         disabled={loading || isRecording}
         style={{ fontSize: '16px' }}
@@ -1495,7 +1495,7 @@ function ChatInterface({
        SYNC: {intelligenceSync}%
       </button>
       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS</p>
-      <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona.serviceLabel.split(' ')[0]} STATUS: ACTIVE</div>
+      <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
      </div>
     </div>
    </div>
