@@ -301,13 +301,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   window.speechSynthesis.speak(utterance);
  };
 
- // --- WALKIE-TALKIE MIC (AUTOMATED SEND) ---
+ // --- WALKIE-TALKIE MIC (CLAUDE STYLE) ---
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   recognition.continuous = true; // Key Change: Allow long pauses
-   recognition.interimResults = true; // To show we are listening
+   
+   // KEY CHANGE: Continuous listening allowed. No cut-offs.
+   recognition.continuous = true; 
+   recognition.interimResults = true; 
    
    recognition.onresult = (event: any) => {
     let finalTranscript = '';
@@ -317,7 +319,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
       finalTranscript += result[0].transcript + ' ';
      }
     }
-    // Only update input if we have final results to avoid jitter
+    // Update visual input, but DO NOT SEND YET
     if (finalTranscript.trim()) {
      const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
      transcriptRef.current = cleanedTranscript;
@@ -329,10 +331,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
     setIsRecording(false);
     isRecordingRef.current = false;
     
-    // AUTO SEND LOGIC: If mic stopped and we have text, send it.
+    // TRIGGER SEND ONLY WHEN STOPPED
     const cleanTranscript = transcriptRef.current?.trim();
     if (cleanTranscript && cleanTranscript.length > 1) {
-     handleSend(); // Auto-send triggers auto-response
+     handleSend(); 
     }
     transcriptRef.current = '';
    };
@@ -357,8 +359,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    setIsRecording(false);
    recognitionRef.current?.stop(); 
   } else {
-   // START ACTION
-   quickStopAllAudio();
+   // START ACTION: Clear everything and listen indefinitely
+   quickStopAllAudio(); // Kill any echo
    setIsRecording(true);
    isRecordingRef.current = true;
    setInput('');
@@ -422,11 +424,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const handleSend = async () => {
   const text = input.trim();
   if (!text && !selectedImage) return;
-  // Note: We do NOT clear input here immediately if invoked from Mic onend, 
-  // but we do want to stop audio.
-  quickStopAllAudio(); 
-  setLoading(true);
-  setInput(''); // Clear input for UI
+  quickStopAllAudio(); setLoading(true); setInput('');
   const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
   setMessages(prev => [...prev, userMsg]);
   try {
