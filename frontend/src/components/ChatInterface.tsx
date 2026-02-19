@@ -156,6 +156,8 @@ function ChatInterface({
  };
 
  // --- CORE ACTIONS ---
+
+ // 1. Standard Switch (Clears Board)
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.', 'onyx'); return; }
   if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
@@ -182,6 +184,60 @@ function ChatInterface({
   setTimeout(() => { setActivePersona(persona); onPersonaChange(persona); setSelectedPersonaId(null); setShowDropdown(false); }, 300);
  };
 
+ // 2. Expert Handoff (Keeps History & Auto-Replies)
+ const handleExpertHandoff = async (newPersona: PersonaConfig) => {
+  if (!canAccessPersona(newPersona, userTier)) { speakText('Upgrade required.', 'onyx'); return; }
+  
+  quickStopAllAudio();
+  setActivePersona(newPersona);
+  setLoading(true);
+
+  // Show a temporary transition message
+  const transitionId = Date.now().toString();
+  const transitionMsg: Message = { 
+    id: transitionId, 
+    content: `⚡ SECURE LINE TRANSFERRED TO: ${newPersona.name.toUpperCase()} ⚡\n\nReviewing case file...`, 
+    sender: 'bot', 
+    timestamp: new Date() 
+  };
+  setMessages(prev => [...prev, transitionMsg]);
+
+  try {
+    // Send a silent prompt telling the new backend expert to read the history and answer
+    const handoffPrompt = `[SYSTEM MESSAGE]: I am transferring this secure line to you. Please review the chat history above and immediately provide your expert assessment on my current situation.`;
+    
+    const response = await sendChatMessage(handoffPrompt, messages, newPersona.id, userEmail, null, 'en', communicationStyle);
+    
+    const botMsg: Message = { 
+      id: (Date.now() + 1).toString(), 
+      content: response.answer, 
+      sender: 'bot', 
+      timestamp: new Date(), 
+      confidenceScore: response.confidence_score,
+      scamDetected: response.scam_detected
+    };
+    
+    // Remove the transition message and show the real answer
+    setMessages(prev => [...prev.filter(m => m.id !== transitionId), botMsg]);
+    
+    let voiceToUse = newPersona.fixedVoice || 'onyx';
+    if (newPersona.id === 'bestie' && bestieConfig) voiceToUse = bestieConfig.voiceId;
+    
+    speakText(botMsg.content, voiceToUse, () => {
+      setShowReplayButton(null);
+    });
+    setShowReplayButton(botMsg.id);
+    setTimeout(() => setShowReplayButton(null), 5000);
+
+  } catch (e) {
+    console.error(e);
+    setMessages(prev => [...prev.filter(m => m.id !== transitionId)]);
+  } finally {
+    setLoading(false);
+  }
+ };
+
+ // 3. Send Message
  const handleSend = async (forcedText?: string) => {
   const textToSend = forcedText || input.trim();
   if (!textToSend && !selectedImage) return;
@@ -356,10 +412,7 @@ function ChatInterface({
     ) : (
       <div className="space-y-4 max-w-2xl mx-auto">
         {messages.map((msg, idx) => {
-          // INTERCEPT LOGIC: Detect Handoff ONLY on latest bot response
           const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-          
-          // THE FIX: Only feed the user's typed history into the context engine
           const userHistory = messages.filter(m => m.sender === 'user').map(m => m.content).join(' ');
           const suggestion = isLatestBot ? detectExpertSuggestion(userHistory, activePersona.id, PERSONAS) : null;
 
@@ -389,7 +442,7 @@ function ChatInterface({
                      speakText(msg.content, voiceToUse);
                    }} className="p-2 text-gray-400 hover:text-white"><RotateCcw className="w-4 h-4" /></button>
                   )}
-                  {msg.confidenceScore && <div className="text-[10px] font-black uppercase text-green-400 flex items-center gap-1"><Shield className="w-3 h-3"/> {msg.confidenceScore}%</div>}
+                  {msg.confidenceScore && <div className={`text-[10px] font-black uppercase flex items-center gap-1 ${getPersonaColorClass(activePersona, 'text')}`}><Shield className="w-3 h-3"/> {msg.confidenceScore}%</div>}
                 </div>
               )}
             </div>
@@ -401,7 +454,7 @@ function ChatInterface({
                   <Zap className="w-3 h-3 fill-current" /> Expert Handoff Available
                 </p>
                 <button 
-                  onClick={() => handlePersonaChange(suggestion)} 
+                  onClick={() => handleExpertHandoff(suggestion)} 
                   className="w-full py-3 bg-white text-indigo-600 text-xs font-black uppercase rounded-lg flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors"
                 >
                   Switch to {suggestion.name} <ArrowRight className="w-4 h-4" />
@@ -438,7 +491,7 @@ function ChatInterface({
       <button onClick={() => handleSend()} disabled={loading || (!input.trim() && !selectedImage) || isRecording} className={`px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all min-w-[60px] min-h-[40px] active:scale-95 ${input.trim() || selectedImage ? `${getPersonaColorClass(activePersona, 'bg')} text-white` : 'bg-gray-800 text-gray-500'}`}>SEND</button>
      </div>
      <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
-       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v30.0</p>
+       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v31.0</p>
        <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
      </div>
     </div>
