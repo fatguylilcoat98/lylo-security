@@ -28,7 +28,10 @@ import {
  ArrowRight,
  PlayCircle,
  StopCircle,
- Briefcase
+ Briefcase,
+ Bell,
+ User,
+ Globe
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -46,6 +49,12 @@ export interface PersonaConfig {
  requiredTier: 'free' | 'pro' | 'elite' | 'max';
  capabilities: string[];
  icon: React.ComponentType<any>;
+}
+
+interface BestieConfig {
+  gender: 'male' | 'female';
+  accent: 'american' | 'british' | 'australian' | 'italian';
+  voiceId: string;
 }
 
 interface ChatInterfaceProps {
@@ -248,43 +257,20 @@ const CONFIDENCE_THRESHOLDS = {
  'career': 85
 };
 
-// --- CURATED VOICE CAST (PERMANENT ASSIGNMENT) ---
+// --- CURATED VOICE CAST (STATIC EXPERTS) ---
 const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch: number } } = {
-  // GUARDIAN: Deep, Authoritative (American)
   'guardian': { voice: 'onyx', rate: 0.9, pitch: 0.8 }, 
-  
-  // LAWYER: Sophisticated, Sharp (Transatlantic/British Vibe)
   'lawyer': { voice: 'fable', rate: 0.9, pitch: 0.9 }, 
-  
-  // DOCTOR: Professional, Clinical (Neutral Female)
   'doctor': { voice: 'nova', rate: 0.95, pitch: 1.0 }, 
-  
-  // WEALTH: Serious, Firm (American Male)
   'wealth': { voice: 'onyx', rate: 0.9, pitch: 0.9 }, 
-  
-  // CAREER: Bright, Articulate (American Female)
   'career': { voice: 'shimmer', rate: 1.0, pitch: 1.0 }, 
-  
-  // THERAPIST: Comforting, Soft (Neutral)
   'therapist': { voice: 'alloy', rate: 0.9, pitch: 1.0 }, 
-  
-  // MECHANIC: Gruff, Deep (American Male)
   'mechanic': { voice: 'echo', rate: 0.95, pitch: 0.8 }, 
-  
-  // TUTOR: Intellectual, Clear (British/Academic Vibe)
   'tutor': { voice: 'fable', rate: 0.95, pitch: 1.0 }, 
-  
-  // PASTOR: Soothing, Deep (Male)
   'pastor': { voice: 'onyx', rate: 0.85, pitch: 0.9 },
-  
-  // VITALITY: High Energy, Motivating (Female)
   'vitality': { voice: 'nova', rate: 1.1, pitch: 1.0 }, 
-  
-  // HYPE: Fast, Exciting (Female)
-  'hype': { voice: 'shimmer', rate: 1.15, pitch: 1.1 },
-  
-  // BESTIE: Friendly, Casual (Neutral)
-  'bestie': { voice: 'alloy', rate: 1.05, pitch: 1.1 }
+  'hype': { voice: 'shimmer', rate: 1.15, pitch: 1.1 }
+  // BESTIE REMOVED FROM STATIC MAP - HANDLED DYNAMICALLY
 };
 
 const VIBE_SAMPLES = {
@@ -385,6 +371,15 @@ function ChatInterface({
  const [userName, setUserName] = useState<string>('');
  const [intelligenceSync, setIntelligenceSync] = useState(0);
  
+ // NOTIFICATIONS STATE (FOMO Feature)
+ const [notifications, setNotifications] = useState<string[]>([]);
+ 
+ // BESTIE CONFIG STATE
+ const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
+ const [showBestieSetup, setShowBestieSetup] = useState(false);
+ const [setupStep, setSetupStep] = useState<'gender' | 'accent'>('gender');
+ const [tempGender, setTempGender] = useState<'male' | 'female'>('female');
+
  // Audio State
  const [isRecording, setIsRecording] = useState(false);
  const isRecordingRef = useRef(false);
@@ -393,7 +388,7 @@ function ChatInterface({
  const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
  const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
  
- // NEW STATE: Preview Audio
+ // Preview Audio
  const [previewPlayingId, setPreviewPlayingId] = useState<string | null>(null);
 
  // UI State
@@ -411,8 +406,11 @@ function ChatInterface({
  
  // Modal State
  const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
- const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('free');
- const [isEliteUser, setIsEliteUser] = useState(false);
+ 
+ // --- GOD MODE ACTIVATED: Forced to 'max' and 'true' ---
+ const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
+ const [isEliteUser, setIsEliteUser] = useState(true);
+ 
  const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
  
  // Refs
@@ -441,6 +439,16 @@ function ChatInterface({
    await loadUserStats();
    await checkEliteStatus();
    
+   // Load Bestie Config
+   const savedBestie = localStorage.getItem('lylo_bestie_config');
+   if (savedBestie) {
+     setBestieConfig(JSON.parse(savedBestie));
+   } else {
+     // If no bestie config, show setup (but we trigger it when they CLICK bestie usually, or on first load)
+     // Let's trigger it on first load if missing
+     // setShowBestieSetup(true); 
+   }
+   
    const savedCommunicationStyle = localStorage.getItem('lylo_communication_style');
    if (savedCommunicationStyle) {
     const validStyles = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype'];
@@ -465,6 +473,10 @@ function ChatInterface({
     if (p && canAccessPersona(p, userTier)) setActivePersona(p);
    }
    
+   // --- FOMO NOTIFICATION LOGIC ---
+   const possibleNotifications = PERSONAS.map(p => p.id).sort(() => 0.5 - Math.random()).slice(0, 3);
+   setNotifications(possibleNotifications);
+
    const savedLearningData = localStorage.getItem('lylo_learning_data');
    if (savedLearningData) {
     try {
@@ -494,8 +506,10 @@ function ChatInterface({
      body: JSON.stringify({ email: userEmail })
     });
     const data = await response.json();
-    setUserTier(data.tier || 'free');
-    setIsEliteUser(data.tier === 'elite' || data.tier === 'max');
+    if (userTier !== 'max') {
+        setUserTier(data.tier || 'free');
+        setIsEliteUser(data.tier === 'elite' || data.tier === 'max');
+    }
    }
   } catch (e) { console.error(e); }
  };
@@ -525,8 +539,21 @@ function ChatInterface({
    setTimeout(() => setShowReplayButton(null), 5000);
   }
 
-  // Use Permanent Voice Map
-  const assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  // LOGIC: Use Saved Bestie Voice OR Static Map
+  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  
+  if (activePersona.id === 'bestie' && bestieConfig) {
+    // Dynamic Bestie Voice
+    const voiceMap = {
+      'male': { 'american': 'echo', 'british': 'fable', 'australian': 'echo', 'italian': 'onyx' },
+      'female': { 'american': 'nova', 'british': 'shimmer', 'australian': 'shimmer', 'italian': 'alloy' }
+    };
+    const voiceId = bestieConfig.voiceId || voiceMap[bestieConfig.gender][bestieConfig.accent];
+    assignedVoice = { voice: voiceId, rate: 1.0, pitch: 1.0 };
+  } else {
+    // Static Board Member
+    assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  }
 
   try {
    const formData = new FormData();
@@ -654,6 +681,19 @@ function ChatInterface({
    return;
   }
   
+  // Trigger Bestie Setup if not configured
+  if (persona.id === 'bestie' && !bestieConfig) {
+    setTempGender('female');
+    setSetupStep('gender');
+    setShowBestieSetup(true);
+    return; // Don't switch yet
+  }
+
+  // Clear Notification Logic
+  if (notifications.includes(persona.id)) {
+    setNotifications(prev => prev.filter(id => id !== persona.id));
+  }
+
   // Stop any preview audio first
   quickStopAllAudio();
 
@@ -695,10 +735,48 @@ function ChatInterface({
   quickStopAllAudio(); // Stop others
   setPreviewPlayingId(persona.id);
 
-  const voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  const hook = persona.spokenHook.replace('{userName}', userName || 'user');
+  // Logic for previewing Bestie voice if configured
+  let voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
   
+  if (persona.id === 'bestie' && bestieConfig) {
+     const voiceMap = {
+      'male': { 'american': 'echo', 'british': 'fable', 'australian': 'echo', 'italian': 'onyx' },
+      'female': { 'american': 'nova', 'british': 'shimmer', 'australian': 'shimmer', 'italian': 'alloy' }
+    };
+    const voiceId = bestieConfig.voiceId || voiceMap[bestieConfig.gender][bestieConfig.accent];
+    voiceSettings = { voice: voiceId, rate: 1.0, pitch: 1.0 };
+  }
+
+  const hook = persona.spokenHook.replace('{userName}', userName || 'user');
   speakText(hook, undefined, voiceSettings);
+ };
+
+ // --- BESTIE SETUP HANDLERS ---
+ const handleBestieGenderSelect = (gender: 'male' | 'female') => {
+   setTempGender(gender);
+   setSetupStep('accent');
+ };
+
+ const handleBestieAccentSelect = (accent: 'american' | 'british' | 'australian' | 'italian') => {
+   // Map accent/gender to OpenAI Voice ID
+   const voiceMap = {
+      'male': { 'american': 'echo', 'british': 'fable', 'australian': 'echo', 'italian': 'onyx' },
+      'female': { 'american': 'nova', 'british': 'shimmer', 'australian': 'shimmer', 'italian': 'alloy' }
+   };
+   
+   const newConfig: BestieConfig = {
+     gender: tempGender,
+     accent: accent,
+     voiceId: voiceMap[tempGender][accent]
+   };
+   
+   setBestieConfig(newConfig);
+   localStorage.setItem('lylo_bestie_config', JSON.stringify(newConfig));
+   setShowBestieSetup(false);
+   
+   // Auto switch to Bestie after setup
+   const bestiePersona = PERSONAS.find(p => p.id === 'bestie');
+   if (bestiePersona) handlePersonaChange(bestiePersona);
  };
 
  const handleSend = async () => {
@@ -731,8 +809,21 @@ function ChatInterface({
    }
    
    // Use Curated Voice Logic
-   const voiceSettings = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-   speakText(response.answer, botMsg.id, voiceSettings);
+   // Logic: Use Saved Bestie Voice OR Static Map
+  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  
+  if (activePersona.id === 'bestie' && bestieConfig) {
+    const voiceMap = {
+      'male': { 'american': 'echo', 'british': 'fable', 'australian': 'echo', 'italian': 'onyx' },
+      'female': { 'american': 'nova', 'british': 'shimmer', 'australian': 'shimmer', 'italian': 'alloy' }
+    };
+    const voiceId = bestieConfig.voiceId || voiceMap[bestieConfig.gender][bestieConfig.accent];
+    assignedVoice = { voice: voiceId, rate: 1.0, pitch: 1.0 };
+  } else {
+    assignedVoice = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
+  }
+
+   speakText(response.answer, botMsg.id, assignedVoice);
    
    if (text.length > 10) {
     const newSync = Math.min(intelligenceSync + 5, 100);
@@ -917,6 +1008,45 @@ function ChatInterface({
     </div>
    )}
 
+   {/* BESTIE SETUP MODAL */}
+   {showBestieSetup && (
+    <div className="fixed inset-0 z-[100200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
+     <div className="bg-pink-900/30 border border-pink-500/50 rounded-xl p-6 max-w-sm w-full shadow-2xl">
+      <h2 className="text-pink-100 font-black text-xl mb-4 text-center">DESIGN YOUR BESTIE</h2>
+      
+      {setupStep === 'gender' ? (
+        <div className="space-y-4">
+          <p className="text-pink-200 text-center text-sm mb-6">Who do you feel most comfortable talking to?</p>
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => handleBestieGenderSelect('female')} className="p-6 rounded-xl bg-pink-500/20 border border-pink-400/50 hover:bg-pink-500/40 transition-all flex flex-col items-center gap-3">
+              <div className="text-4xl">👩</div>
+              <span className="font-bold text-white">Female</span>
+            </button>
+            <button onClick={() => handleBestieGenderSelect('male')} className="p-6 rounded-xl bg-blue-500/20 border border-blue-400/50 hover:bg-blue-500/40 transition-all flex flex-col items-center gap-3">
+              <div className="text-4xl">👨</div>
+              <span className="font-bold text-white">Male</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-pink-200 text-center text-sm mb-4">Pick their vibe & accent:</p>
+          {['american', 'british', 'australian', 'italian'].map((accent) => (
+            <button 
+              key={accent}
+              onClick={() => handleBestieAccentSelect(accent as any)}
+              className="w-full p-4 rounded-lg bg-black/40 border border-white/10 hover:border-pink-400 hover:bg-pink-500/10 transition-all flex items-center justify-between group"
+            >
+              <span className="capitalize text-white font-bold">{accent}</span>
+              <Globe className="w-4 h-4 text-gray-500 group-hover:text-pink-400" />
+            </button>
+          ))}
+        </div>
+      )}
+     </div>
+    </div>
+   )}
+
    {/* MOBILE-OPTIMIZED HEADER */}
    <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
@@ -1064,6 +1194,7 @@ function ChatInterface({
          const Icon = persona.icon;
          const isSelected = selectedPersonaId === persona.id;
          const isPreviewPlaying = previewPlayingId === persona.id;
+         const hasNotification = notifications.includes(persona.id);
 
          return (
           <div key={persona.id} className="relative group">
@@ -1077,6 +1208,14 @@ function ChatInterface({
               }
               ${getPersonaColorClass(persona, 'glow')}
             `}>
+            
+            {/* NOTIFICATION BADGE */}
+            {hasNotification && (
+              <div className="absolute -top-2 -left-2 bg-red-500 text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-black z-30 animate-bounce">
+                1
+              </div>
+            )}
+
             <div className="flex flex-col items-center text-center space-y-2">
               <div className={`p-2 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-black/40'} ${getPersonaColorClass(persona, 'border')} border ${isSelected ? 'animate-pulse' : ''}`}>
               {Icon && <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : getPersonaColorClass(persona, 'text')}`} />}
@@ -1092,23 +1231,19 @@ function ChatInterface({
             </div>
             </button>
 
-            {/* 2. THE AUDIO PREVIEW BUTTON (INDEPENDENT) */}
-            <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20">
-             <span className="text-[8px] font-bold text-gray-500 uppercase tracking-tighter opacity-70">
-               VOICE PREVIEW
-             </span>
-             <button 
+            {/* 2. THE AUDIO PREVIEW BUTTON (FIXED POSITION & STYLE) */}
+            <button 
                onClick={(e) => handlePreviewAudio(e, persona)}
                className={`
-                 p-1.5 rounded-full transition-all border
+                 absolute bottom-2 right-2 px-2 py-1 rounded-full border text-[8px] font-bold uppercase tracking-wide flex items-center gap-1 z-20
                  ${isPreviewPlaying 
                    ? 'bg-green-500 text-white border-green-400 animate-pulse' 
-                   : 'bg-black/60 text-gray-400 border-white/20 hover:bg-white hover:text-black'}
+                   : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white hover:text-black hover:border-white'}
                `}
              >
-               {isPreviewPlaying ? <VolumeX size={12} /> : <Volume2 size={12} />}
+               {isPreviewPlaying ? <VolumeX size={10} /> : <Volume2 size={10} />}
+               <span>PREVIEW</span>
              </button>
-            </div>
           </div>
          );
         })}
