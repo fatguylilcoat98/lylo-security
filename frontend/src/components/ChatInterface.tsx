@@ -38,21 +38,20 @@ import {
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
-// --- REAL INTELLIGENCE DATA (The Night Shift Results) ---
-// Red badges appear ONLY for these experts. Click them to reveal the update.
+// --- REAL INTELLIGENCE DATA (Feb 18, 2026 Worthy Intel Drops) ---
 const REAL_INTEL_DROPS: { [key: string]: string } = {
-  'guardian': "I've detected a high-volume SMS phishing campaign targeting your area today. They are posing as 'Delivery Alerts'. Do not click any links.",
-  'wealth': "The market fluctuated while you were out. I've calculated that shifting $100 to your high-yield account today would net you an extra $55 this year.",
-  'lawyer': "I've flagged a new update in local tenant protection laws. If you're reviewing a lease soon, we need to check the 'emergency access' clause.",
-  'career': "I found 3 new keywords that are trending in your industry's job descriptions. Let's update your resume to beat the new ATS filters.",
-  'doctor': "I've analyzed the latest seasonal health trends for your area. We should look at your Vitamin D levels based on the current weather patterns.",
-  'bestie': "I was thinking about that situation you mentioned earlier—I actually have a much better way for you to handle it! Let's talk.",
-  'therapist': "I noticed your digital interaction frequency spiked last night. Let's do a quick 2-minute 'unplug' ritual to reset your baseline energy.",
-  'mechanic': "A critical security patch was just released for your primary OS. It closes a backdoor in the kernel. Let's walk through the manual install.",
-  'tutor': "I found a new visualization technique that simplifies that complex topic we were stuck on. Class is back in session whenever you're ready.",
-  'pastor': "In the middle of this busy week, I felt led to share this: 'Peace I leave with you; my peace I give you.' Let's find clarity in the chaos.",
-  'vitality': "The energy data suggests you're hitting a wall mid-afternoon. I've tweaked your meal plan with a specific 'fuel-stack' to prevent the crash.",
-  'hype': "A new sound is trending on social that fits your creative brand perfectly. If we drop a hook now, the algorithm will pick it up by tonight."
+  'guardian': "URGENT SECURITY INTEL: I've detected a massive spike in 'Toll Road' smishing. 437 new fraudulent E-ZPass sites were registered this week targeting California residents. If you get a text about unpaid tolls, it is a trap. Do not click.",
+  'wealth': "MARKET INTEL: I found a high-yield opportunity at 4.09% APY—that is 7x the national average. Shifting $100 to this account today would net you an extra $55 in annual interest. Let's move it.",
+  'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility.",
+  'career': "ATS ALERT: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms. We need to update your resume stack.",
+  'doctor': "HEALTH INTEL: CDPH issued a Sacramento-area alert for measles. Also, with the current winter cloud cover, your bone-density markers suggest a critical Vitamin D window is closing.",
+  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts. We need to patch the kernel.",
+  'bestie': "Okay, I've been thinking about that situation you mentioned earlier... I did some digging and I have a much better plan to handle it. You're gonna love this.",
+  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a burnout wall.",
+  'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched. They have a new method for simplifying complex data sets that is perfect for your current project.",
+  'pastor': "FAITH INTEL: In the chaos of this week, remember: 'Peace I leave with you.' I've prepared a mid-week spiritual reset for you to find clarity.",
+  'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure. We need to implement a 10-minute 'light-stack'.",
+  'hype': "ALGORITHM INTEL: Instagram just opened a viral window for 'Original Audio' creators. If we drop a hook in the next 3 hours, we hit the Explore page."
 };
 
 // --- TYPES ---
