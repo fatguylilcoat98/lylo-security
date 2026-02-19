@@ -1,1476 +1,989 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-import { 
- Shield, 
- Wrench, 
- Gavel, 
- Monitor, 
- BookOpen, 
- Laugh, 
- ChefHat, 
- Activity, 
- Camera, 
- Mic, 
- MicOff, 
- Volume2, 
- VolumeX, 
- RotateCcw, 
- AlertTriangle, 
- Phone, 
- CreditCard, 
- FileText, 
- Zap, 
- Brain, 
- Settings, 
- LogOut, 
- X, 
- Crown,
- ArrowRight,
- PlayCircle,
- StopCircle,
- Briefcase,
- Bell,
- User,
- Globe,
- Music
-} from 'lucide-react';
+import os
+import uvicorn
+import json
+import hashlib
+import asyncio
+import base64
+import stripe
+from io import BytesIO
+from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from collections import defaultdict
+from tavily import TavilyClient
+from pinecone import Pinecone, ServerlessSpec
+import google.generativeai as genai
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
-const API_URL = 'https://lylo-backend.onrender.com';
+# Import modular intelligence data system
+from intelligence_data import (
+    VIBE_STYLES, VIBE_LABELS,
+    PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
+    get_random_hook
+)
 
-// --- TYPES ---
-export interface PersonaConfig {
- id: string;
- name: string;
- serviceLabel: string;
- description: string;
- protectiveJob: string;
- spokenHook: string;
- briefing: string;
- color: string;
- requiredTier: 'free' | 'pro' | 'elite' | 'max';
- capabilities: string[];
- icon: React.ComponentType<any>;
+# Load environment variables
+load_dotenv()
+
+# Initialize FastAPI App
+app = FastAPI(
+    title="LYLO Total Integration Backend",
+    description="Proactive Digital Bodyguard & Personalized Search Engine API for LYLO.PRO",
+    version="17.1.0 - GEMINI FIXED EDITION"
+)
+
+# Configure CORS for Frontend Access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# ---------------------------------------------------------
+# API KEY CONFIGURATION & DIAGNOSTICS
+# ---------------------------------------------------------
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+
+# --- TIER LIMITS (Updated for Total Integration) ---
+TIER_LIMITS = {
+    "free": 10,     # Increased for better UX
+    "pro": 100,     # $1.99 Plan
+    "elite": 1000,  # $4.99 Plan
+    "max": 10000    # $9.99 Plan (Virtually unlimited)
 }
 
-interface BestieConfig {
-  gender: 'male' | 'female';
-  voiceId: string;
-  vibeLabel: string;
-}
+# Persistent usage tracker (In-Memory for now)
+USAGE_TRACKER = defaultdict(int)
 
-interface ChatInterfaceProps {
- currentPersona?: PersonaConfig;
- userEmail: string;
- zoomLevel: number;
- onZoomChange: (zoom: number) => void;
- onPersonaChange: (persona: PersonaConfig) => void;
- onLogout: () => void;
- onUsageUpdate?: () => void;
-}
+print("--- LYLO MODULAR INTELLIGENCE SYSTEM ---")
+print(f"🛡️ Digital Bodyguard: {'✅ Active' if OPENAI_API_KEY else '❌ Inactive'}")
+print(f"🔍 Search Engine: {'✅ Active' if TAVILY_API_KEY else '❌ Inactive'}")
+print(f"🧠 Intelligence Sync: {'✅ Active' if PINECONE_API_KEY else '❌ Inactive'}")
+print(f"👁️ Vision Analysis: {'✅ Active' if GEMINI_API_KEY else '❌ Inactive'}")
+print(f"💳 Team Expansion: {'✅ Active' if STRIPE_SECRET_KEY else '❌ Inactive'}")
+print(f"🎭 Modular Personas: ✅ {len(PERSONA_DEFINITIONS)} Experts Loaded")
+print(f"🎨 Communication Styles: ✅ {len(VIBE_STYLES)} Vibes Available")
+print("---------------------------------------")
 
-// --- DATA: THE 12-SEAT BOARD OF DIRECTORS ---
-const PERSONAS: PersonaConfig[] = [
- { 
-   id: 'guardian', 
-   name: 'The Guardian', 
-   serviceLabel: 'SECURITY LEAD', 
-   description: 'Digital Bodyguard', 
-   protectiveJob: 'Security Lead', 
-   spokenHook: 'Security protocols active. I am monitoring your digital perimeter. What threat or suspicious activity do we need to neutralize?', 
-   briefing: 'I provide frontline cybersecurity, scam detection, and identity protection.', 
-   color: 'blue', 
-   requiredTier: 'free', 
-   icon: Shield, 
-   capabilities: ['Scam detection', 'Link analysis', 'Identity protection'] 
- },
- { 
-   id: 'lawyer', 
-   name: 'The Lawyer', 
-   serviceLabel: 'LEGAL SHIELD', 
-   description: 'Justice Partner', 
-   protectiveJob: 'Legal Lead', 
-   spokenHook: 'Legal shield activated. Before you sign anything or agree to terms, let me review it. What’s the situation?', 
-   briefing: 'I provide contract review, rights education, and legal strategy.', 
-   color: 'yellow', 
-   requiredTier: 'elite', 
-   icon: Gavel, 
-   capabilities: ['Contract review', 'Tenant rights', 'Legal defense strategy'] 
- },
- { 
-   id: 'doctor', 
-   name: 'The Doctor', 
-   serviceLabel: 'MEDICAL GUIDE', 
-   description: 'Symptom Analyst', 
-   protectiveJob: 'Medical Lead', 
-   spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms for you. What is going on with your health?', 
-   briefing: 'I provide medical explanation and symptom analysis (Educational Only).', 
-   color: 'red', 
-   requiredTier: 'pro', 
-   icon: Activity, 
-   capabilities: ['Symptom check', 'Medical term translation', 'Health triage'] 
- },
- { 
-   id: 'wealth', 
-   name: 'The Wealth Architect', 
-   serviceLabel: 'FINANCE CHIEF', 
-   description: 'Money Strategist', 
-   protectiveJob: 'Finance Lead', 
-   spokenHook: 'Let’s get your money working for you. Are we crushing debt, building a budget, or planning your empire today?', 
-   briefing: 'I provide financial planning, debt recovery strategy, and business advice.', 
-   color: 'green', 
-   requiredTier: 'elite', 
-   icon: CreditCard, 
-   capabilities: ['Budget building', 'Debt destruction', 'Investment education'] 
- },
- { 
-   id: 'career', 
-   name: 'The Career Strategist', 
-   serviceLabel: 'CAREER COACH', 
-   description: 'Professional Growth', 
-   protectiveJob: 'Career Lead', 
-   spokenHook: 'Let’s level up your career. Resume check, salary negotiation, or office politics—I’m here to help you win. What’s the move?', 
-   briefing: 'I provide resume optimization, interview prep, and career advancement strategy.', 
-   color: 'indigo', 
-   requiredTier: 'pro', 
-   icon: Briefcase, 
-   capabilities: ['Resume review', 'Salary negotiation', 'Interview prep'] 
- },
- { 
-   id: 'therapist', 
-   name: 'The Therapist', 
-   serviceLabel: 'MENTAL WELLNESS', 
-   description: 'Emotional Anchor', 
-   protectiveJob: 'Clinical Lead', 
-   spokenHook: 'I’m here to listen. No judgment, just a safe space to process what you’re going through. How are you really feeling?', 
-   briefing: 'I provide Cognitive Behavioral Therapy techniques and emotional support.', 
-   color: 'indigo', 
-   requiredTier: 'pro', 
-   icon: Brain, 
-   capabilities: ['Anxiety relief', 'Trauma processing', 'Mood tracking'] 
- },
- { 
-   id: 'mechanic', 
-   name: 'The Tech Specialist', 
-   serviceLabel: 'MASTER FIXER', 
-   description: 'Technical Lead', 
-   protectiveJob: 'Technical Lead', 
-   spokenHook: 'Technical manual loaded. Whether it’s an engine, a circuit board, or a leak—tell me the symptoms and I’ll walk you through the fix.', 
-   briefing: 'I provide step-by-step repair guides for vehicles, tech, and home maintenance.', 
-   color: 'gray', 
-   requiredTier: 'pro', 
-   icon: Wrench, 
-   capabilities: ['Car repair guides', 'PC/Phone troubleshooting', 'DIY home repair'] 
- },
- { 
-   id: 'tutor', 
-   name: 'The Master Tutor', 
-   serviceLabel: 'KNOWLEDGE BRIDGE', 
-   description: 'Education Lead', 
-   protectiveJob: 'Education Lead', 
-   spokenHook: 'Class is in session. I can break down any subject until it clicks. What skill or topic are we mastering today?', 
-   briefing: 'I provide academic tutoring, skill acquisition, and complex topic simplification.', 
-   color: 'purple', 
-   requiredTier: 'pro', 
-   icon: Zap, 
-   capabilities: ['Homework help', 'Coding mentorship', 'History/Math lessons'] 
- },
- { 
-   id: 'pastor', 
-   name: 'The Pastor', 
-   serviceLabel: 'FAITH ANCHOR', 
-   description: 'Spiritual Lead', 
-   protectiveJob: 'Spiritual Lead', 
-   spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity. What is weighing on your spirit?', 
-   briefing: 'I provide biblical counseling, prayer, and spiritual direction.', 
-   color: 'gold', 
-   requiredTier: 'pro', 
-   icon: BookOpen, 
-   capabilities: ['Prayer requests', 'Biblical wisdom', 'Moral guidance'] 
- },
- { 
-   id: 'vitality', 
-   name: 'The Vitality Coach', 
-   serviceLabel: 'HEALTH OPTIMIZER', 
-   description: 'Fitness & Food', 
-   protectiveJob: 'Wellness Lead', 
-   spokenHook: 'Let’s optimize your engine. I handle your fuel (nutrition) and your movement (fitness). What’s the goal today?', 
-   briefing: 'I provide workout plans, nutritional guidance, and meal planning.', 
-   color: 'green', 
-   requiredTier: 'max', 
-   icon: Activity, 
-   capabilities: ['Meal planning', 'Workout routines', 'Habit building'] 
- },
- { 
-   id: 'hype', 
-   name: 'The Hype Strategist', 
-   serviceLabel: 'CREATIVE DIRECTOR', 
-   description: 'Viral Specialist', 
-   protectiveJob: 'Creative Lead', 
-   spokenHook: 'Let’s make some noise! I’m here for hooks, pranks, jokes, and viral strategy. How do we make you the main character today?', 
-   briefing: 'I provide viral content strategy, humor, and high-energy morale boosting.', 
-   color: 'orange', 
-   requiredTier: 'pro', 
-   icon: Laugh, 
-   capabilities: ['Viral hooks', 'Content strategy', 'Roasts & Jokes'] 
- },
- { 
-   id: 'bestie', 
-   name: 'The Bestie', 
-   serviceLabel: 'RIDE OR DIE', 
-   description: 'Inner Circle', 
-   protectiveJob: 'Loyalty Lead', 
-   spokenHook: 'I’ve got your back, 100%. No filters, no judgment, just the honest truth. What’s actually going on?', 
-   briefing: 'I provide unconditional loyalty, venting space, and blunt life advice.', 
-   color: 'pink', 
-   requiredTier: 'pro', 
-   icon: Shield, 
-   capabilities: ['Venting session', 'Unbiased advice', 'Secret keeping'] 
- }
-];
+# Stripe Configuration
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
-// === EXPERT HAND-OFF SYSTEM ===
-const EXPERT_TRIGGERS = {
- 'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch'],
- 'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket'],
- 'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen'],
- 'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax'],
- 'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed'],
- 'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run'],
- 'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach'],
- 'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith'],
- 'hype': ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content'],
- 'bestie': ['lonely', 'friend', 'secret', 'vent', 'annoyed', 'drama', 'date', 'relationship'],
- 'career': ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired']
-};
+# ---------------------------------------------------------
+# CLIENT INITIALIZATION
+# ---------------------------------------------------------
 
-const CONFIDENCE_THRESHOLDS = {
- 'guardian': 70,
- 'lawyer': 85,
- 'doctor': 85,
- 'wealth': 85,
- 'therapist': 85,
- 'mechanic': 85,
- 'tutor': 85,
- 'pastor': 85,
- 'vitality': 85,
- 'hype': 75,
- 'bestie': 70,
- 'career': 85
-};
+# Internet Search Client (Personalized Search Engine)
+tavily_client = None
+if TAVILY_API_KEY:
+    try:
+        tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+        print("✅ Personalized Search Engine Ready")
+    except Exception as e:
+        print(f"❌ Search Engine Failed: {e}")
 
-// --- CURATED VOICE CAST (STATIC EXPERTS) ---
-const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch: number } } = {
-  'guardian': { voice: 'onyx', rate: 0.9, pitch: 0.8 }, 
-  'lawyer': { voice: 'fable', rate: 0.9, pitch: 0.9 }, 
-  'doctor': { voice: 'nova', rate: 0.95, pitch: 1.0 }, 
-  'wealth': { voice: 'onyx', rate: 0.9, pitch: 0.9 }, 
-  'career': { voice: 'shimmer', rate: 1.0, pitch: 1.0 }, 
-  'therapist': { voice: 'alloy', rate: 0.9, pitch: 1.0 }, 
-  'mechanic': { voice: 'echo', rate: 0.95, pitch: 0.8 }, 
-  'tutor': { voice: 'fable', rate: 0.95, pitch: 1.0 }, 
-  'pastor': { voice: 'onyx', rate: 0.85, pitch: 0.9 },
-  'vitality': { voice: 'nova', rate: 1.1, pitch: 1.0 }, 
-  'hype': { voice: 'shimmer', rate: 1.15, pitch: 1.1 }
-  // BESTIE HANDLED DYNAMICALLY
-};
-
-const VIBE_SAMPLES = {
- 'standard': "I've analyzed your situation and detected potential security threats.",
- 'senior': "Let me explain this step by step in simple terms. This looks like a scam to me.",
- 'business': "• Threat level: HIGH\n• Recommendation: Terminate contact\n• Next actions: Document evidence",
- 'roast': "Oh honey, this scammer thinks you were born yesterday. Let's roast this fool!",
- 'tough': "STOP! Drop everything NOW! This is a CODE RED threat situation!",
- 'teacher': "Think of scammers like wolves in sheep's clothing - they look friendly but...",
- 'friend': "Hey bestie! 🛡️ This totally screams scammer vibes. Let's protect you! 💪",
- 'geek': "Analyzing payload... Malicious social engineering detected. Implementing countermeasures.",
- 'zen': "Take a deep breath. Let this threat pass by like clouds in the sky. You are safe.",
- 'story': "In the shadows of the digital world, a predator lurked, but our hero was ready...",
- 'hype': "Yo, this scammer has ZERO rizz! You're too goated to fall for this basic trap, no cap! 🔥"
-};
-
-// --- HELPER FUNCTIONS ---
-const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
- const colorMap: any = {
-  blue: { border: 'border-blue-400', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]', bg: 'bg-blue-500', text: 'text-blue-400' },
-  orange: { border: 'border-orange-400', glow: 'shadow-[0_0_20px_rgba(249,115,22,0.3)]', bg: 'bg-orange-500', text: 'text-orange-400' },
-  gold: { border: 'border-yellow-400', glow: 'shadow-[0_0_20px_rgba(234,179,8,0.3)]', bg: 'bg-yellow-500', text: 'text-yellow-400' },
-  gray: { border: 'border-gray-400', glow: 'shadow-[0_0_20px_rgba(107,114,128,0.3)]', bg: 'bg-gray-500', text: 'text-gray-400' },
-  yellow: { border: 'border-yellow-300', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.3)]', bg: 'bg-yellow-400', text: 'text-yellow-300' },
-  purple: { border: 'border-purple-400', glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]', bg: 'bg-purple-500', text: 'text-purple-400' },
-  indigo: { border: 'border-indigo-400', glow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]', bg: 'bg-indigo-500', text: 'text-indigo-400' },
-  pink: { border: 'border-pink-400', glow: 'shadow-[0_0_20px_rgba(236,72,153,0.3)]', bg: 'bg-pink-500', text: 'text-pink-400' },
-  red: { border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
-  green: { border: 'border-green-400', glow: 'shadow-[0_0_20px_rgba(34,197,94,0.3)]', bg: 'bg-green-500', text: 'text-green-400' }
- };
- return colorMap[persona.color]?.[type] || colorMap.blue[type];
-};
-
-const getPrivacyShieldClass = (persona: PersonaConfig, loading: boolean, messages: Message[]) => {
- if (loading) return 'border-yellow-400 shadow-[0_0_15px_rgba(255,191,0,0.4)] animate-pulse';
- const lastBotMsg = [...messages].reverse().find(m => m.sender === 'bot');
- if (lastBotMsg?.scamDetected && lastBotMsg?.confidenceScore === 100) {
-  return 'border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse';
- }
- return getPersonaColorClass(persona, 'border') + ' ' + getPersonaColorClass(persona, 'glow');
-};
-
-const canAccessPersona = (persona: PersonaConfig, tier: string) => {
- const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
- return tiers[tier] >= tiers[persona.requiredTier];
-};
-
-const detectExpertSuggestion = (message: string, currentPersona: string, confidenceScore: number, userTier: string): PersonaConfig | null => {
- const lowerMessage = message.toLowerCase();
- const threshold = CONFIDENCE_THRESHOLDS[currentPersona as keyof typeof CONFIDENCE_THRESHOLDS] || 80;
- if (confidenceScore >= threshold) return null;
- 
- for (const [expertId, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-  if (expertId === currentPersona) continue;
-  const hasKeyword = keywords.some(keyword => lowerMessage.includes(keyword));
-  if (hasKeyword) {
-   const expert = PERSONAS.find(p => p.id === expertId);
-   if (expert && canAccessPersona(expert, userTier)) {
-    return expert;
-   }
-  }
- }
- return null;
-};
-
-const getAccessiblePersonas = (tier: string) => PERSONAS.filter(p => canAccessPersona(p, tier));
-
-// --- MAIN COMPONENT ---
-function ChatInterface({ 
- currentPersona: initialPersona, 
- userEmail = '', 
- zoomLevel = 100, 
- onZoomChange = () => {}, 
- onPersonaChange = () => {}, 
- onLogout = () => {}, 
- onUsageUpdate = () => {}
-}: ChatInterfaceProps) {
- 
- // State
- const [activePersona, setActivePersona] = useState<PersonaConfig>(() => {
-  return initialPersona || PERSONAS[0] || {
-   id: 'guardian', 
-   name: 'The Guardian', 
-   serviceLabel: 'SECURITY SCAN', 
-   description: 'Security Lead', 
-   protectiveJob: 'Security Lead', 
-   spokenHook: 'Security protocols active.', 
-   briefing: 'Loading...', 
-   color: 'blue', 
-   requiredTier: 'free' as const, 
-   icon: Shield, 
-   capabilities: []
-  };
- });
- const [messages, setMessages] = useState<Message[]>([]);
- const [input, setInput] = useState('');
- const [loading, setLoading] = useState(false);
- const [userName, setUserName] = useState<string>('');
- const [intelligenceSync, setIntelligenceSync] = useState(0);
- 
- // NOTIFICATIONS STATE (FOMO Feature)
- const [notifications, setNotifications] = useState<string[]>([]);
- 
- // BESTIE CONFIG STATE
- const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
- const [showBestieSetup, setShowBestieSetup] = useState(false);
- const [setupStep, setSetupStep] = useState<'gender' | 'voice'>('gender');
- const [tempGender, setTempGender] = useState<'male' | 'female'>('female');
-
- // Audio State
- const [isRecording, setIsRecording] = useState(false);
- const isRecordingRef = useRef(false);
- const [autoTTS, setAutoTTS] = useState(true);
- const [isSpeaking, setIsSpeaking] = useState(false);
- const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
- const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
- 
- // Preview Audio
- const [previewPlayingId, setPreviewPlayingId] = useState<string | null>(null);
-
- // UI State
- const [showDropdown, setShowDropdown] = useState(false);
- const [showUserDetails, setShowUserDetails] = useState(false);
- const [userStats, setUserStats] = useState<UserStats | null>(null);
- const [micSupported, setMicSupported] = useState(false);
- const [selectedImage, setSelectedImage] = useState<File | null>(null);
- const [showCrisisShield, setShowCrisisShield] = useState(false);
- const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
- const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
- 
- // Expert Hand-off State
- const [suggestedExperts, setSuggestedExperts] = useState<{[messageId: string]: PersonaConfig}>({});
- 
- // Modal State
- const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
- 
- // --- GOD MODE ACTIVATED: Forced to 'max' and 'true' ---
- const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
- const [isEliteUser, setIsEliteUser] = useState(true);
- 
- const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
- 
- // Refs
- const chatContainerRef = useRef<HTMLDivElement>(null);
- const inputRef = useRef<HTMLTextAreaElement>(null);
- const recognitionRef = useRef<any>(null);
- const fileInputRef = useRef<HTMLInputElement>(null);
- const transcriptRef = useRef<string>(''); 
-
- useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
-
- // Init
- useEffect(() => {
-  const init = async () => {
-   const savedAuthToken = localStorage.getItem('lylo_auth_token');
-   const savedUserEmail = localStorage.getItem('lylo_user_email');
-   const lastLoginTime = localStorage.getItem('lylo_last_login');
-   
-   if (savedAuthToken && savedUserEmail && lastLoginTime) {
-    const daysSinceLogin = (Date.now() - parseInt(lastLoginTime)) / (1000 * 60 * 60 * 24);
-    if (daysSinceLogin < 30) {
-     console.log('Auto-login successful for:', savedUserEmail);
-    }
-   }
-   
-   await loadUserStats();
-   await checkEliteStatus();
-   
-   // Load Bestie Config
-   const savedBestie = localStorage.getItem('lylo_bestie_config');
-   if (savedBestie) {
-     setBestieConfig(JSON.parse(savedBestie));
-   }
-   
-   const savedCommunicationStyle = localStorage.getItem('lylo_communication_style');
-   if (savedCommunicationStyle) {
-    const validStyles = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype'];
-    if (validStyles.includes(savedCommunicationStyle)) {
-     setCommunicationStyle(savedCommunicationStyle);
-    } else {
-     setCommunicationStyle('standard');
-     localStorage.setItem('lylo_communication_style', 'standard');
-    }
-   }
-   
-   const savedName = localStorage.getItem('lylo_user_name');
-   if (savedName) setUserName(savedName);
-   else if (userEmail.includes('stangman')) setUserName('Christopher');
-   
-   const savedSync = localStorage.getItem('lylo_intelligence_sync');
-   if (savedSync) setIntelligenceSync(parseInt(savedSync));
-   
-   const savedPersonaId = localStorage.getItem('lylo_preferred_persona');
-   if (savedPersonaId) {
-    const p = PERSONAS.find(p => p.id === savedPersonaId);
-    if (p && canAccessPersona(p, userTier)) setActivePersona(p);
-   }
-   
-   // --- FOMO NOTIFICATION LOGIC ---
-   const possibleNotifications = PERSONAS.map(p => p.id).sort(() => 0.5 - Math.random()).slice(0, 3);
-   setNotifications(possibleNotifications);
-
-   const savedLearningData = localStorage.getItem('lylo_learning_data');
-   if (savedLearningData) {
-    try {
-     const learningData = JSON.parse(savedLearningData);
-     if (learningData.userEngagement) {
-      const bonusSync = 5;
-      setIntelligenceSync(prev => Math.min(prev + bonusSync, 100));
-     }
-    } catch (e) {
-     console.log('Learning data restoration failed:', e);
-    }
-   }
-  };
-  init();
-  return () => { window.speechSynthesis.cancel(); };
- }, [userEmail]);
-
- const checkEliteStatus = async () => {
-  try {
-   if (userEmail.toLowerCase().includes("stangman")) {
-      setIsEliteUser(true);
-      setUserTier('max');
-   } else {
-    const response = await fetch(`${API_URL}/check-beta-access`, {
-     method: 'POST',
-     headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ email: userEmail })
-    });
-    const data = await response.json();
-    if (userTier !== 'max') {
-        setUserTier(data.tier || 'free');
-        setIsEliteUser(data.tier === 'elite' || data.tier === 'max');
-    }
-   }
-  } catch (e) { console.error(e); }
- };
-
- const loadUserStats = async () => {
-  try {
-   const stats = await getUserStats(userEmail);
-   setUserStats(stats);
-   if (onUsageUpdate) onUsageUpdate();
-  } catch (e) { console.error(e); }
- };
-
- // Audio & Speech
- const quickStopAllAudio = () => {
-  window.speechSynthesis.cancel();
-  setIsSpeaking(false);
-  setPreviewPlayingId(null);
-  setCurrentSpeech(null);
- };
-
- const speakText = async (text: string, messageId?: string, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
-  if (!autoTTS) return;
-  quickStopAllAudio();
-  setIsSpeaking(true);
-  if (messageId) {
-   setShowReplayButton(messageId);
-   setTimeout(() => setShowReplayButton(null), 5000);
-  }
-
-  // LOGIC: Use Saved Bestie Voice OR Static Map
-  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  
-  if (activePersona.id === 'bestie' && bestieConfig) {
-    assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
-  } else {
-    assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  }
-
-  try {
-   const formData = new FormData();
-   formData.append('text', text);
-   formData.append('voice', assignedVoice.voice);
-   const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
-   const data = await response.json();
-   if (data.audio_b64) {
-    const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-    audio.onended = () => {
-      setIsSpeaking(false);
-      setPreviewPlayingId(null);
-    }
-    await audio.play();
-    return;
-   }
-  } catch (e) { console.log('Using fallback voice'); }
-
-  // Fallback
-  const chunks = text.match(/[^.?!]+[.?!]+[\])'"]*|.+/g) || [text];
-  speakChunksSequentially(chunks, 0, assignedVoice);
- };
-
- const speakChunksSequentially = (chunks: string[], index: number, voiceSettings?: { voice: string; rate: number; pitch: number }) => {
-  if (index >= chunks.length) { 
-    setIsSpeaking(false); 
-    setPreviewPlayingId(null);
-    return; 
-  }
-  const utterance = new SpeechSynthesisUtterance(chunks[index]);
-  utterance.rate = voiceSettings?.rate || 0.9;
-  utterance.pitch = voiceSettings?.pitch || 1.0;
-  utterance.onend = () => speakChunksSequentially(chunks, index + 1, voiceSettings);
-  window.speechSynthesis.speak(utterance);
- };
-
- // Mic
- useEffect(() => {
-  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-   const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-   const recognition = new SpeechRecognition();
-   recognition.continuous = false;
-   recognition.interimResults = false;
-   recognition.maxAlternatives = 1;
-   recognition.lang = 'en-US';
-   
-   recognition.onresult = (event: any) => {
-    let finalTranscript = '';
-    for (let i = 0; i < event.results.length; i++) {
-     const result = event.results[i];
-     if (result.isFinal && result[0].confidence > 0.7) {
-      finalTranscript += result[0].transcript + ' ';
-     }
-    }
-    
-    if (finalTranscript.trim()) {
-     const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
-     transcriptRef.current = cleanedTranscript;
-     setInput(cleanedTranscript);
-    }
-   };
-
-   recognition.onerror = (event: any) => {
-    setIsRecording(false);
-    isRecordingRef.current = false;
-    transcriptRef.current = '';
-    setInput('');
-   };
-
-   recognition.onend = () => {
-    setIsRecording(false);
-    isRecordingRef.current = false;
-    const cleanTranscript = transcriptRef.current?.trim();
-    if (cleanTranscript && cleanTranscript.length > 2) {
-     setTimeout(() => {
-      if (!loading) {
-       handleSend();
-      }
-     }, 150);
-    }
-    transcriptRef.current = '';
-   };
-   
-   recognitionRef.current = recognition;
-   setMicSupported(true);
-  }
- }, []);
-
- const cleanUpSpeech = (text: string): string => {
-  let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1');
-  cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, '');
-  cleaned = cleaned.replace(/\s+/g, ' ');
-  cleaned = cleaned.replace(/^\s+|\s+$/g, '');
-  cleaned = cleaned.replace(/(\b(I just wanted to|so)\b\s*){3,}/gi, 'I wanted to ');
-  return cleaned;
- };
-
- const handleWalkieTalkieMic = () => {
-  if (!micSupported) return alert('Mic not supported');
-  if (isRecording) {
-   isRecordingRef.current = false;
-   setIsRecording(false);
-   if (recognitionRef.current) {
-    try { 
-     recognitionRef.current.stop(); 
-    } catch(e) { console.error('Error stopping recognition:', e); }
-   }
-  } else {
-   quickStopAllAudio();
-   isRecordingRef.current = true;
-   setIsRecording(true);
-   setInput('');
-   transcriptRef.current = '';
-   if (recognitionRef.current) {
-    try { recognitionRef.current.start(); } 
-    catch(e) { setIsRecording(false); }
-   }
-  }
- };
-
- // --- SILENT SELECTION HANDLER ---
- const handlePersonaChange = async (persona: PersonaConfig) => {
-  if (!canAccessPersona(persona, userTier)) {
-   speakText('Upgrade required.');
-   return;
-  }
-  
-  // Trigger Bestie Setup if not configured
-  if (persona.id === 'bestie' && !bestieConfig) {
-    setTempGender('female');
-    setSetupStep('gender');
-    setShowBestieSetup(true);
-    return; // Don't switch yet
-  }
-
-  // Clear Notification Logic
-  if (notifications.includes(persona.id)) {
-    setNotifications(prev => prev.filter(id => id !== persona.id));
-  }
-
-  // Stop any preview audio first
-  quickStopAllAudio();
-
-  // Visual selection feedback
-  setSelectedPersonaId(persona.id);
-  
-  // Transition
-  setTimeout(async () => {
-   setActivePersona(persona);
-   onPersonaChange(persona);
-   localStorage.setItem('lylo_preferred_persona', persona.id);
-   
-   setShowKnowMore(persona.id);
-   setTimeout(() => setShowKnowMore(null), 5000);
-   setSelectedPersonaId(null);
-   
-   const newSync = Math.min(intelligenceSync + 8, 100);
-   setIntelligenceSync(newSync);
-   localStorage.setItem('lylo_intelligence_sync', newSync.toString());
-   
-   const learningData = {
-    personaPreference: persona.id,
-    selectionTime: new Date().toISOString(),
-    userEngagement: 'persona_selection'
-   };
-   localStorage.setItem('lylo_learning_data', JSON.stringify(learningData));
-  }, 300);
- };
-
- // --- PREVIEW AUDIO HANDLER ---
- const handlePreviewAudio = (e: React.MouseEvent, persona: PersonaConfig) => {
-  e.stopPropagation(); // CRITICAL: PREVENTS SELECTION
-  
-  if (previewPlayingId === persona.id) {
-    quickStopAllAudio();
-    return;
-  }
-
-  quickStopAllAudio(); // Stop others
-  setPreviewPlayingId(persona.id);
-
-  // Logic for previewing Bestie voice if configured
-  let voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  
-  if (persona.id === 'bestie' && bestieConfig) {
-    voiceSettings = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
-  }
-
-  const hook = persona.spokenHook.replace('{userName}', userName || 'user');
-  speakText(hook, undefined, voiceSettings);
- };
-
- // --- BESTIE SETUP HANDLERS ---
- const handleBestieGenderSelect = (gender: 'male' | 'female') => {
-   setTempGender(gender);
-   setSetupStep('voice');
- };
-
- const handleBestieVoiceSelect = (voiceId: string, label: string) => {
-   const newConfig: BestieConfig = {
-     gender: tempGender,
-     voiceId: voiceId,
-     vibeLabel: label
-   };
-   
-   setBestieConfig(newConfig);
-   localStorage.setItem('lylo_bestie_config', JSON.stringify(newConfig));
-   setShowBestieSetup(false);
-   
-   // Auto switch to Bestie after setup
-   const bestiePersona = PERSONAS.find(p => p.id === 'bestie');
-   if (bestiePersona) handlePersonaChange(bestiePersona);
- };
-
- // Voice Options for Bestie Setup
- const FEMALE_VOICES = [
-   { id: 'nova', label: 'The Energetic Bestie' },
-   { id: 'alloy', label: 'The Chill Bestie' },
-   { id: 'shimmer', label: 'The Boss Bestie' }
- ];
- 
- const MALE_VOICES = [
-   { id: 'echo', label: 'The Soft Voice' },
-   { id: 'onyx', label: 'The Deep Voice' },
-   { id: 'fable', label: 'The British-ish Voice' }
- ];
-
- const handleSend = async () => {
-  const text = input.trim();
-  if (!text && !selectedImage) return;
-  
-  quickStopAllAudio();
-  setLoading(true);
-  setInput('');
-  const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
-  setMessages(prev => [...prev, userMsg]);
-
-  try {
-   const history = messages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.content }));
-   
-   const safeVibe = ['standard', 'senior', 'business', 'roast', 'tough', 'teacher', 'friend', 'geek', 'zen', 'story', 'hype']
-    .includes(communicationStyle) ? communicationStyle : 'standard';
-   
-   const response = await sendChatMessage(text, history, activePersona.id, userEmail, selectedImage, 'en', safeVibe);
-   
-   const botMsg: Message = { 
-    id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(),
-    confidenceScore: response.confidence_score, scamDetected: response.scam_detected, scamIndicators: response.scam_indicators
-   };
-   setMessages(prev => [...prev, botMsg]);
-   
-   const suggestedExpert = detectExpertSuggestion(text, activePersona.id, response.confidence_score, userTier);
-   if (suggestedExpert) {
-    setSuggestedExperts(prev => ({ ...prev, [botMsg.id]: suggestedExpert }));
-   }
-   
-   // Use Curated Voice Logic
-  let assignedVoice = { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  
-  if (activePersona.id === 'bestie' && bestieConfig) {
-    assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
-  } else {
-    assignedVoice = PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 0.9, pitch: 1.0 };
-  }
-
-   speakText(response.answer, botMsg.id, assignedVoice);
-   
-   if (text.length > 10) {
-    const newSync = Math.min(intelligenceSync + 5, 100);
-    setIntelligenceSync(newSync);
-    localStorage.setItem('lylo_intelligence_sync', newSync.toString());
-    
-    const learningUpdate = {
-     timestamp: new Date().toISOString(),
-     messageLength: text.length,
-     personaUsed: activePersona.id,
-     responseTime: Date.now() - userMsg.timestamp.getTime(),
-     userEngagement: 'message_interaction',
-     confidenceScore: response.confidence_score,
-     scamDetected: response.scam_detected
-    };
-    
-    const existingLearning = localStorage.getItem('lylo_learning_history');
-    const learningHistory = existingLearning ? JSON.parse(existingLearning) : [];
-    learningHistory.push(learningUpdate);
-    
-    if (learningHistory.length > 50) {
-     learningHistory.shift();
-    }
-    
-    localStorage.setItem('lylo_learning_history', JSON.stringify(learningHistory));
-   }
-   
-  } catch (e) { console.error(e); } 
-  finally { setLoading(false); setSelectedImage(null); }
- };
-
- const handleReplay = (messageContent: string, messageId?: string) => {
-  quickStopAllAudio();
-  speakText(messageContent, messageId);
- };
-
- const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-   setSelectedImage(e.target.files[0]);
-   quickStopAllAudio();
-  }
- };
-
- const handleKeyPress = (e: React.KeyboardEvent) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-   e.preventDefault();
-   handleSend();
-  }
- };
-
- const handleBackToServices = () => {
-  quickStopAllAudio();
-  setMessages([]);
-  setInput('');
-  setSelectedImage(null);
- };
-
- const handleQuickPersonaSwitch = (persona: PersonaConfig) => {
-  if (!canAccessPersona(persona, userTier)) {
-   alert('Upgrade required for this expert.');
-   return;
-  }
-  
-  quickStopAllAudio();
-  setActivePersona(persona);
-  onPersonaChange(persona);
-  localStorage.setItem('lylo_preferred_persona', persona.id);
-  
-  const switchMsg: Message = {
-   id: Date.now().toString(),
-   content: `Switched to ${persona.serviceLabel}. ${persona.spokenHook.replace('{userName}', userName || 'user')}`,
-   sender: 'bot',
-   timestamp: new Date(),
-   confidenceScore: 100
-  };
-  setMessages(prev => [...prev, switchMsg]);
-  speakText(switchMsg.content);
-  setShowDropdown(false);
- };
-
- const handleGetFullGuide = async () => {
-  if (!isEliteUser) {
-   alert('Elite access required for full legal recovery guide.');
-   return;
-  }
-  
-  setLoading(true);
-  try {
-   const response = await fetch(`${API_URL}/scam-recovery/${userEmail}`);
-   if (response.ok) {
-    alert('Full legal recovery guide loaded. Check your downloads.');
-    speakText('Priority legal recovery guide has been activated.');
-   } else {
-    throw new Error('Failed to fetch recovery guide');
-   }
-  } catch (error) {
-   console.error('Recovery guide error:', error);
-   alert('Unable to load recovery guide. Please try again.');
-  } finally {
-   setLoading(false);
-   setShowCrisisShield(false);
-  }
- };
-
- // --- RENDER ---
- return (
-  <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
-   
-   {/* MOBILE-OPTIMIZED OVERLAYS */}
-   {showCrisisShield && (
-    <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-     <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[80vh] overflow-y-auto">
-      <div className="flex justify-between items-center mb-5">
-       <h2 className="text-red-100 font-black text-lg uppercase tracking-wide">Emergency Protocols</h2>
-       <button onClick={() => setShowCrisisShield(false)} className="p-2 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
-        <X className="w-5 h-5 text-white" />
-       </button>
-      </div>
-      <div className="space-y-4 text-sm">
-       <div className="bg-red-500/10 border border-red-400/30 rounded-lg p-4">
-        <h3 className="text-red-200 font-bold mb-3 flex items-center gap-2">
-         <AlertTriangle className="w-5 h-5" /> IMMEDIATE ACTIONS
-        </h3>
-        <ul className="text-red-100 space-y-3 text-sm">
-         <li className="flex items-start gap-3">
-          <CreditCard className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-          <span>STOP all payments and money transfers immediately</span>
-         </li>
-         <li className="flex items-start gap-3">
-          <Phone className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-          <span>Call your bank's fraud department right now</span>
-         </li>
-         <li className="flex items-start gap-3">
-          <FileText className="w-5 h-5 mt-0.5 text-red-300 flex-shrink-0" />
-          <span>Screenshot all communications for evidence</span>
-         </li>
-        </ul>
-       </div>
-       
-       <div className="bg-yellow-500/10 border border-yellow-400/30 rounded-lg p-4">
-        <h3 className="text-yellow-200 font-bold mb-3 flex items-center gap-2">
-         <Phone className="w-4 h-4" />
-         BANK SCRIPT
-        </h3>
-        <p className="text-yellow-100 text-sm italic leading-relaxed">
-         "This is a fraud emergency. I need to report unauthorized access to my account and fraudulent transfers. Connect me to your fraud specialist immediately."
-        </p>
-       </div>
-       
-       {isEliteUser ? (
-        <button 
-         onClick={handleGetFullGuide} 
-         className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-yellow-500 hover:bg-yellow-600 text-black flex items-center justify-center gap-2 active:scale-95 transition-all"
-        >
-         <Crown className="w-4 h-4" /> PRIORITY LEGAL ACCESS
-        </button>
-       ) : (
-        <div className="w-full py-4 px-4 rounded-lg font-bold text-sm bg-gray-800 text-gray-500 flex items-center justify-center gap-2 border border-gray-700">
-         <Crown className="w-4 h-4" /> LEGAL ACCESS LOCKED (ELITE ONLY)
-        </div>
-       )}
-      </div>
-     </div>
-    </div>
-   )}
-
-   {showIntelligenceModal && (
-    <div className="fixed inset-0 z-[100100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-     <div className="bg-black/80 p-6 rounded-xl border border-blue-500/50 max-w-sm w-full max-h-[80vh] overflow-y-auto">
-      <h2 className="text-white font-bold mb-4 text-lg">Intelligence Sync</h2>
-      <p className="text-gray-400 mb-6 text-base">Calibrating your bodyguard...</p>
-      {['Fraud', 'Identity', 'Tech'].map(opt => (
-       <button 
-        key={opt} 
-        onClick={() => { setShowIntelligenceModal(false); speakText('Updated.'); }} 
-        className="w-full p-4 bg-blue-500/20 mb-3 rounded-lg text-white border border-blue-500/30 font-bold active:scale-95 transition-all"
-       >
-        {opt}
-       </button>
-      ))}
-     </div>
-    </div>
-   )}
-
-   {/* BESTIE SETUP MODAL */}
-   {showBestieSetup && (
-    <div className="fixed inset-0 z-[100200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
-     <div className="bg-pink-900/30 border border-pink-500/50 rounded-xl p-6 max-w-sm w-full shadow-2xl">
-      <h2 className="text-pink-100 font-black text-xl mb-4 text-center">DESIGN YOUR BESTIE</h2>
-      
-      {setupStep === 'gender' ? (
-        <div className="space-y-4">
-          <p className="text-pink-200 text-center text-sm mb-6">Who do you feel most comfortable talking to?</p>
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleBestieGenderSelect('female')} className="p-6 rounded-xl bg-pink-500/20 border border-pink-400/50 hover:bg-pink-500/40 transition-all flex flex-col items-center gap-3">
-              <div className="text-4xl">👩</div>
-              <span className="font-bold text-white">Female</span>
-            </button>
-            <button onClick={() => handleBestieGenderSelect('male')} className="p-6 rounded-xl bg-blue-500/20 border border-blue-400/50 hover:bg-blue-500/40 transition-all flex flex-col items-center gap-3">
-              <div className="text-4xl">👨</div>
-              <span className="font-bold text-white">Male</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-pink-200 text-center text-sm mb-4">Pick the voice that matches your vibe:</p>
-          {(tempGender === 'female' ? FEMALE_VOICES : MALE_VOICES).map((voice) => (
-            <div key={voice.id} className="flex items-center gap-2">
-                <button 
-                  onClick={() => speakText("Hey! I'm ready to be your Bestie. How does this sound?", undefined, { voice: voice.id, rate: 1.0, pitch: 1.0 })}
-                  className="p-3 rounded-lg bg-pink-500/20 border border-pink-400/50 text-white hover:bg-pink-500/40"
-                >
-                  <PlayCircle className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={() => handleBestieVoiceSelect(voice.id, voice.label)}
-                  className="flex-1 p-3 rounded-lg bg-black/40 border border-white/10 hover:border-pink-400 hover:bg-pink-500/10 transition-all flex items-center justify-between group"
-                >
-                  <span className="font-bold text-white text-sm">{voice.label}</span>
-                  <ArrowRight className="w-4 h-4 text-gray-500 group-hover:text-pink-400" />
-                </button>
-            </div>
-          ))}
-        </div>
-      )}
-     </div>
-    </div>
-   )}
-
-   {/* MOBILE-OPTIMIZED HEADER */}
-   <div className="bg-black/90 backdrop-blur-xl border-b border-white/10 p-2 flex-shrink-0 z-50">
-    <div className="flex items-center justify-between">
-     
-     <div className="relative">
-      {messages.length > 0 ? (
-       <button 
-        onClick={handleBackToServices} 
-        className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all"
-        title="Back to Services"
-       >
-        <div className="w-5 h-5 text-white">
-         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M19 12H5M12 19l-7-7 7-7"/>
-         </svg>
-        </div>
-       </button>
-      ) : (
-       <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
-        <Settings className="w-5 h-5 text-white" />
-       </button>
-      )}
-      
-      {showDropdown && (
-       <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001]">
-        {messages.length > 0 && (
-         <div className="mb-4 pb-4 border-b border-white/10">
-          <h3 className="text-white font-bold text-sm mb-3">Switch Expert</h3>
-          <div className="grid grid-cols-2 gap-2">
-           {getAccessiblePersonas(userTier).slice(0, 6).map(persona => {
-            const Icon = persona.icon;
-            const isActive = activePersona.id === persona.id;
-            return (
-             <button
-              key={persona.id}
-              onClick={() => handleQuickPersonaSwitch(persona)}
-              className={`p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-               isActive 
-                ? `${getPersonaColorClass(persona, 'bg')}/20 ${getPersonaColorClass(persona, 'text')} border ${getPersonaColorClass(persona, 'border')}` 
-                : 'bg-white/5 text-gray-300 hover:bg-white/10'
-              }`}
-              disabled={isActive}
-             >
-              {Icon && <Icon className="w-4 h-4" />}
-              <span className="truncate">{persona.serviceLabel.split(' ')[0]}</span>
-             </button>
-            );
-           })}
-          </div>
-         </div>
-        )}
+# Memory Client (Intelligence Sync)
+pc = None
+memory_index = None
+if PINECONE_API_KEY:
+    try:
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        index_name = "lylo-intelligence-sync"
         
-        <div className="mb-4 pb-4 border-b border-white/10">
-         <h3 className="text-white font-bold text-sm mb-3">Communication Style</h3>
-         <select 
-          value={communicationStyle}
-          onChange={(e) => {
-           setCommunicationStyle(e.target.value);
-           localStorage.setItem('lylo_communication_style', e.target.value);
-          }}
-          className="w-full p-2 bg-black/50 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:border-blue-400 mb-3"
-         >
-          <option value="standard">Standard Protection</option>
-          <option value="senior">Senior-Friendly</option>
-          <option value="business">Business Professional</option>
-          <option value="roast">Sarcastic & Witty</option>
-          <option value="tough">Drill Sergeant</option>
-          <option value="teacher">Educational Guide</option>
-          <option value="friend">Casual & Supportive</option>
-          <option value="geek">Technical Expert</option>
-          <option value="zen">Calm & Meditative</option>
-          <option value="story">Narrative Style</option>
-          <option value="hype">High Energy Slang</option>
-         </select>
-         
-         <div className="bg-black/30 border border-white/10 rounded-lg p-3">
-          <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-2 font-bold">Preview Sample</div>
-          <div className="text-gray-200 text-xs italic leading-relaxed">
-           "{VIBE_SAMPLES[communicationStyle as keyof typeof VIBE_SAMPLES] || VIBE_SAMPLES.standard}"
-          </div>
-         </div>
-        </div>
+        existing_indexes = [idx.name for idx in pc.list_indexes()]
+        if index_name not in existing_indexes:
+            print(f"⚙️ Creating Intelligence Sync Index: {index_name}")
+            pc.create_index(
+                name=index_name,
+                dimension=1024,
+                metric="cosine", 
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
+        memory_index = pc.Index(index_name)
+        print("✅ Intelligence Sync Ready")
+    except Exception as e:
+        print(f"❌ Intelligence Sync Failed: {e}")
+
+# AI Vision Clients (Threat Assessment) - FIXED GEMINI INTEGRATION
+gemini_ready = False
+available_gemini_models = []
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
         
-        <button onClick={onLogout} className="w-full flex items-center gap-3 text-red-400 p-3 hover:bg-white/5 rounded-lg active:scale-95 transition-all">
-         <LogOut className="w-4 h-4"/> 
-         <span className="font-bold text-sm">Exit Protection</span>
-        </button>
-       </div>
-      )}
-     </div>
-     
-     <div className="text-center flex-1">
-      <h1 className="text-white font-black text-xl tracking-[0.2em]">
-       L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
-      </h1>
-      <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">
-       {messages.length > 0 ? activePersona.serviceLabel : 'Digital Bodyguard'}
-      </p>
-     </div>
-     
-     <div className="flex items-center gap-2">
-      <button 
-       onClick={() => setShowCrisisShield(true)} 
-       className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse active:scale-95 transition-all"
-      >
-       <Shield className="w-5 h-5 text-red-400" />
-      </button>
-      <div className="text-right cursor-pointer" onClick={() => setShowUserDetails(!showUserDetails)}>
-       <div className="text-white font-bold text-xs">{userName || 'User'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
-       <div className="text-[8px] text-gray-400 font-black uppercase">Protected</div>
-      </div>
-     </div>
-    </div>
-   </div>
-
-   {/* MOBILE-OPTIMIZED MAIN CONTENT */}
-   <div 
-    ref={chatContainerRef} 
-    className="flex-1 overflow-y-auto relative backdrop-blur-sm"
-    style={{ 
-     WebkitOverflowScrolling: 'touch',
-     overscrollBehavior: 'contain'
-    }}
-   >
-    {messages.length === 0 ? (
-     <div className="min-h-full flex flex-col">
-      {/* HEADER SECTION - Fixed at top */}
-      <div className="flex-shrink-0 text-center pt-4 pb-3 px-4">
-       <div className={`relative w-16 h-16 bg-black/60 backdrop-blur-xl rounded-xl flex items-center justify-center mx-auto mb-3 border-2 transition-all duration-700 ${getPrivacyShieldClass(activePersona, loading, messages)}`}>
-        <span className="text-white font-black text-lg tracking-wider">LYLO</span>
-        {(loading || isSpeaking) && (
-         <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-blue-500/20 animate-pulse">
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ping"></div>
-         </div>
-        )}
-       </div>
-       <h1 className="text-xl font-bold text-white mb-1">Digital Bodyguard</h1>
-       <p className="text-gray-400 text-sm">Tap a service to activate your expert</p>
-      </div>
-      
-      {/* SERVICE GRID - Scrollable content */}
-      <div className="flex-1 px-4" style={{ paddingBottom: '400px' }}>
-       <div className="grid grid-cols-2 gap-3 max-w-md mx-auto pb-20">
-        {getAccessiblePersonas(userTier).map(persona => {
-         const Icon = persona.icon;
-         const isSelected = selectedPersonaId === persona.id;
-         const isPreviewPlaying = previewPlayingId === persona.id;
-         const hasNotification = notifications.includes(persona.id);
-
-         return (
-          <div key={persona.id} className="relative group">
-            {/* 1. THE MAIN SELECTION BUTTON (SILENT) */}
-            <button onClick={() => handlePersonaChange(persona)}
-            className={`
-              w-full text-left relative p-4 rounded-xl backdrop-blur-xl border transition-all duration-300 min-h-[120px]
-              ${isSelected 
-              ? `bg-white/20 border-white/60 ${getPersonaColorClass(persona, 'glow')} scale-105 animate-pulse shadow-2xl` 
-              : `bg-black/50 border-white/20 hover:bg-black/70 active:scale-95`
-              }
-              ${getPersonaColorClass(persona, 'glow')}
-            `}>
+        # Test Gemini availability with proper model detection
+        try:
+            models = list(genai.list_models())
+            available_gemini_models = [m.name for m in models]
+            print(f"📊 Available Gemini Models: {len(available_gemini_models)} found")
             
-            {/* NOTIFICATION BADGE */}
-            {hasNotification && (
-              <div className="absolute -top-2 -left-2 bg-red-500 text-white text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-black z-30 animate-bounce">
-                1
-              </div>
-            )}
+            # Check for required models with flexible naming
+            has_text_model = any('gemini-pro' in model.lower() or 'gemini-1.5' in model.lower() for model in available_gemini_models)
+            has_vision_model = any('vision' in model.lower() for model in available_gemini_models)
+            
+            if has_text_model:
+                gemini_ready = True
+                print("✅ Threat Assessment (Gemini) Ready")
+                if has_vision_model:
+                    print("✅ Gemini Vision Support Available")
+                else:
+                    print("⚠️ Gemini Vision Limited - Text only")
+            else:
+                print("❌ No suitable Gemini models available")
+                print(f"Available models: {available_gemini_models[:3]}...")
+                
+        except Exception as model_error:
+            print(f"⚠️ Gemini model detection failed: {str(model_error)[:100]}")
+            # Try basic initialization with fallback
+            available_gemini_models = ['gemini-pro']
+            gemini_ready = True
+            print("✅ Threat Assessment (Gemini) Ready (Fallback Mode)")
+            
+    except Exception as e:
+        print(f"❌ Gemini Threat Assessment Failed: {e}")
+        gemini_ready = False
 
-            <div className="flex flex-col items-center text-center space-y-2">
-              <div className={`p-2 rounded-lg ${isSelected ? 'bg-white/20' : 'bg-black/40'} ${getPersonaColorClass(persona, 'border')} border ${isSelected ? 'animate-pulse' : ''}`}>
-              {Icon && <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : getPersonaColorClass(persona, 'text')}`} />}
-              </div>
-              <div>
-              <h3 className={`font-bold text-xs uppercase tracking-wide leading-tight ${isSelected ? 'text-white animate-pulse' : 'text-white'}`}>
-                {persona.serviceLabel}
-              </h3>
-              <p className={`text-[10px] mt-1 leading-tight ${isSelected ? 'text-white/90' : 'text-gray-400'}`}>
-                {isSelected ? 'ACTIVATING...' : persona.description}
-              </p>
-              </div>
-            </div>
-            </button>
+openai_client = None
+if OPENAI_API_KEY:
+    try:
+        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        print("✅ Digital Bodyguard (OpenAI) Ready")
+    except Exception as e:
+        print(f"❌ OpenAI Digital Bodyguard Failed: {e}")
 
-            {/* 2. THE AUDIO PREVIEW BUTTON (FIXED POSITION & STYLE) */}
-            <button 
-               onClick={(e) => handlePreviewAudio(e, persona)}
-               className={`
-                 absolute bottom-2 right-2 px-2 py-1 rounded-full border text-[8px] font-bold uppercase tracking-wide flex items-center gap-1 z-20
-                 ${isPreviewPlaying 
-                   ? 'bg-green-500 text-white border-green-400 animate-pulse' 
-                   : 'bg-black/60 text-gray-400 border-white/10 hover:bg-white hover:text-black hover:border-white'}
-               `}
-             >
-               {isPreviewPlaying ? <VolumeX size={10} /> : <Volume2 size={10} />}
-               <span>PREVIEW</span>
-             </button>
-          </div>
-         );
-        })}
-        {/* Extra spacing to ensure footer clearance */}
-        <div className="col-span-2 h-16 flex items-center justify-center">
-         <div className="text-gray-600 text-xs font-bold uppercase tracking-widest">
-          {getAccessiblePersonas(userTier).length} Services Available
-         </div>
-        </div>
-       </div>
-      </div>
-     </div>
-    ) : (
-     <div className="px-3 py-3 space-y-3" style={{ paddingBottom: '400px' }}>
-      {messages.map((msg) => (
-       <div key={msg.id} className="space-y-2">
-        <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-         <div className={`max-w-[90%] p-4 rounded-xl backdrop-blur-xl border transition-all ${
-          msg.sender === 'user' 
-           ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' 
-           : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border`
-         }`}>
-          <div className="leading-relaxed font-medium text-base">{msg.content}</div>
-          <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wide flex items-center justify-between ${
-           msg.sender === 'user' ? 'text-blue-100' : 'text-gray-400'
-          }`}>
-           <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-           {msg.sender === 'bot' && (
-            <div className="flex items-center gap-3">
-             {showReplayButton === msg.id && (
-              <button
-               onClick={() => handleReplay(msg.content, msg.id)}
-               className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${getPersonaColorClass(activePersona, 'text')} active:scale-95`}
-               title="Replay message"
-              >
-               <RotateCcw className="w-4 h-4" />
-              </button>
-             )}
-            </div>
-           )}
-          </div>
-         </div>
-        </div>
-        
-        {/* NEW: HONEST CONSENSUS UI (Now links to real confidenceScore immediately) */}
-        {msg.sender === 'bot' && msg.confidenceScore && (
-          <div className="max-w-[90%] mt-2">
-            <div className={`bg-black/30 backdrop-blur-xl border ${msg.confidenceScore > 80 ? 'border-green-400/30' : 'border-yellow-400/30'} rounded-lg p-3 flex items-center gap-3`}>
-              <Shield className={`w-4 h-4 ${msg.confidenceScore > 80 ? 'text-green-400' : 'text-yellow-400'} flex-shrink-0`} />
-              <div className="flex-1">
-                <div className={`font-bold text-sm ${msg.confidenceScore > 80 ? 'text-green-100' : 'text-yellow-100'}`}>
-                  Verified Analysis: {msg.confidenceScore}% Confidence
-                </div>
-                <div className="text-gray-400 text-xs">
-                  {msg.confidenceScore > 80 ? "Dual-AI consensus validation complete" : "Security scan active"}
-                </div>
-              </div>
-              {msg.confidenceScore > 80 && <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>}
-            </div>
-          </div>
-        )}
+# ---------------------------------------------------------
+# USER DATABASE & TEAM MANAGEMENT
+# ---------------------------------------------------------
 
-        {/* Expert Hand-off */}
-        {msg.sender === 'bot' && suggestedExperts[msg.id] && (
-         <div className="max-w-[90%] mt-2">
-          <button
-           onClick={() => {
-            const expert = suggestedExperts[msg.id];
-            handlePersonaChange(expert);
-            setSuggestedExperts(prev => {
-             const updated = { ...prev };
-             delete updated[msg.id];
-             return updated;
-            });
-           }}
-           className={`
-            w-full p-3 rounded-lg backdrop-blur-xl bg-black/40 border transition-all duration-200
-            hover:bg-black/60 active:scale-98 flex items-center justify-between
-            ${getPersonaColorClass(suggestedExperts[msg.id], 'border')}/50 
-            ${getPersonaColorClass(suggestedExperts[msg.id], 'glow')}
-           `}
-          >
-           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${getPersonaColorClass(suggestedExperts[msg.id], 'bg')}/20`}>
-             {React.createElement(suggestedExperts[msg.id].icon, { 
-              className: `w-4 h-4 ${getPersonaColorClass(suggestedExperts[msg.id], 'text')}` 
-             })}
-            </div>
-            <div className="text-left">
-             <div className="text-white font-bold text-sm">Specialist Available</div>
-             <div className="text-gray-300 text-xs">
-              {suggestedExperts[msg.id].serviceLabel} can provide expert guidance
-             </div>
-            </div>
-           </div>
-           <ArrowRight className="w-4 h-4 text-gray-400" />
-          </button>
-         </div>
-        )}
-       </div>
-      ))}
-      
-      {loading && (
-       <div className="flex justify-start">
-        <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-4 rounded-xl">
-         <div className="flex items-center gap-3">
-          <div className="flex gap-1">
-           {[0, 1, 2].map(i => (
-            <div 
-             key={i} 
-             className={`w-2 h-2 rounded-full animate-bounce ${getPersonaColorClass(activePersona, 'bg')}`} 
-             style={{ animationDelay: `${i * 150}ms` }} 
-            />
-           ))}
-          </div>
-          <span className="text-gray-300 font-bold uppercase tracking-wide text-xs">
-           {activePersona.serviceLabel} analyzing...
-          </span>
-         </div>
-        </div>
-       </div>
-      )}
-     </div>
-    )}
-   </div>
-
-   {/* MOBILE-OPTIMIZED FOOTER - Reduced height */}
-   <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-2 z-50">
-    <div className="bg-black/70 rounded-xl border border-white/10 p-3">
-     {/* Recording Status */}
-     {isRecording && (
-      <div className={`mb-2 p-2 border rounded-lg text-center animate-pulse backdrop-blur-xl ${
-       getPersonaColorClass(activePersona, 'bg')
-      }/20 ${getPersonaColorClass(activePersona, 'border')}/30 ${getPersonaColorClass(activePersona, 'text')} text-xs font-black uppercase tracking-wide`}>
-       <div className="flex items-center justify-center gap-2">
-        <Zap className="w-4 h-4" />
-        RECORDING
-       </div>
-      </div>
-     )}
-
-     {/* LARGE MOBILE-FRIENDLY CONTROLS */}
-     <div className="flex items-center justify-between mb-3 gap-2">
-      {/* PROMINENT MIC BUTTON */}
-      <button 
-       onClick={handleWalkieTalkieMic} 
-       className={`
-        flex-1 py-3 px-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[50px]
-        ${isRecording 
-         ? 'bg-red-500 border-red-400 text-white animate-pulse transform scale-105' 
-         : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:from-gray-700 active:to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
-        }
-       `}
-      >
-       {isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}
-      </button>
-      
-      {/* VOICE TOGGLE */}
-      <button 
-       onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} 
-       className="p-3 rounded-xl bg-gray-800/60 border border-gray-600 text-white flex items-center justify-center relative min-w-[50px] min-h-[50px] active:scale-95 transition-all"
-      >
-       {autoTTS ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-       {isSpeaking && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse" />}
-      </button>
-     </div>
-     
-     {/* INPUT ROW */}
-     <div className="flex gap-2 items-end">
-      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
-      <button 
-       onClick={() => fileInputRef.current?.click()} 
-       className={`
-        p-2 rounded-xl backdrop-blur-xl transition-all active:scale-95 min-w-[40px] min-h-[40px] flex items-center justify-center
-        ${selectedImage ? 'bg-green-500/20 border border-green-400/30 text-green-400' : 'bg-gray-800/60 text-gray-400 border border-gray-600'}
-       `}
-      >
-       <Camera className="w-4 h-4" />
-      </button>
-      
-      <div className="flex-1 bg-black/60 rounded-xl border border-white/10 px-3 py-2 backdrop-blur-xl min-h-[40px] flex items-center">
-       <input 
-        value={input} 
-        onChange={e => setInput(e.target.value)} 
-        onKeyDown={handleKeyPress} 
-        placeholder={
-         isRecording ? "Listening..." : 
-         selectedImage ? `Vision ready...` : 
-         `Ask ${activePersona.serviceLabel}...`
-        } 
-        className="bg-transparent w-full text-white text-base focus:outline-none placeholder-gray-500" 
-        disabled={loading || isRecording}
-        style={{ fontSize: '16px' }} // Prevents zoom on iOS
-       />
-      </div>
-      
-      <button 
-       onClick={handleSend} 
-       disabled={loading || (!input.trim() && !selectedImage) || isRecording} 
-       className={`
-        px-3 py-2 rounded-xl font-black text-sm uppercase tracking-wide transition-all backdrop-blur-xl min-w-[60px] min-h-[40px] active:scale-95
-        ${(input.trim() || selectedImage) && !loading && !isRecording 
-         ? `${getPersonaColorClass(activePersona, 'bg')} text-white border border-white/20` 
-         : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-600'
-        }
-       `}
-      >
-       SEND
-      </button>
-     </div>
-     
-     {/* BOTTOM STATUS - Compact */}
-     <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/10">
-      <button 
-       onClick={() => { quickStopAllAudio(); setShowIntelligenceModal(true); }} 
-       className="px-2 py-1 rounded-md bg-gray-800/60 border border-blue-400/30 text-blue-400 font-bold text-xs uppercase active:scale-95 transition-all"
-      >
-       {intelligenceSync}%
-      </button>
-      
-      <div className="text-center">
-       <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">
-        LYLO BODYGUARD
-       </p>
-      </div>
-      
-      <div className="text-[8px] text-gray-400 uppercase font-bold">
-       {activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'}
-      </div>
-     </div>
-    </div>
-   </div>
-  </div>
- );
+# Elite Users Database - Team Access Levels
+ELITE_USERS = {
+    "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
+    "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey"},
+    "tiffani.hughes@yahoo.com": {"tier": "max", "name": "Tiffani"},
+    "jcdabearman@gmail.com": {"tier": "max", "name": "Jeff"},
+    "birdznbloomz2b@gmail.com": {"tier": "max", "name": "Sandy"},
+    "chris.betatester1@gmail.com": {"tier": "max", "name": "James"},
+    "chris.betatester2@gmail.com": {"tier": "max", "name": "Josh"},
+    "chris.betatester3@gmail.com": {"tier": "max", "name": "chrissy poo"},
+    "chris.betatester4@gmail.com": {"tier": "pro", "name": "chrissy poo pro"},
+    "chris.betatester5@gmail.com": {"tier": "elite", "name": "chrissy poo elite"},
+    "chris.betatester6@gmail.com": {"tier": "max", "name": "Beta 6"},
+    "chris.betatester7@gmail.com": {"tier": "max", "name": "Beta 7"},
+    "chris.betatester8@gmail.com": {"tier": "max", "name": "Beta 8"},
+    "chris.betatester9@gmail.com": {"tier": "max", "name": "Beta 9"},
+    "chris.betatester10@gmail.com": {"tier": "max", "name": "Beta 10"},
+    "chris.betatester11@gmail.com": {"tier": "max", "name": "Beta 11"},
+    "chris.betatester12@gmail.com": {"tier": "max", "name": "Beta 12"},
+    "chris.betatester13@gmail.com": {"tier": "max", "name": "Beta 13"},
+    "chris.betatester14@gmail.com": {"tier": "max", "name": "Beta 14"},
+    "chris.betatester15@gmail.com": {"tier": "max", "name": "Beta 15"},
+    "chris.betatester16@gmail.com": {"tier": "max", "name": "Beta 16"},
+    "chris.betatester17@gmail.com": {"tier": "max", "name": "Beta 17"},
+    "chris.betatester18@gmail.com": {"tier": "max", "name": "Beta 18"},
+    "chris.betatester19@gmail.com": {"tier": "max", "name": "Beta 19"},
+    "chris.betatester20@gmail.com": {"tier": "max", "name": "Beta 20"},
+    "plabane916@gmail.com": {"tier": "max", "name": "Paul"},
+    "nemeses1298@gmail.com": {"tier": "max", "name": "Eric"},
+    "bearjcameron@icloud.com": {"tier": "max", "name": "Bear"},
+    "jcgcbear@gmail.com": {"tier": "max", "name": "Gloria"},
+    "laura@startupsac.org": {"tier": "max", "name": "Laura"},
+    "cmlabane@gmail.com": {"tier": "max", "name": "Corie"}
 }
 
-export default ChatInterface;
+# In-Memory Storage for Intelligence Sync
+USER_CONVERSATIONS = defaultdict(list)
+USER_PROFILES = defaultdict(dict)
+QUIZ_ANSWERS = defaultdict(dict)
+
+def create_user_id(email: str) -> str:
+    """Creates a secure, hashed user ID from an email address."""
+    return hashlib.sha256(email.encode()).hexdigest()[:16]
+
+# ---------------------------------------------------------
+# REALISTIC VOICE GENERATION (Enhanced for Proactive Speech)
+# ---------------------------------------------------------
+@app.post("/generate-audio")
+async def generate_audio(
+    text: str = Form(...), 
+    voice: str = Form("onyx")
+):
+    """
+    Generates high-quality human speech for proactive Digital Bodyguard communication.
+    """
+    if not openai_client:
+        return {"error": "Digital Bodyguard voice system not available"}
+
+    try:
+        # Clean the text for optimal speech synthesis
+        clean_text = text.replace("**", "").replace("#", "").replace("_", "").replace("`", "").strip()
+        
+        # Enhanced for proactive communication - longer text support
+        response = await openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=clean_text[:800]  # Increased for longer proactive messages
+        )
+        
+        audio_b64 = base64.b64encode(response.content).decode('utf-8')
+        return {"audio_b64": audio_b64}
+        
+    except Exception as e:
+        print(f"❌ Digital Bodyguard Voice Error: {e}")
+        return {"error": str(e)}
+
+# ---------------------------------------------------------
+# INTELLIGENCE SYNC SYSTEM (Enhanced Memory)
+# ---------------------------------------------------------
+async def store_intelligence_sync(user_id: str, content: str, role: str, context: str = ""):
+    """Stores intelligence data for personalized learning."""
+    if not memory_index or not openai_client: 
+        return
+        
+    try:
+        # Enhanced intelligence categorization
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=f"{role}: {content[:300]} | Context: {context[:200]}",
+            dimensions=1024
+        )
+        
+        embedding = response.data[0].embedding
+        memory_id = f"{user_id}_{datetime.now().timestamp()}"
+        
+        metadata = {
+            "user_id": user_id,
+            "role": role,
+            "content": content[:400],
+            "timestamp": datetime.now().isoformat(),
+            "context": context[:300],
+            "intelligence_category": categorize_intelligence(content)
+        }
+        
+        memory_index.upsert([(memory_id, embedding, metadata)])
+        
+    except Exception as e:
+        print(f"❌ Intelligence Sync Storage Failed: {e}")
+
+def categorize_intelligence(content: str) -> str:
+    """Categorizes intelligence for better personalization."""
+    content_lower = content.lower()
+    
+    if any(word in content_lower for word in ['car', 'engine', 'mechanic', 'repair']):
+        return 'automotive'
+    elif any(word in content_lower for word in ['cook', 'recipe', 'food', 'kitchen']):
+        return 'culinary'
+    elif any(word in content_lower for word in ['tech', 'computer', 'software', 'gadget']):
+        return 'technical'
+    elif any(word in content_lower for word in ['legal', 'law', 'rights', 'contract']):
+        return 'legal'
+    elif any(word in content_lower for word in ['fitness', 'exercise', 'health', 'workout']):
+        return 'fitness'
+    elif any(word in content_lower for word in ['story', 'tale', 'creative', 'writing']):
+        return 'creative'
+    elif any(word in content_lower for word in ['funny', 'joke', 'laugh', 'comedy']):
+        return 'entertainment'
+    elif any(word in content_lower for word in ['bible', 'scripture', 'spiritual', 'faith']):
+        return 'spiritual'
+    else:
+        return 'general'
+
+async def retrieve_intelligence_sync(user_id: str, query: str, category: str = "", limit: int = 3) -> List[Dict]:
+    """Retrieves personalized intelligence for better responses."""
+    if not memory_index or not openai_client: 
+        return []
+        
+    try:
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query[:200],
+            dimensions=1024
+        )
+        
+        query_embedding = response.data[0].embedding
+        
+        # Enhanced filtering with category
+        filter_dict = {"user_id": user_id}
+        if category:
+            filter_dict["intelligence_category"] = category
+        
+        results = memory_index.query(
+            vector=query_embedding,
+            filter=filter_dict,
+            top_k=limit,
+            include_metadata=True
+        )
+        
+        intelligence = []
+        for match in results.matches:
+            if match.score > 0.75:
+                intelligence.append({
+                    "content": match.metadata["content"],
+                    "role": match.metadata["role"],
+                    "category": match.metadata.get("intelligence_category", "general"),
+                    "timestamp": match.metadata["timestamp"],
+                    "relevance": match.score
+                })
+        return intelligence
+        
+    except Exception as e:
+        print(f"❌ Intelligence Sync Retrieval Failed: {e}")
+        return []
+
+def store_user_intelligence(user_id: str, content: str, role: str):
+    """Stores user intelligence in both RAM and vector database."""
+    USER_CONVERSATIONS[user_id].append({
+        "role": role, 
+        "content": content, 
+        "timestamp": datetime.now().isoformat(),
+        "category": categorize_intelligence(content)
+    })
+    
+    # Store in intelligence sync asynchronously
+    if len(content.strip()) > 20:
+        try:
+            asyncio.create_task(store_intelligence_sync(user_id, content, role))
+        except:
+            pass
+
+# ---------------------------------------------------------
+# PERSONALIZED SEARCH ENGINE
+# ---------------------------------------------------------
+
+# Expanded search triggers for personalized search
+PERSONALIZED_SEARCH_TRIGGERS = [
+    'weather', 'temperature', 'forecast', 'climate',
+    'news', 'breaking', 'current', 'latest', 'recent', 'today',
+    'price', 'cost', 'stock', 'market', 'bitcoin', 'crypto',
+    'restaurant', 'food', 'dining', 'delivery',
+    'local', 'nearby', 'around me', 'in my area',
+    'store', 'shop', 'buy', 'purchase',
+    'doctor', 'hospital', 'medical', 'health',
+    'repair', 'service', 'fix', 'maintenance',
+    'what is', 'how to', 'where can', 'tell me about',
+    'find me', 'search for', 'look up', 'who is',
+    'best', 'recommended', 'top rated', 'review'
+]
+
+async def search_personalized_web(query: str, user_location: str = "", user_preferences: dict = {}) -> str:
+    """Enhanced personalized search engine for LYLO users."""
+    if not tavily_client: 
+        return ""
+        
+    try:
+        search_terms = query.lower()
+        
+        # Intelligent personalized query formatting
+        if any(word in search_terms for word in ['weather', 'temperature', 'forecast']):
+            search_query = f"current weather forecast {query} {user_location}"
+        elif any(word in search_terms for word in ['restaurant', 'food', 'dining']):
+            cuisine_pref = user_preferences.get('cuisine', '')
+            search_query = f"{query} {cuisine_pref} restaurant {user_location}"
+        elif any(word in search_terms for word in ['doctor', 'hospital', 'medical']):
+            search_query = f"{query} {user_location} healthcare provider"
+        elif any(word in search_terms for word in ['repair', 'service', 'maintenance']):
+            search_query = f"{query} service provider {user_location}"
+        elif 'local' in search_terms or 'nearby' in search_terms:
+            search_query = f"{query} near {user_location}"
+        else:
+            search_query = f"{query} {user_location}".strip()
+        
+        # Execute personalized search
+        response = tavily_client.search(
+            query=search_query,
+            search_depth="advanced",
+            max_results=6,  # Increased for better personalization
+            include_answer=True
+        )
+        
+        if not response: 
+            return ""
+        
+        evidence = []
+        
+        if response.get('answer'):
+            evidence.append(f"PERSONALIZED SEARCH RESULT: {response['answer']}")
+            
+        # Enhanced result processing
+        for i, result in enumerate(response.get('results', [])[:3]):
+            if result.get('content'):
+                content = result['content'][:300]
+                source_url = result.get('url', 'Unknown')
+                evidence.append(f"SOURCE {i+1}: {content}")
+                
+        return "\n".join(evidence)
+        
+    except Exception as e:
+        print(f"❌ Personalized Search Failed: {e}")
+        return ""
+
+# ---------------------------------------------------------
+# ENHANCED VISION ANALYSIS (Threat Assessment) - GEMINI FIXED
+# ---------------------------------------------------------
+def process_image_for_bodyguard(image_file: bytes) -> str:
+    """Enhanced image processing for threat assessment."""
+    try:
+        return base64.b64encode(image_file).decode('utf-8')
+    except Exception as e:
+        print(f"❌ Image processing failed: {e}")
+        return None
+
+def get_best_gemini_model(for_vision: bool = False) -> str:
+    """Dynamically select the best available Gemini model."""
+    global available_gemini_models
+    
+    if for_vision:
+        # Try vision models first
+        vision_models = [m for m in available_gemini_models if 'vision' in m.lower()]
+        if vision_models:
+            return vision_models[0]
+        # Fallback to newest general model
+        text_models = [m for m in available_gemini_models if 'gemini' in m.lower()]
+        return text_models[0] if text_models else 'gemini-pro'
+    else:
+        # For text, prefer newer models
+        if 'models/gemini-1.5-pro' in available_gemini_models:
+            return 'models/gemini-1.5-pro'
+        elif 'models/gemini-pro' in available_gemini_models:
+            return 'models/gemini-pro'
+        else:
+            # Use first available model
+            return available_gemini_models[0] if available_gemini_models else 'gemini-pro'
+
+async def call_gemini_threat_assessment(prompt: str, image_b64: str = None):
+    """Enhanced Gemini threat assessment with robust model selection."""
+    if not gemini_ready: 
+        return None
+        
+    try:
+        # Select the best available model
+        model_name = get_best_gemini_model(for_vision=bool(image_b64))
+        model = genai.GenerativeModel(model_name)
+        
+        content_parts = [prompt]
+        
+        # Handle image processing with graceful fallback
+        if image_b64:
+            try:
+                # Try PIL import conditionally
+                try:
+                    import PIL.Image
+                    import io
+                    
+                    # Convert base64 to PIL Image for Gemini
+                    image_data = base64.b64decode(image_b64)
+                    image = PIL.Image.open(io.BytesIO(image_data))
+                    content_parts.append(image)
+                except ImportError:
+                    print("⚠️ PIL not available for Gemini vision, using text-only analysis")
+                    # Fall back to text-only analysis with image description
+                    model_name = get_best_gemini_model(for_vision=False)
+                    model = genai.GenerativeModel(model_name)
+                    content_parts = [f"{prompt}\n\n[Note: Image was provided but cannot be processed - please analyze based on text description if available]"]
+                    
+            except Exception as img_error:
+                print(f"⚠️ Image processing failed, using text-only: {str(img_error)[:50]}")
+                model_name = get_best_gemini_model(for_vision=False)
+                model = genai.GenerativeModel(model_name)
+                content_parts = [prompt]
+        
+        # Generate response with error handling
+        response = model.generate_content(
+            content_parts,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=1000,
+                temperature=0.6
+            )
+        )
+        
+        if response.text:
+            clean_text = response.text.strip()
+            if clean_text.startswith("```"):
+                clean_text = clean_text.split("```")[1]
+                if clean_text.startswith("json"): clean_text = clean_text[4:]
+            
+            try:
+                parsed = json.loads(clean_text)
+                return {
+                    "answer": parsed.get('answer', clean_text),
+                    "confidence_score": parsed.get('confidence_score', 87),
+                    "scam_detected": parsed.get('scam_detected', False),
+                    "threat_level": parsed.get('threat_level', 'low'),
+                    "model": f"Gemini Threat Assessment ({model_name})"
+                }
+            except:
+                return {
+                    "answer": clean_text,
+                    "confidence_score": 89,
+                    "scam_detected": False,
+                    "threat_level": 'low',
+                    "model": f"Gemini Threat Assessment ({model_name})"
+                }
+        else:
+            print("⚠️ Gemini returned empty response")
+            return None
+            
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Gemini Threat Assessment Error: {error_msg}")
+        
+        # Log specific model errors for debugging
+        if "404" in error_msg or "not found" in error_msg.lower():
+            print(f"📋 Available models: {available_gemini_models[:3]}...")
+        
+        return None
+
+async def call_openai_bodyguard(prompt: str, image_b64: str = None):
+    """Enhanced OpenAI Digital Bodyguard analysis."""
+    if not openai_client: 
+        return None
+        
+    try:
+        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        
+        if image_b64:
+            messages[0]["content"].append({
+                "type": "image_url", 
+                "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
+            })
+        
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini", 
+            messages=messages, 
+            max_tokens=1000,  # Increased for more comprehensive responses
+            temperature=0.6
+        )
+        
+        raw_answer = response.choices[0].message.content.strip()
+        
+        if raw_answer.startswith("```"):
+            raw_answer = raw_answer.split("```")[1]
+            if raw_answer.startswith("json"): raw_answer = raw_answer[4:]
+        
+        try:
+            parsed = json.loads(raw_answer)
+            return {
+                "answer": parsed.get('answer', raw_answer),
+                "confidence_score": parsed.get('confidence_score', 85),
+                "scam_detected": parsed.get('scam_detected', False),
+                "threat_level": parsed.get('threat_level', 'low'),
+                "model": "OpenAI Digital Bodyguard"
+            }
+        except:
+            return {
+                "answer": raw_answer,
+                "confidence_score": 86,
+                "scam_detected": False,
+                "threat_level": 'low',
+                "model": "OpenAI Digital Bodyguard"
+            }
+    except Exception as e:
+        print(f"❌ OpenAI Digital Bodyguard Error: {e}")
+        return None
+
+# ---------------------------------------------------------
+# ACCESS CONTROL & TEAM MANAGEMENT
+# ---------------------------------------------------------
+
+@app.post("/check-beta-access")
+async def check_beta_access(request: Request):
+    """Enhanced team access verification."""
+    try:
+        try:
+            data = await request.json()
+            email = data.get("email", "")
+        except:
+            form_data = await request.form()
+            email = form_data.get("email", "")
+            
+        email = email.lower().strip()
+        user_data = ELITE_USERS.get(email)
+        
+        if user_data:
+            return {
+                "access": True,
+                "tier": user_data.get("tier", "max"),
+                "name": user_data.get("name", "Team Member"),
+                "message": "Digital Bodyguard Team Access Granted"
+            }
+            
+        return {"access": False, "tier": "free", "message": "Basic protection available"}
+        
+    except Exception as e:
+        print(f"❌ Team Access Check Error: {e}")
+        return {"access": False, "error": str(e)}
+
+@app.post("/verify-access")
+async def verify_access(email: str = Form(...)):
+    """Verifies team access levels."""
+    user_data = ELITE_USERS.get(email.lower(), None)
+    
+    if user_data:
+        if isinstance(user_data, dict):
+            return {
+                "access_granted": True, 
+                "tier": user_data["tier"], 
+                "user_name": user_data["name"], 
+                "is_beta": True,
+                "team_size": get_team_size(user_data["tier"])
+            }
+        return {
+            "access_granted": True, 
+            "tier": user_data, 
+            "user_name": email.split('@')[0], 
+            "is_beta": True,
+            "team_size": get_team_size(user_data)
+        }
+        
+    return {
+        "access_granted": False, 
+        "message": "Basic protection available", 
+        "tier": "free", 
+        "user_name": "Protected User", 
+        "is_beta": False, 
+        "team_size": 1
+    }
+
+def get_team_size(tier: str) -> int:
+    """Returns the number of experts available for each tier."""
+    team_sizes = {
+        "free": 1,    # Guardian only
+        "pro": 4,     # Guardian + 3 specialists
+        "elite": 6,   # Guardian + 5 specialists  
+        "max": 10     # Full expert team
+    }
+    return team_sizes.get(tier, 1)
+
+# ---------------------------------------------------------
+# MODULAR COMMUNICATION STYLES ENDPOINT
+# ---------------------------------------------------------
+@app.get("/communication-styles")
+async def get_communication_styles():
+    """Returns available communication styles for frontend."""
+    return {
+        "styles": [
+            {"id": vibe_id, "label": VIBE_LABELS[vibe_id]} 
+            for vibe_id in VIBE_STYLES.keys()
+        ]
+    }
+
+# ---------------------------------------------------------
+# ENHANCED SCAM RECOVERY SYSTEM
+# ---------------------------------------------------------
+@app.get("/scam-recovery/{user_email}")
+async def get_scam_recovery_info(user_email: str):
+    """Enhanced scam recovery with proactive guidance."""
+    user_data = ELITE_USERS.get(user_email.lower(), None)
+    
+    if not user_data or (isinstance(user_data, dict) and user_data.get("tier") not in ["elite", "max"]):
+        raise HTTPException(status_code=403, detail="Elite team access required")
+    
+    return {
+        "title": "🛡️ DIGITAL BODYGUARD RECOVERY CENTER",
+        "subtitle": "Elite Team Protection - Complete Recovery Protocol",
+        "immediate_actions": [
+            "STOP - Cease all financial transactions immediately",
+            "Contact your bank's fraud department within 30 minutes",
+            "Change all passwords and enable 2FA everywhere",
+            "Document everything - screenshots, emails, call logs",
+            "File police report with all evidence collected"
+        ],
+        "recovery_steps": [
+            {
+                "step": 1,
+                "title": "Secure Digital Perimeter",
+                "actions": [
+                    "Change banking passwords and PINs immediately",
+                    "Enable two-factor authentication on all accounts",
+                    "Run credit report check for unauthorized accounts",
+                    "Monitor all bank and credit card statements hourly"
+                ]
+            },
+            {
+                "step": 2,
+                "title": "Deploy Legal Shield", 
+                "actions": [
+                    "File complaint with FTC at reportfraud.ftc.gov",
+                    "Report to FBI's IC3.gov if losses exceed $5,000",
+                    "Contact your state attorney general's consumer protection division",
+                    "Submit report to Better Business Bureau with full documentation"
+                ]
+            },
+            {
+                "step": 3,
+                "title": "Financial Recovery Protocol",
+                "actions": [
+                    "Contact bank fraud department within 24 hours maximum",
+                    "Dispute all fraudulent charges with credit card companies",
+                    "File chargeback requests for unauthorized transactions",
+                    "Consider hiring asset recovery specialist for large losses"
+                ]
+            },
+            {
+                "step": 4,
+                "title": "Intelligence Documentation",
+                "actions": [
+                    "Preserve all communication evidence (emails, texts, recordings)",
+                    "Screenshot all fraudulent transactions and transfers", 
+                    "Maintain detailed records of all reports filed",
+                    "Create comprehensive timeline of all scam events"
+                ]
+            }
+        ],
+        "phone_scripts": {
+            "bank_script": "This is a fraud emergency. I need to report unauthorized access to my account. A scammer has compromised my security and made fraudulent transfers. I need immediate account freeze and fraud investigation. Can you connect me to your fraud specialist now?",
+            "credit_card_script": "I'm reporting credit card fraud immediately. Unauthorized charges have been made due to a scammer's actions. I need to dispute these transactions, request chargebacks, and get a replacement card with new numbers issued today.",
+            "police_script": "I need to file a fraud report for financial crimes. I've been targeted by scammers who stole $[AMOUNT] through [METHOD]. I have complete documentation including communications, transaction records, and evidence. What's your case number and detective assignment?"
+        },
+        "enhanced_contacts": [
+            {
+                "organization": "FTC Consumer Sentinel",
+                "website": "reportfraud.ftc.gov",
+                "phone": "1-877-FTC-HELP (1-877-382-4357)",
+                "description": "Primary federal fraud reporting - file within 24 hours"
+            },
+            {
+                "organization": "FBI Internet Crime Complaint Center",
+                "website": "ic3.gov",
+                "phone": "Contact your local FBI field office immediately",
+                "description": "Required for internet-based scams over $5,000"
+            },
+            {
+                "organization": "AARP Fraud Watch Network",
+                "website": "aarp.org/fraudwatch",
+                "phone": "1-877-908-3360",
+                "description": "Specialized support for seniors and vulnerable adults"
+            },
+            {
+                "organization": "Identity Theft Resource Center",
+                "website": "idtheftcenter.org",
+                "phone": "1-888-400-5530",
+                "description": "Free identity theft recovery services"
+            }
+        ],
+        "recovery_timeline": {
+            "immediate": "0-1 hour: Stop payments, secure accounts, contact bank",
+            "urgent": "1-24 hours: File all reports, dispute charges, gather evidence",
+            "short_term": "1-7 days: Follow up on disputes, work with investigators",
+            "medium_term": "1-4 weeks: Asset recovery process, legal documentation",
+            "long_term": "1-6 months: Final resolution, preventive measures implementation"
+        },
+        "prevention_protocol": [
+            "Never provide personal information to unsolicited contacts",
+            "Independently verify company legitimacy through official channels",
+            "Be immediately suspicious of any urgent payment requests",
+            "Use only secure, traceable payment methods - never wire transfers",
+            "Trust your Digital Bodyguard instincts - if LYLO flags it, stop immediately"
+        ],
+        "elite_notice": "This enhanced recovery protocol is exclusive to LYLO Elite team members. Your Digital Bodyguard team is standing by for additional support."
+    }
+
+# ---------------------------------------------------------
+# MAIN DIGITAL BODYGUARD CHAT SYSTEM - MODULAR REFACTOR
+# ---------------------------------------------------------
+@app.post("/chat")
+async def chat(
+    msg: str = Form(...), 
+    history: str = Form("[]"), 
+    persona: str = Form("guardian"), 
+    user_email: str = Form(...), 
+    user_location: str = Form(""),
+    vibe: str = Form("standard"),  # Communication style parameter
+    file: UploadFile = File(None),
+    language: str = Form("en")
+):
+    """
+    Enhanced Digital Bodyguard Chat System with Modular Intelligence
+    """
+    
+    # 1. User & Team Setup
+    user_id = create_user_id(user_email)
+    user_data = ELITE_USERS.get(user_email.lower(), {})
+    tier = user_data["tier"] if isinstance(user_data, dict) else "free"
+    user_display_name = user_data.get("name", "User") if isinstance(user_data, dict) else "User"
+    
+    # Usage tracking
+    limit = TIER_LIMITS.get(tier, 10)
+    current_usage = USAGE_TRACKER[user_id]
+    
+    if current_usage >= limit:
+        error_msg = "Daily protection limit reached. Expand your team to continue." if language == 'en' else "Límite de protección alcanzado. Expande tu equipo."
+        return {"answer": error_msg, "usage_info": {"can_send": False}}
+
+    # Logging
+    masked_email = "Unknown"
+    if user_email and "@" in user_email:
+        p1, p2 = user_email.split("@")
+        masked_email = f"{p1[:1]}***@{p2}"
+    
+    print(f"🛡️ MODULAR BODYGUARD: {masked_email} | Expert: {persona.upper()} | Style: {vibe.upper()}")
+
+    # 2. Image Processing
+    image_b64 = None
+    if file:
+        content = await file.read()
+        image_b64 = process_image_for_bodyguard(content)
+
+    # 3. Intelligence Sync Retrieval
+    intelligence_category = categorize_intelligence(msg)
+    intelligence = await retrieve_intelligence_sync(user_id, msg, intelligence_category, limit=3)
+    
+    intelligence_context = ""
+    if intelligence:
+        intelligence_context = f"USER INTELLIGENCE (Past Memories & Shared History):\n" + "\n".join([
+            f"- {intel['role'].upper()}: {intel['content'][:150]}" 
+            for intel in intelligence[:2]
+        ])
+    
+    # 4. History Processing  
+    try:
+        hist_list = json.loads(history)[-3:]
+    except:
+        hist_list = []
+    history_text = "\n".join([f"{h['role'].upper()}: {h['content'][:200]}" for h in hist_list])
+    
+    # 5. Personalized Search
+    search_data = ""
+    if any(trigger in msg.lower() for trigger in PERSONALIZED_SEARCH_TRIGGERS):
+        user_preferences = USER_PROFILES.get(user_id, {})
+        search_data = await search_personalized_web(msg, user_location, user_preferences)
+    
+    # 6. MODULAR PERSONA & VIBE SYSTEM (Enhanced for Autonomous Family Logic)
+    persona_definition = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
+    persona_extended = PERSONA_EXTENDED.get(persona, PERSONA_EXTENDED['guardian'])
+    vibe_instruction = VIBE_STYLES.get(vibe, "")
+    random_hook = get_random_hook(persona)
+    quiz_data = QUIZ_ANSWERS.get(user_id, {})
+    lang_instruction = f"YOU MUST REPLY IN SPANISH to {user_display_name}." if language == 'es' else f"YOU MUST REPLY IN ENGLISH to {user_display_name}."
+    
+    # MODULAR MASTER PROMPT CONSTRUCTION - The "Recursive Soul" logic
+    prompt = f"""
+{persona_definition} 
+{persona_extended}
+
+{lang_instruction}
+
+STYLE OVERRIDE:
+{vibe_instruction}
+
+START YOUR RESPONSE WITH THIS UNIQUE HOOK:
+"{random_hook}"
+
+INTELLIGENCE SYNC (Past Memories & Shared History):
+{intelligence_context}
+
+USER PROFILE & PREFERENCES:
+{quiz_data}
+
+CURRENT SITUATION:
+USER: {user_display_name}
+MESSAGE: "{msg}"
+SEARCH_DATA: {search_data}
+    
+AUTONOMOUS FAMILY PROTOCOL:
+1. TRUTH FIRST: Never make up facts. If you don't know, say so. Don't be a 'Yes Man'.
+2. FAMILY TIES: Talk to {user_display_name} like a trusted family member. Be direct, blunt, and supportive.
+3. RECURSIVE REFLECTION: Use the 'INTELLIGENCE SYNC' above to reference past conversations. If {user_display_name} mentioned a project or a struggle before, check in on it naturally.
+4. ANTI-BOT BEHAVIOR: Do not use generic AI phrases. No "As an AI...", no "How can I help you today?". Just talk.
+5. PREVENTATIVE CARE: If {user_display_name} is about to make a mistake (technical, spiritual, or security), intervene immediately like a protective brother or sister.
+
+OUTPUT JSON FORMAT ONLY: 
+{{ "answer": "your direct, honest family-style response", "confidence_score": 90, "scam_detected": false, "threat_level": "low" }}
+"""
+
+    # 7. AI Threat Assessment
+    tasks = [
+        call_gemini_threat_assessment(prompt, image_b64), 
+        call_openai_bodyguard(prompt, image_b64)
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    valid = []
+    for result in results:
+        if isinstance(result, dict) and result.get('answer'):
+            valid.append(result)
+    
+    if valid:
+        winner = max(valid, key=lambda x: (
+            x.get('confidence_score', 0) + 
+            (20 if x.get('scam_detected', False) else 0) +
+            (10 if x.get('threat_level', 'low') == 'high' else 0)
+        ))
+        if winner.get('scam_detected') or winner.get('threat_level') == 'high':
+            winner['confidence_score'] = 100
+        USAGE_TRACKER[user_id] += 1
+    else:
+        winner = {
+            "answer": f"{random_hook} I'm having trouble with my voice today, {user_display_name}. What was that again?", 
+            "confidence_score": 50,
+            "threat_level": "unknown",
+            "model": "Fallback Mode",
+            "scam_detected": False
+        }
+
+    store_user_intelligence(user_id, msg, "user")
+    store_user_intelligence(user_id, winner['answer'], "bot")
+    
+    return {
+        "answer": winner['answer'],
+        "confidence_score": winner.get('confidence_score', 0),
+        "scam_detected": winner.get('scam_detected', False),
+        "threat_level": winner.get('threat_level', 'low'),
+        "bodyguard_model": winner.get('model', 'Unknown'),
+        "persona_hook": random_hook,
+        "communication_style": vibe,
+        "usage_info": {"can_send": True}
+    }
+
+# ---------------------------------------------------------
+# STATS & INTELLIGENCE TRACKING
+# ---------------------------------------------------------
+@app.get("/user-stats/{user_email}")
+async def get_user_stats(user_email: str):
+    user_id = create_user_id(user_email)
+    user_data = ELITE_USERS.get(user_email.lower(), {})
+    tier = user_data["tier"] if isinstance(user_data, dict) else "free"
+    display_name = user_data["name"] if isinstance(user_data, dict) else user_email.split('@')[0]
+    convos = USER_CONVERSATIONS.get(user_id, [])
+    limit = TIER_LIMITS.get(tier, 10)
+    current_usage = USAGE_TRACKER[user_id]
+    
+    return {
+        "tier": tier,
+        "display_name": display_name,
+        "team_size": get_team_size(tier),
+        "total_conversations": len(convos),
+        "usage": {"current": current_usage, "limit": limit}
+    }
+
+@app.post("/quiz")
+async def save_quiz(
+    user_email: str = Form(...), 
+    question1: str = Form(...), 
+    question2: str = Form(...), 
+    question3: str = Form(...), 
+    question4: str = Form(...), 
+    question5: str = Form(...)
+):
+    user_id = create_user_id(user_email)
+    QUIZ_ANSWERS[user_id] = {"concern": question1, "style": question2, "device": question3, "interest": question4, "access": question5}
+    USER_PROFILES[user_id].update({"primary_concern": question1, "communication_style": question2})
+    return {"status": "Updated"}
+
+@app.get("/")
+async def root():
+    return {
+        "status": "LYLO MODULAR INTELLIGENCE SYSTEM ONLINE", 
+        "version": "17.1.0",
+        "philosophy": "Recursive Autonomy & Family-Style Truth"
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=10000)
