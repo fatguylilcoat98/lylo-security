@@ -16,7 +16,7 @@ const REAL_INTEL_DROPS: { [key: string]: string } = {
   'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility.",
   'career': "ATS ALERT: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms. We need to update your resume stack.",
   'doctor': "HEALTH INTEL: CDPH issued a Sacramento-area alert for measles. Also, with the current winter cloud cover, your bone-density markers suggest a critical Vitamin D window is closing.",
-  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts.",
+  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts. We need to patch the kernel.",
   'bestie': "Okay, I've been thinking about that drama you told me about... I did some digging and I have a much better plan to handle it. You're gonna love this.",
   'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a wall.",
   'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched. They have a new method for simplifying complex data sets that is perfect for your current project.",
@@ -30,6 +30,7 @@ export interface PersonaConfig {
  id: string; name: string; serviceLabel: string; description: string;
  protectiveJob: string; spokenHook: string; briefing: string; color: string;
  requiredTier: 'free' | 'pro' | 'elite' | 'max'; capabilities: string[]; icon: React.ComponentType<any>;
+ fixedVoice: string; 
 }
 
 interface BestieConfig { gender: 'male' | 'female'; voiceId: string; vibeLabel: string; }
@@ -40,20 +41,20 @@ interface ChatInterfaceProps {
  onLogout: () => void; onUsageUpdate?: () => void;
 }
 
-// --- DATA: THE 12-SEAT BOARD OF DIRECTORS ---
+// --- DATA: THE 12-SEAT BOARD OF DIRECTORS (LOCKED VOICES) ---
 const PERSONAS: PersonaConfig[] = [
- { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY LEAD', description: 'Digital Bodyguard', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. I am monitoring your digital perimeter.', briefing: 'I provide frontline cybersecurity.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Identity protection'] },
- { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Justice Partner', protectiveJob: 'Legal Lead', spokenHook: 'Legal shield activated. Before you sign anything, let me review the fine print.', briefing: 'I provide contract review.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Tenant rights'] },
- { id: 'doctor', name: 'The Doctor', serviceLabel: 'MEDICAL GUIDE', description: 'Symptom Analyst', protectiveJob: 'Medical Lead', spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms.', briefing: 'I provide medical explanation.', color: 'red', requiredTier: 'pro', icon: Activity, capabilities: ['Symptom check', 'Triage'] },
- { id: 'wealth', name: 'The Wealth Architect', serviceLabel: 'FINANCE CHIEF', description: 'Money Strategist', protectiveJob: 'Finance Lead', spokenHook: 'Let’s get your money working for you. ROI is the only metric that matters.', briefing: 'I provide financial planning.', color: 'green', requiredTier: 'elite', icon: CreditCard, capabilities: ['Budgeting', 'Debt destruction'] },
- { id: 'career', name: 'The Career Strategist', serviceLabel: 'CAREER COACH', description: 'Professional Growth', protectiveJob: 'Career Lead', spokenHook: 'Let’s level up your career. Resume, salary, or office politics—I’m here to help you win.', briefing: 'I provide career growth strategy.', color: 'indigo', requiredTier: 'pro', icon: Briefcase, capabilities: ['Resume optimization', 'Salary negotiation'] },
- { id: 'therapist', name: 'The Therapist', serviceLabel: 'MENTAL WELLNESS', description: 'Emotional Anchor', protectiveJob: 'Clinical Lead', spokenHook: 'I’m here to listen. No judgment, just a safe space to process.', briefing: 'I provide CBT support.', color: 'indigo', requiredTier: 'pro', icon: Brain, capabilities: ['Anxiety relief', 'Mood tracking'] },
- { id: 'mechanic', name: 'The Tech Specialist', serviceLabel: 'MASTER FIXER', description: 'Technical Lead', protectiveJob: 'Technical Lead', spokenHook: 'Technical manual loaded. Tell me the symptoms and I’ll walk you through the fix.', briefing: 'I provide step-by-step repair guides.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair', 'Tech troubleshooting'] },
- { id: 'tutor', name: 'The Master Tutor', serviceLabel: 'KNOWLEDGE BRIDGE', description: 'Education Lead', protectiveJob: 'Education Lead', spokenHook: 'Class is in session. I can break down any subject until it clicks.', briefing: 'I provide academic tutoring.', color: 'purple', requiredTier: 'pro', icon: Zap, capabilities: ['Skill acquisition', 'Simplification'] },
- { id: 'pastor', name: 'The Pastor', serviceLabel: 'FAITH ANCHOR', description: 'Spiritual Lead', protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.', briefing: 'I provide spiritual counseling.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Prayer', 'Scripture guidance'] },
- { id: 'vitality', name: 'The Vitality Coach', serviceLabel: 'HEALTH OPTIMIZER', description: 'Fitness & Food', protectiveJob: 'Wellness Lead', spokenHook: 'Let’s optimize your engine. Fuel and movement—what’s the goal today?', briefing: 'I provide workout and meal plans.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Meal planning', 'Habit building'] },
- { id: 'hype', name: 'The Hype Strategist', serviceLabel: 'CREATIVE DIRECTOR', description: 'Viral Specialist', protectiveJob: 'Creative Lead', spokenHook: 'Let’s make some noise! I’m here for hooks, jokes, and viral strategy.', briefing: 'I provide viral content strategy.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Viral hooks', 'Humor'] },
- { id: 'bestie', name: 'The Bestie', serviceLabel: 'RIDE OR DIE', description: 'Inner Circle', protectiveJob: 'Loyalty Lead', spokenHook: 'I’ve got your back, 100%. No filters, no judgment. What’s actually going on?', briefing: 'I provide blunt life advice.', color: 'pink', requiredTier: 'pro', icon: Shield, capabilities: ['Venting space', 'Secret keeping'] }
+ { id: 'guardian', name: 'The Guardian', serviceLabel: 'SECURITY LEAD', description: 'Digital Bodyguard', protectiveJob: 'Security Lead', spokenHook: 'Security protocols active. I am monitoring your digital perimeter.', briefing: 'I provide frontline cybersecurity.', color: 'blue', requiredTier: 'free', icon: Shield, capabilities: ['Scam detection', 'Identity protection'], fixedVoice: 'onyx' },
+ { id: 'lawyer', name: 'The Lawyer', serviceLabel: 'LEGAL SHIELD', description: 'Justice Partner', protectiveJob: 'Legal Lead', spokenHook: 'Legal shield activated. Before you sign anything, let me review the fine print.', briefing: 'I provide contract review.', color: 'yellow', requiredTier: 'elite', icon: Gavel, capabilities: ['Contract review', 'Tenant rights'], fixedVoice: 'fable' },
+ { id: 'doctor', name: 'The Doctor', serviceLabel: 'MEDICAL GUIDE', description: 'Symptom Analyst', protectiveJob: 'Medical Lead', spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms.', briefing: 'I provide medical explanation.', color: 'red', requiredTier: 'pro', icon: Activity, capabilities: ['Symptom check', 'Triage'], fixedVoice: 'nova' },
+ { id: 'wealth', name: 'The Wealth Architect', serviceLabel: 'FINANCE CHIEF', description: 'Money Strategist', protectiveJob: 'Finance Lead', spokenHook: 'Let’s get your money working for you. ROI is the only metric that matters.', briefing: 'I provide financial planning.', color: 'green', requiredTier: 'elite', icon: CreditCard, capabilities: ['Budgeting', 'Debt destruction'], fixedVoice: 'onyx' },
+ { id: 'career', name: 'The Career Strategist', serviceLabel: 'CAREER COACH', description: 'Professional Growth', protectiveJob: 'Career Lead', spokenHook: 'Let’s level up your career. Resume, salary, or office politics—I’m here to help you win.', briefing: 'I provide career growth strategy.', color: 'indigo', requiredTier: 'pro', icon: Briefcase, capabilities: ['Resume optimization', 'Salary negotiation'], fixedVoice: 'shimmer' },
+ { id: 'therapist', name: 'The Therapist', serviceLabel: 'MENTAL WELLNESS', description: 'Emotional Anchor', protectiveJob: 'Clinical Lead', spokenHook: 'I’m here to listen. No judgment, just a safe space to process.', briefing: 'I provide CBT support.', color: 'indigo', requiredTier: 'pro', icon: Brain, capabilities: ['Anxiety relief', 'Mood tracking'], fixedVoice: 'alloy' },
+ { id: 'mechanic', name: 'The Tech Specialist', serviceLabel: 'MASTER FIXER', description: 'Technical Lead', protectiveJob: 'Technical Lead', spokenHook: 'Technical manual loaded. Tell me the symptoms and I’ll walk you through the fix.', briefing: 'I provide step-by-step repair guides.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair', 'Tech troubleshooting'], fixedVoice: 'echo' },
+ { id: 'tutor', name: 'The Master Tutor', serviceLabel: 'KNOWLEDGE BRIDGE', description: 'Education Lead', protectiveJob: 'Education Lead', spokenHook: 'Class is in session. I can break down any subject until it clicks.', briefing: 'I provide academic tutoring.', color: 'purple', requiredTier: 'pro', icon: Zap, capabilities: ['Skill acquisition', 'Simplification'], fixedVoice: 'fable' },
+ { id: 'pastor', name: 'The Pastor', serviceLabel: 'FAITH ANCHOR', description: 'Spiritual Lead', protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.', briefing: 'I provide spiritual counseling.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Prayer', 'Scripture guidance'], fixedVoice: 'onyx' },
+ { id: 'vitality', name: 'The Vitality Coach', serviceLabel: 'HEALTH OPTIMIZER', description: 'Fitness & Food', protectiveJob: 'Wellness Lead', spokenHook: 'Let’s optimize your engine. Fuel and movement—what’s the goal today?', briefing: 'I provide workout and meal plans.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Meal planning', 'Habit building'], fixedVoice: 'nova' },
+ { id: 'hype', name: 'The Hype Strategist', serviceLabel: 'CREATIVE DIRECTOR', description: 'Viral Specialist', protectiveJob: 'Creative Lead', spokenHook: 'Let’s make some noise! I’m here for hooks, jokes, and viral strategy.', briefing: 'I provide viral content strategy.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Viral hooks', 'Humor'], fixedVoice: 'shimmer' },
+ { id: 'bestie', name: 'The Bestie', serviceLabel: 'RIDE OR DIE', description: 'Inner Circle', protectiveJob: 'Loyalty Lead', spokenHook: 'I’ve got your back, 100%. No filters, no judgment. What’s actually going on?', briefing: 'I provide blunt life advice.', color: 'pink', requiredTier: 'pro', icon: Shield, capabilities: ['Venting space', 'Secret keeping'], fixedVoice: 'nova' }
 ];
 
 const EXPERT_TRIGGERS = {
@@ -72,15 +73,6 @@ const EXPERT_TRIGGERS = {
 
 const CONFIDENCE_THRESHOLDS = {
  'guardian': 70, 'lawyer': 85, 'doctor': 85, 'wealth': 85, 'therapist': 85, 'mechanic': 85, 'tutor': 85, 'pastor': 85, 'vitality': 85, 'hype': 75, 'bestie': 70, 'career': 85
-};
-
-const PERMANENT_VOICE_MAP: { [key: string]: { voice: string; rate: number; pitch: number } } = {
-  'guardian': { voice: 'onyx', rate: 1.0, pitch: 0.8 }, 'lawyer': { voice: 'fable', rate: 1.0, pitch: 0.9 }, 
-  'doctor': { voice: 'nova', rate: 1.0, pitch: 1.0 }, 'wealth': { voice: 'onyx', rate: 1.0, pitch: 0.9 }, 
-  'career': { voice: 'shimmer', rate: 1.0, pitch: 1.0 }, 'therapist': { voice: 'alloy', rate: 0.95, pitch: 1.0 }, 
-  'mechanic': { voice: 'echo', rate: 1.0, pitch: 0.8 }, 'tutor': { voice: 'fable', rate: 1.0, pitch: 1.0 }, 
-  'pastor': { voice: 'onyx', rate: 0.9, pitch: 0.9 }, 'vitality': { voice: 'nova', rate: 1.05, pitch: 1.0 }, 
-  'hype': { voice: 'shimmer', rate: 1.1, pitch: 1.1 }
 };
 
 const VIBE_SAMPLES = {
@@ -127,7 +119,7 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
 
 const detectExpertSuggestion = (message: string, currentPersona: string, confidenceScore: number, userTier: string): PersonaConfig | null => {
  const lowerMessage = message.toLowerCase();
- const threshold = CONFIDENCE_THRESHOLDS[currentPersona as keyof typeof CONFIDENCE_THRESHOLDS] || 80;
+ const threshold = 80;
  if (confidenceScore >= threshold) return null;
  
  for (const [expertId, keywords] of Object.entries(EXPERT_TRIGGERS)) {
@@ -215,12 +207,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
 
  useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
 
- // --- RANDOMIZER INIT (FIXED) ---
+ // --- RANDOMIZER INIT ---
  useEffect(() => {
   const init = async () => {
    const emailRaw = (localStorage.getItem('lylo_user_email') || userEmail).toLowerCase();
-   
-   // IDENTITY LOCK
    if (emailRaw.includes('stangman')) setUserName('Christopher');
    else if (emailRaw.includes('betatester6')) setUserName('Ron');
    else if (emailRaw.includes('betatester7')) setUserName('Marilyn');
@@ -233,7 +223,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    const allDrops = Object.keys(REAL_INTEL_DROPS);
    const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
    const available = allDrops.filter(id => !cleared.includes(id));
-   // Select 3 random experts to notify
    const randomSelection = available.sort(() => 0.5 - Math.random()).slice(0, 3);
    setNotifications(randomSelection);
    
@@ -273,9 +262,16 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   quickStopAllAudio();
   setIsSpeaking(true);
   if (messageId) { setShowReplayButton(messageId); setTimeout(() => setShowReplayButton(null), 5000); }
-  let assignedVoice = { voice: 'onyx', rate: 1.0, pitch: 1.0 };
-  if (activePersona.id === 'bestie' && bestieConfig) assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
-  else assignedVoice = voiceSettings || PERMANENT_VOICE_MAP[activePersona.id] || { voice: 'onyx', rate: 1.0, pitch: 1.0 };
+  
+  // --- VOICE LOCK LOGIC ---
+  let assignedVoice = { voice: activePersona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
+  
+  if (activePersona.id === 'bestie' && bestieConfig) {
+    assignedVoice = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
+  } else if (voiceSettings) {
+    assignedVoice = voiceSettings;
+  }
+
   try {
    const formData = new FormData();
    formData.append('text', text);
@@ -305,26 +301,73 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   window.speechSynthesis.speak(utterance);
  };
 
- // Mic
+ // --- WALKIE-TALKIE MIC (AUTOMATED SEND) ---
  useEffect(() => {
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   recognition.continuous = false;
-   recognition.onresult = (event: any) => { setInput(event.results[0][0].transcript); };
-   recognition.onend = () => { setIsRecording(false); isRecordingRef.current = false; handleSend(); };
+   recognition.continuous = true; // Key Change: Allow long pauses
+   recognition.interimResults = true; // To show we are listening
+   
+   recognition.onresult = (event: any) => {
+    let finalTranscript = '';
+    for (let i = 0; i < event.results.length; i++) {
+     const result = event.results[i];
+     if (result.isFinal) {
+      finalTranscript += result[0].transcript + ' ';
+     }
+    }
+    // Only update input if we have final results to avoid jitter
+    if (finalTranscript.trim()) {
+     const cleanedTranscript = cleanUpSpeech(finalTranscript.trim());
+     transcriptRef.current = cleanedTranscript;
+     setInput(cleanedTranscript);
+    }
+   };
+
+   recognition.onend = () => {
+    setIsRecording(false);
+    isRecordingRef.current = false;
+    
+    // AUTO SEND LOGIC: If mic stopped and we have text, send it.
+    const cleanTranscript = transcriptRef.current?.trim();
+    if (cleanTranscript && cleanTranscript.length > 1) {
+     handleSend(); // Auto-send triggers auto-response
+    }
+    transcriptRef.current = '';
+   };
+   
    recognitionRef.current = recognition;
    setMicSupported(true);
   }
  }, []);
 
- const handleWalkieTalkieMic = () => {
-  if (!micSupported) return alert('Mic not supported');
-  if (isRecording) { setIsRecording(false); recognitionRef.current?.stop(); }
-  else { quickStopAllAudio(); setIsRecording(true); isRecordingRef.current = true; setInput(''); recognitionRef.current?.start(); }
+ const cleanUpSpeech = (text: string): string => {
+  let cleaned = text.replace(/\b(\w+)(\s+\1){2,}/gi, '$1');
+  cleaned = cleaned.replace(/\b(um|uh|er|ah)\b/gi, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  return cleaned;
  };
 
- // --- PERSONA CHANGE & WORTHY INTEL REVEAL (FIXED NAV) ---
+ const handleWalkieTalkieMic = () => {
+  if (!micSupported) return alert('Mic not supported');
+  
+  if (isRecording) {
+   // STOP ACTION: This triggers onend -> which triggers handleSend
+   setIsRecording(false);
+   recognitionRef.current?.stop(); 
+  } else {
+   // START ACTION
+   quickStopAllAudio();
+   setIsRecording(true);
+   isRecordingRef.current = true;
+   setInput('');
+   transcriptRef.current = '';
+   recognitionRef.current?.start();
+  }
+ };
+
+ // --- PERSONA CHANGE & WORTHY INTEL REVEAL ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) { speakText('Upgrade required.'); return; }
   if (persona.id === 'bestie' && !bestieConfig) { setTempGender('female'); setSetupStep('gender'); setShowBestieSetup(true); return; }
@@ -333,21 +376,20 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   quickStopAllAudio();
   setSelectedPersonaId(persona.id);
   
-  // FIX: Push a real message to 'messages' so the view switches to Chat
   if (wasNotified) {
     const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
     localStorage.setItem('lylo_cleared_intel', JSON.stringify([...cleared, persona.id]));
     setNotifications(prev => prev.filter(id => id !== persona.id));
-    
-    // Intel Message (Not Spoken Yet)
     const intelMsg: Message = { id: Date.now().toString(), content: REAL_INTEL_DROPS[persona.id], sender: 'bot', timestamp: new Date(), confidenceScore: 100 };
     setMessages([intelMsg]);
   } else {
-    // Standard Hook Message (Spoken + Visible)
     const hookContent = persona.spokenHook.replace('{userName}', userName || 'user');
     const hookMsg: Message = { id: Date.now().toString(), content: hookContent, sender: 'bot', timestamp: new Date() };
     setMessages([hookMsg]);
-    speakText(hookContent);
+    // Speak with locked voice
+    let voiceToUse = { voice: persona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
+    if (persona.id === 'bestie' && bestieConfig) voiceToUse = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
+    speakText(hookContent, undefined, voiceToUse);
   }
   
   setTimeout(() => { setActivePersona(persona); onPersonaChange(persona); setSelectedPersonaId(null); }, 300);
@@ -358,7 +400,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   if (previewPlayingId === persona.id) { quickStopAllAudio(); return; }
   quickStopAllAudio();
   setPreviewPlayingId(persona.id);
-  let voiceSettings = PERMANENT_VOICE_MAP[persona.id] || { voice: 'onyx', rate: 1.0, pitch: 1.0 };
+  let voiceSettings = { voice: persona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
   if (persona.id === 'bestie' && bestieConfig) voiceSettings = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
   speakText(persona.spokenHook.replace('{userName}', userName || 'user'), undefined, voiceSettings);
  };
@@ -380,14 +422,23 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const handleSend = async () => {
   const text = input.trim();
   if (!text && !selectedImage) return;
-  quickStopAllAudio(); setLoading(true); setInput('');
+  // Note: We do NOT clear input here immediately if invoked from Mic onend, 
+  // but we do want to stop audio.
+  quickStopAllAudio(); 
+  setLoading(true);
+  setInput(''); // Clear input for UI
   const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
   setMessages(prev => [...prev, userMsg]);
   try {
    const response = await sendChatMessage(text, [], activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
    setMessages(prev => [...prev, botMsg]);
-   speakText(botMsg.content, botMsg.id);
+   
+   // Auto-speak response
+   let voiceToUse = { voice: activePersona.fixedVoice || 'onyx', rate: 1.0, pitch: 1.0 };
+   if (activePersona.id === 'bestie' && bestieConfig) voiceToUse = { voice: bestieConfig.voiceId, rate: 1.0, pitch: 1.0 };
+   speakText(botMsg.content, botMsg.id, voiceToUse);
+   
   } catch (e) { console.error(e); } 
   finally { setLoading(false); setSelectedImage(null); }
  };
@@ -520,12 +571,25 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
           </div>
         );
       })}
+      {/* CLEAR ALL BUTTON */}
+      {notifications.length > 0 && (
+       <div className="col-span-2 mt-4">
+        <button onClick={clearAllNotifications} className="w-full py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 hover:bg-red-500/30 transition-all">
+         <Trash2 className="w-4 h-4" /> ACKNOWLEDGE & CLEAR ALL
+        </button>
+       </div>
+      )}
      </div>
     ) : (
       <div className="space-y-4 max-w-2xl mx-auto">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-xl border ${msg.sender === 'user' ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' : 'bg-black/40 border-white/10 text-gray-100 shadow-lg'}`}>
+            <div className={`max-w-[85%] p-4 rounded-xl border 
+              ${msg.sender === 'user' 
+                ? `${getPersonaColorClass(activePersona, 'bg')}/20 ${getPersonaColorClass(activePersona, 'border')}/50 text-white shadow-lg` 
+                : 'bg-black/40 border-white/10 text-gray-100 shadow-lg'
+              }
+            `}>
               <div className="text-base leading-relaxed">{msg.content}</div>
               {msg.sender === 'bot' && (
                 <div className="flex items-center gap-3 mt-4">
@@ -546,8 +610,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-xl border-t border-white/10 p-3 z-50">
     <div className="max-w-md mx-auto space-y-3">
      <div className="flex items-center justify-between mb-3 gap-2">
-      <button onClick={handleWalkieTalkieMic} className={`flex-1 py-3 px-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[50px] ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:scale-95'}`}>{isRecording ? <><MicOff className="w-5 h-5"/> STOP</> : <><Mic className="w-5 h-5"/> RECORD</>}</button>
-      <button onClick={() => { quickStopAllAudio(); setAutoTTS(!autoTTS); }} className="p-3 rounded-xl bg-gray-800/60 border border-gray-600 text-white active:scale-95 transition-all">{autoTTS ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}</button>
+      <button onClick={handleWalkieTalkieMic} className={`flex-1 py-3 px-3 rounded-xl font-black text-sm uppercase tracking-wide border-2 transition-all flex items-center justify-center gap-2 shadow-lg backdrop-blur-xl min-h-[50px] ${isRecording ? 'bg-red-500 border-red-400 text-white animate-pulse' : 'bg-gradient-to-b from-gray-600 to-gray-800 text-white border-gray-500 active:scale-95'}`}>{isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> START TALKING</>}</button>
      </div>
      <div className="flex gap-2 items-end">
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { if (e.target.files && e.target.files[0]) setSelectedImage(e.target.files[0]); }} />
