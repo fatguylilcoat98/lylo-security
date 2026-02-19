@@ -1,13 +1,9 @@
 /**
  * LYLO DIGITAL BODYGUARD - API CLIENT LIBRARY
- * Version: 17.6.0 (Modular Intelligence & Pinecone Memory Integration)
+ * Version: 17.6.1 (Total Memory Lock & Christopher Sync)
  */
 
 const API_URL = 'https://lylo-backend.onrender.com';
-
-// ---------------------------------------------------------
-// 1. TYPE DEFINITIONS (The "Everything" Interface)
-// ---------------------------------------------------------
 
 export interface Message {
   id: string;
@@ -49,22 +45,10 @@ export interface UserStats {
 }
 
 export interface QuizAnswers {
-  question1: string;
-  question2: string;
-  question3: string;
-  question4: string;
-  question5: string;
+  question1: string; question2: string; question3: string;
+  question4: string; question5: string;
 }
 
-// ---------------------------------------------------------
-// 2. CORE CHAT & INTELLIGENCE FUNCTIONS
-// ---------------------------------------------------------
-
-/**
- * SEND CHAT MESSAGE
- * The primary engine for Lylo's modular experts.
- * Includes Pinecone Long-Term Memory (LTM) trigger.
- */
 export const sendChatMessage = async (
   message: string,
   history: any[],
@@ -83,10 +67,9 @@ export const sendChatMessage = async (
     formData.append('language', language);
     formData.append('vibe', vibe); 
     
-    // --- PINCONE MEMORY TRIGGER ---
-    // This flag tells the backend to perform a similarity search in the 
-    // vector database before generating the AI response.
+    // THE TRUTH LOCK: This forces the backend to search Pinecone before answering.
     formData.append('use_long_term_memory', 'true'); 
+    formData.append('force_christopher_sync', 'true');
 
     if (imageFile) formData.append('file', imageFile);
 
@@ -100,7 +83,7 @@ export const sendChatMessage = async (
   } catch (error) {
     console.error('API Chat Error:', error);
     return {
-      answer: language === 'es' ? "Error de conexión." : "I'm having trouble reaching the team. Please check your connection.",
+      answer: "I'm having trouble reaching the team. Please check your connection.",
       confidence_score: 0,
       scam_detected: false,
       threat_level: 'unknown',
@@ -108,10 +91,6 @@ export const sendChatMessage = async (
     };
   }
 };
-
-// ---------------------------------------------------------
-// 3. USER MANAGEMENT & STATS
-// ---------------------------------------------------------
 
 export const getUserStats = async (email: string): Promise<UserStats> => {
   const response = await fetch(`${API_URL}/user-stats/${email}`);
@@ -136,17 +115,9 @@ export const saveQuiz = async (userEmail: string, answers: QuizAnswers) => {
   formData.append('question3', answers.question3);
   formData.append('question4', answers.question4);
   formData.append('question5', answers.question5);
-
-  const response = await fetch(`${API_URL}/quiz`, {
-    method: 'POST',
-    body: formData,
-  });
+  const response = await fetch(`${API_URL}/quiz`, { method: 'POST', body: formData });
   return await response.json();
 };
-
-// ---------------------------------------------------------
-// 4. ELITE SECURITY & RECOVERY
-// ---------------------------------------------------------
 
 export const getScamRecoveryGuide = async (email: string) => {
   const response = await fetch(`${API_URL}/scam-recovery/${email}`);
@@ -154,20 +125,11 @@ export const getScamRecoveryGuide = async (email: string) => {
   return await response.json();
 };
 
-// ---------------------------------------------------------
-// 5. AUDIO & MULTIMEDIA
-// ---------------------------------------------------------
-
 export const generateAudio = async (text: string, voice: string = 'onyx') => {
   const formData = new FormData();
   formData.append('text', text);
   formData.append('voice', voice);
-  
-  const response = await fetch(`${API_URL}/generate-audio`, {
-    method: 'POST',
-    body: formData,
-  });
-  
+  const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
   if (!response.ok) throw new Error('Audio failed');
   return await response.json();
 };
