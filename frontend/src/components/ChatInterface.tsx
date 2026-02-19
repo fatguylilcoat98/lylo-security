@@ -5,7 +5,7 @@ import {
  Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, Phone, CreditCard, 
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
  StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
- Filter, Sparkles, ChevronRight, MessageSquare
+ Filter, Sparkles, ChevronRight, MessageSquare, Heart, Info
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -56,17 +56,16 @@ const PERSONAS: PersonaConfig[] = [
 ];
 
 const EXPERT_TRIGGERS: { [key: string]: string[] } = {
- 'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech'],
- 'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'short-changed'],
- 'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor'],
+ 'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech', 'troubleshoot'],
+ 'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'short-changed', 'illegal'],
+ 'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor', 'hospital'],
  'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$', '180'],
- 'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental'],
- 'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise'],
- 'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school'],
- 'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith', 'spiritual'],
+ 'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental', 'lonely'],
+ 'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise', 'calories'],
+ 'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school', 'exam'],
+ 'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith', 'spiritual', 'sin'],
  'hype': ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content', 'social media'],
- 'bestie': ['lonely', 'friend', 'secret', 'vent', 'annoyed', 'drama', 'date', 'relationship'],
- 'career': ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired', 'employer']
+ 'career': ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired', 'employer', 'career']
 };
 
 const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
@@ -85,12 +84,17 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
  return colorMap[persona.color]?.[type] || colorMap.blue[type];
 };
 
-function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLevel, onZoomChange, onPersonaChange, onLogout, onUsageUpdate }: ChatInterfaceProps) {
- const [activePersona, setActivePersona] = useState<PersonaConfig>(initialPersona || PERSONAS[0]);
+const canAccessPersona = (persona: PersonaConfig, tier: string) => {
+ const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
+ return (tiers[tier] || 0) >= tiers[persona.requiredTier];
+};
+
+function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate }: ChatInterfaceProps) {
+ const [activePersona, setActivePersona] = useState<PersonaConfig>(() => initialPersona || PERSONAS[0]);
  const [messages, setMessages] = useState<Message[]>([]);
  const [input, setInput] = useState('');
  const [loading, setLoading] = useState(false);
- const [userName, setUserName] = useState<string>('');
+ const [userName, setUserName] = useState<string>('User');
  const [notifications, setNotifications] = useState<string[]>([]);
  const [stats, setStats] = useState<UserStats | null>(null);
  const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
@@ -107,7 +111,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  const recognitionRef = useRef<any>(null);
  const isRecordingRef = useRef(false);
  const accumulatedRef = useRef<string>(''); 
- const inputTextRef = useRef<string>('');
+ const inputTextRef = useRef<string>(''); 
 
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
@@ -118,8 +122,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   const savedBestie = localStorage.getItem('lylo_bestie_config');
   if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
 
-  loadStats();
-  
+  fetchStats();
+
   const allDrops = Object.keys(REAL_INTEL_DROPS);
   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
   setNotifications(allDrops.filter(id => !cleared.includes(id)).sort(() => 0.5 - Math.random()).slice(0, 3));
@@ -131,12 +135,24 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   }
  }, [messages]);
 
- const loadStats = async () => {
+ const fetchStats = async () => {
   try {
    const data = await getUserStats(userEmail);
    setStats(data);
    setUserTier(data.tier as any);
   } catch (e) { console.error('Stats error:', e); }
+ };
+
+ const detectExpertSuggestion = (text: string, currentId: string): PersonaConfig | null => {
+  const lower = text.toLowerCase();
+  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
+   if (id === currentId) continue;
+   if (keywords.some(k => lower.includes(k))) {
+    const expert = PERSONAS.find(p => p.id === id);
+    if (expert && canAccessPersona(expert, userTier)) return expert;
+   }
+  }
+  return null;
  };
 
  const speakText = async (text: string, voice?: string) => {
@@ -197,17 +213,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   }
  };
 
- const detectExpertSuggestion = (text: string, currentId: string): PersonaConfig | null => {
-  const lower = text.toLowerCase();
-  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-   if (id === currentId) continue;
-   if (keywords.some(k => lower.includes(k))) {
-    return PERSONAS.find(p => p.id === id) || null;
-   }
-  }
-  return null;
- };
-
  const handleSend = async () => {
   const text = inputTextRef.current.trim() || input.trim();
   if (!text && !selectedImage) return;
@@ -226,11 +231,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date() };
    setMessages(prev => [...prev, botMsg]);
    speakText(botMsg.content, activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice);
-   loadStats();
+   fetchStats();
    if (onUsageUpdate) onUsageUpdate();
   } catch (e) {
    console.error(e);
-   const errMsg: Message = { id: 'err', content: "System communication failure. Please check your neural link.", sender: 'bot', timestamp: new Date() };
+   const errMsg: Message = { id: 'err', content: "Communication failure. System is attempting to re-establish neural link.", sender: 'bot', timestamp: new Date() };
    setMessages(prev => [...prev, errMsg]);
   } finally {
    setLoading(false);
@@ -259,55 +264,44 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  };
 
  return (
-  <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden text-white font-sans">
+  <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden text-white">
    
-   {/* NAVIGATION & STATUS BAR */}
-   <div className="bg-black/80 backdrop-blur-xl border-b border-white/10 p-4 flex justify-between items-center z-50">
-    <div className="flex items-center gap-3">
-     <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${getPersonaColorClass(activePersona, 'border')} ${getPersonaColorClass(activePersona, 'glow')}`}>
-      <activePersona.icon className={`w-5 h-5 ${getPersonaColorClass(activePersona, 'text')}`} />
+   {/* HEADER */}
+   <div className="bg-black border-b border-white/10 p-4 flex justify-between items-center z-50">
+    <div className="flex items-center gap-4">
+     <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all ${getPersonaColorClass(activePersona, 'border')} ${getPersonaColorClass(activePersona, 'glow')}`}>
+      <activePersona.icon className={`w-6 h-6 ${getPersonaColorClass(activePersona, 'text')}`} />
      </div>
      <div>
-      <h2 className="text-sm font-black tracking-tighter uppercase">{activePersona.name}</h2>
-      <div className="flex items-center gap-2">
-       <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{activePersona.serviceLabel}</span>
-      </div>
+      <h1 className="text-lg font-black tracking-tighter uppercase leading-none">{activePersona.name}</h1>
+      <p className="text-[10px] text-gray-500 font-black tracking-widest uppercase mt-1">{activePersona.serviceLabel}</p>
      </div>
     </div>
-    
-    <div className="flex items-center gap-2">
-     <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-      <Settings className="w-5 h-5 text-gray-400" />
-     </button>
-     <button onClick={() => { setMessages([]); setShowPersonaGrid(true); }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-      <RotateCcw className="w-5 h-5 text-gray-400" />
-     </button>
+    <div className="flex gap-2">
+     <button onClick={() => setShowDropdown(!showDropdown)} className="p-2 hover:bg-white/10 rounded-xl"><Settings /></button>
+     <button onClick={() => { setMessages([]); setShowPersonaGrid(true); }} className="p-2 hover:bg-white/10 rounded-xl"><RotateCcw /></button>
     </div>
    </div>
 
-   {/* MAIN WORKSPACE */}
+   {/* CHAT CONTENT */}
    <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 pb-48">
     
-    {/* DYNAMIC INTEL DROPS */}
+    {/* INTEL DROPS */}
     {showPersonaGrid && notifications.length > 0 && (
      <div className="space-y-3">
-      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Active Intelligence Drops</p>
       {notifications.map(id => (
-       <div key={id} className="bg-white/5 border border-white/10 p-4 rounded-2xl relative group animate-in slide-in-from-right duration-500">
-        <button onClick={() => clearIntel(id)} className="absolute top-2 right-2 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-         <X className="w-4 h-4 text-gray-500" />
-        </button>
-        <div className="flex gap-3">
-         <div className="mt-1"><Zap className="w-4 h-4 text-yellow-400" /></div>
-         <p className="text-xs leading-relaxed text-gray-300 font-medium">{REAL_INTEL_DROPS[id]}</p>
+       <div key={id} className="bg-white/5 border border-white/10 p-4 rounded-3xl relative group animate-in slide-in-from-right">
+        <button onClick={() => clearIntel(id)} className="absolute top-3 right-3 p-1 opacity-0 group-hover:opacity-100"><X className="w-4 h-4 text-gray-500" /></button>
+        <div className="flex gap-4">
+         <div className="mt-1 p-2 bg-yellow-500/20 rounded-xl"><Zap className="w-4 h-4 text-yellow-500" /></div>
+         <p className="text-xs leading-relaxed text-gray-300 font-bold">{REAL_INTEL_DROPS[id]}</p>
         </div>
        </div>
       ))}
      </div>
     )}
 
-    {/* PERSONA SELECTION GRID */}
+    {/* PERSONA GRID */}
     {showPersonaGrid && (
      <div className="grid grid-cols-2 gap-3">
       {PERSONAS.map(p => (
@@ -315,44 +309,39 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
          key={p.id} 
          onClick={() => handlePersonaChange(p)}
          disabled={!canAccessPersona(p, userTier)}
-         className={`p-4 rounded-2xl border flex flex-col items-center gap-3 transition-all active:scale-95 ${activePersona.id === p.id ? `${getPersonaColorClass(p, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:border-white/30'} ${!canAccessPersona(p, userTier) ? 'opacity-40 grayscale' : ''}`}
+         className={`p-6 rounded-3xl border flex flex-col items-center gap-4 transition-all active:scale-95 ${activePersona.id === p.id ? `${getPersonaColorClass(p, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:border-white/30'} ${!canAccessPersona(p, userTier) ? 'opacity-30' : ''}`}
        >
-        <p.icon className={`w-6 h-6 ${activePersona.id === p.id ? 'text-white' : getPersonaColorClass(p, 'text')}`} />
+        <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getPersonaColorClass(p, 'text')}`} />
         <div className="text-center">
-         <p className="text-[10px] font-black uppercase tracking-tighter">{p.name}</p>
-         {!canAccessPersona(p, userTier) && (
-          <div className="flex items-center justify-center gap-1 mt-1">
-           <Crown className="w-2.5 h-2.5 text-yellow-500" />
-           <span className="text-[8px] font-bold text-yellow-500 uppercase">{p.requiredTier}</span>
-          </div>
-         )}
+         <p className="text-[10px] font-black uppercase tracking-widest">{p.name}</p>
+         {!canAccessPersona(p, userTier) && <Crown className="w-3 h-3 text-yellow-500 mx-auto mt-2" />}
         </div>
        </button>
       ))}
      </div>
     )}
 
-    {/* MESSAGE FEED */}
+    {/* MESSAGES */}
     {messages.map((msg, idx) => {
      const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
      const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m => m.content).join(' '), activePersona.id) : null;
 
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-       <div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed ${msg.sender === 'user' ? 'bg-indigo-600 text-white font-bold rounded-tr-none' : 'bg-white/10 border border-white/10 rounded-tl-none'}`}>
+       <div className={`p-5 rounded-3xl max-w-[85%] text-sm font-medium leading-relaxed shadow-lg ${msg.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white/10 border border-white/10 rounded-tl-none'}`}>
         {msg.content}
        </div>
        
-       {/* EXPERT HANDOFF BUTTON */}
+       {/* EXPERT REDIRECT BUTTON */}
        {suggestion && (
-        <div className="mt-4 w-full max-w-[85%] p-4 bg-indigo-600 border border-indigo-400 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300">
-         <div className="flex items-center gap-2 mb-3">
-           <div className="p-1 bg-white/20 rounded-md"><Zap className="w-3 h-3 text-white fill-current" /></div>
-           <p className="text-[10px] font-black text-white uppercase tracking-widest">Expert Handoff Detected</p>
+        <div className="mt-4 w-full max-w-[85%] p-4 bg-indigo-600 border border-indigo-400 rounded-3xl shadow-2xl animate-in zoom-in-95">
+         <div className="flex items-center gap-3 mb-3">
+           <Zap className="w-4 h-4 text-white fill-current" />
+           <p className="text-[10px] font-black text-white uppercase tracking-widest">Expert Transition Ready</p>
          </div>
          <button 
            onClick={() => handlePersonaChange(suggestion)} 
-           className="w-full py-3 bg-white text-indigo-700 text-[11px] font-black uppercase rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform"
+           className="w-full py-4 bg-white text-indigo-700 text-xs font-black uppercase rounded-2xl flex items-center justify-center gap-3"
          >
           Transfer to {suggestion.name} <ArrowRight className="w-4 h-4" />
          </button>
@@ -363,46 +352,30 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
     })}
 
     {loading && (
-     <div className="flex items-center gap-2 text-gray-500 animate-pulse px-2">
+     <div className="flex gap-2 items-center text-gray-500 animate-pulse">
       <div className="flex gap-1">
-       <div className="w-1.5 h-1.5 rounded-full bg-current"></div>
-       <div className="w-1.5 h-1.5 rounded-full bg-current delay-100"></div>
-       <div className="w-1.5 h-1.5 rounded-full bg-current delay-200"></div>
+       <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
+       <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
+       <span className="w-1.5 h-1.5 bg-current rounded-full"></span>
       </div>
-      <span className="text-[10px] font-bold uppercase tracking-widest">Processing Intelligence</span>
+      <span className="text-[10px] font-black uppercase tracking-tighter">Syncing Intelligence...</span>
      </div>
     )}
    </div>
 
-   {/* CAPTURE ENGINE (BOTTOM BAR) */}
-   <div className="fixed bottom-0 left-0 right-0 p-4 bg-black/95 backdrop-blur-2xl border-t border-white/10 z-50">
+   {/* FOOTER BAR */}
+   <div className="fixed bottom-0 left-0 right-0 p-4 bg-black/95 backdrop-blur-3xl border-t border-white/10">
     <div className="max-w-2xl mx-auto space-y-4">
      
-     {/* MAIN CAPTURE BUTTON */}
      <button 
        onClick={handleWalkieTalkieMic}
-       className={`w-full py-5 rounded-3xl flex items-center justify-center gap-3 transition-all active:scale-95 relative overflow-hidden group shadow-2xl ${isRecording ? 'bg-red-500 shadow-red-500/40' : 'bg-white shadow-white/10'}`}
+       className={`w-full py-6 rounded-[32px] flex items-center justify-center gap-4 transition-all active:scale-95 shadow-2xl ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-white'}`}
      >
-      {isRecording ? (
-       <>
-        <div className="absolute inset-0 bg-red-400 animate-pulse opacity-50"></div>
-        <MicOff className="w-6 h-6 text-white relative z-10" />
-        <span className="text-sm font-black text-white tracking-[0.2em] relative z-10">STOP & SYNC DATA</span>
-       </>
-      ) : (
-       <>
-        <Mic className="w-6 h-6 text-black" />
-        <span className="text-sm font-black text-black tracking-[0.2em]">INITIATE VOICE LINK</span>
-       </>
-      )}
+      {isRecording ? <><MicOff className="w-6 h-6 text-white"/><span className="text-sm font-black text-white tracking-[0.2em]">CEASE CAPTURE</span></> : <><Mic className="w-6 h-6 text-black"/><span className="text-sm font-black text-black tracking-[0.2em]">ENGAGE VOICE LINK</span></>}
      </button>
 
-     {/* SECONDARY INPUTS */}
-     <div className="flex items-center gap-2">
-      <button 
-        onClick={() => fileInputRef.current?.click()}
-        className={`p-3 rounded-xl border border-white/10 bg-white/5 transition-all ${selectedImage ? 'border-indigo-500 bg-indigo-500/20' : ''}`}
-      >
+     <div className="flex items-center gap-3">
+      <button onClick={() => fileInputRef.current?.click()} className={`p-4 rounded-2xl border border-white/10 bg-white/5 ${selectedImage ? 'border-indigo-500 bg-indigo-500/20' : ''}`}>
        <Camera className={`w-6 h-6 ${selectedImage ? 'text-indigo-400' : 'text-gray-400'}`} />
        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       </button>
@@ -412,31 +385,29 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
          value={input}
          onChange={(e) => { setInput(e.target.value); inputTextRef.current = e.target.value; }}
          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-         placeholder={`Speak to ${activePersona.name}...`}
-         className="w-full bg-white/10 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-white/30 transition-all placeholder:text-gray-600 font-medium"
+         placeholder={`Communicate with ${activePersona.name}...`}
+         className="w-full bg-white/10 border border-white/10 rounded-2xl px-6 py-5 text-sm text-white focus:outline-none focus:border-white/30 placeholder:text-gray-600 font-bold"
        />
-       <button onClick={handleSend} className="absolute right-2 top-2 bottom-2 aspect-square bg-indigo-600 rounded-xl flex items-center justify-center hover:bg-indigo-500 transition-colors">
-        <ArrowRight className="w-5 h-5 text-white" />
-       </button>
+       <button onClick={handleSend} className="absolute right-3 top-3 bottom-3 aspect-square bg-indigo-600 rounded-xl flex items-center justify-center"><ArrowRight className="w-5 h-5 text-white" /></button>
       </div>
      </div>
     </div>
    </div>
 
-   {/* BESTIE INITIALIZATION MODAL */}
+   {/* MODAL: BESTIE SETUP */}
    {showBestieSetup && (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-     <div className="bg-white/10 border border-white/10 p-8 rounded-[40px] w-full max-w-sm text-center space-y-8">
-      <div className="w-20 h-20 bg-pink-500 rounded-full mx-auto flex items-center justify-center shadow-[0_0_40px_rgba(236,72,153,0.4)]">
-       <Shield className="w-10 h-10 text-white" />
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-8">
+     <div className="bg-white/10 border border-white/10 p-10 rounded-[48px] w-full max-w-sm text-center space-y-10">
+      <div className="w-24 h-24 bg-pink-500 rounded-full mx-auto flex items-center justify-center shadow-[0_0_60px_rgba(236,72,153,0.5)]">
+       <Heart className="w-12 h-12 text-white fill-current" />
       </div>
-      <div className="space-y-2">
-       <h2 className="text-2xl font-black tracking-tighter uppercase">Initialize Bestie</h2>
-       <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Select Gender Logic</p>
+      <div>
+       <h2 className="text-3xl font-black uppercase tracking-tighter">Initialize</h2>
+       <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] mt-2">Loyalty Lead Gender Logic</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
-       <button onClick={() => { setBestieConfig({ gender: 'female', voiceId: 'nova', vibeLabel: 'Ride or Die' }); localStorage.setItem('lylo_bestie_config', JSON.stringify({ gender: 'female', voiceId: 'nova' })); setShowBestieSetup(false); handlePersonaChange(PERSONAS.find(p => p.id === 'bestie')!); }} className="py-4 bg-pink-500/20 border border-pink-500/40 rounded-3xl text-xs font-black uppercase tracking-widest hover:bg-pink-500 hover:text-white transition-all">Female</button>
-       <button onClick={() => { setBestieConfig({ gender: 'male', voiceId: 'onyx', vibeLabel: 'Ride or Die' }); localStorage.setItem('lylo_bestie_config', JSON.stringify({ gender: 'male', voiceId: 'onyx' })); setShowBestieSetup(false); handlePersonaChange(PERSONAS.find(p => p.id === 'bestie')!); }} className="py-4 bg-blue-500/20 border border-blue-500/40 rounded-3xl text-xs font-black uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all">Male</button>
+       <button onClick={() => { setBestieConfig({ gender: 'female', voiceId: 'nova', vibeLabel: 'Ride or Die' }); localStorage.setItem('lylo_bestie_config', JSON.stringify({ gender: 'female', voiceId: 'nova' })); setShowBestieSetup(false); handlePersonaChange(PERSONAS.find(p => p.id === 'bestie')!); }} className="py-5 bg-pink-500 rounded-3xl text-[10px] font-black uppercase tracking-widest text-white">Female</button>
+       <button onClick={() => { setBestieConfig({ gender: 'male', voiceId: 'onyx', vibeLabel: 'Ride or Die' }); localStorage.setItem('lylo_bestie_config', JSON.stringify({ gender: 'male', voiceId: 'onyx' })); setShowBestieSetup(false); handlePersonaChange(PERSONAS.find(p => p.id === 'bestie')!); }} className="py-5 bg-blue-500 rounded-3xl text-[10px] font-black uppercase tracking-widest text-white">Male</button>
       </div>
      </div>
     </div>
@@ -444,11 +415,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
 
   </div>
  );
-}
-
-function canAccessPersona(persona: PersonaConfig, tier: string) {
- const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
- return (tiers[tier] || 0) >= tiers[persona.requiredTier];
 }
 
 export default ChatInterface;
