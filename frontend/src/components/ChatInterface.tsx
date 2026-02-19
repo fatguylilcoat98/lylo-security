@@ -33,25 +33,27 @@ import {
  User,
  Globe,
  Music,
- Sliders
+ Sliders,
+ CheckCircle
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
-// --- REAL INTELLIGENCE DATA (Feb 18, 2026 Worthy Intel Drops) ---
+// --- REAL INTELLIGENCE DATA (Feb 18, 2026 Mission-Critical Drops) ---
+// These trigger the red badges. These are "Worthy Reasons" for the experts to interrupt you.
 const REAL_INTEL_DROPS: { [key: string]: string } = {
-  'guardian': "URGENT SECURITY INTEL: I've detected a massive spike in 'Toll Road' smishing. 437 new fraudulent E-ZPass sites were registered this week targeting California residents. If you get a text about unpaid tolls, it is a trap. Do not click.",
-  'wealth': "MARKET INTEL: I found a high-yield opportunity at 4.09% APY—that is 7x the national average. Shifting $100 to this account today would net you an extra $55 in annual interest. Let's move it.",
-  'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility.",
-  'career': "ATS ALERT: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms. We need to update your resume stack.",
-  'doctor': "HEALTH INTEL: CDPH issued a Sacramento-area alert for measles. Also, with the current winter cloud cover, your bone-density markers suggest a critical Vitamin D window is closing.",
-  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts. We need to patch the kernel.",
-  'bestie': "Okay, I've been thinking about that situation you mentioned earlier... I did some digging and I have a much better plan to handle it. You're gonna love this.",
-  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a burnout wall.",
-  'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched. They have a new method for simplifying complex data sets that is perfect for your current project.",
-  'pastor': "FAITH INTEL: In the chaos of this week, remember: 'Peace I leave with you.' I've prepared a mid-week spiritual reset for you to find clarity.",
-  'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure. We need to implement a 10-minute 'light-stack'.",
-  'hype': "ALGORITHM INTEL: Instagram just opened a viral window for 'Original Audio' creators. If we drop a hook in the next 3 hours, we hit the Explore page."
+  'guardian': "URGENT SECURITY INTEL: I've detected a massive spike in 'Toll Road' smishing. 437 new fraudulent E-ZPass sites were registered this week targeting California residents. If you get a text about unpaid tolls, it is a 100% confirmed trap. Do not click any links.",
+  'wealth': "MARKET INTEL: I found a high-yield opportunity at 4.09% APY—that is 7x the national average. Based on your goals, shifting $100 to this account today would net you an extra $55 in annual interest. Let's move it.",
+  'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility. This changes your current liability shield.",
+  'career': "ALGORITHM INTEL: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms. We need to update your resume stack immediately to stay visible.",
+  'doctor': "HEALTH INTEL: CDPH just issued a Sacramento-area alert for measles. Also, with the current winter cloud cover, your bone-density markers suggest a critical Vitamin D window is closing. I recommend checking your labs this week.",
+  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts. Your primary OS is vulnerable until we patch the kernel.",
+  'bestie': "Okay, I've been thinking about that drama you told me about... I did some digging and I have a much better plan to handle it. You're gonna love this, let's spill the tea.",
+  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. Gen Alpha cultural norms are shifting toward 'Calm/Cozy' aesthetics for a reason—you are hitting a burnout wall. Let's do a reset.",
+  'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched. They have a new method for simplifying complex data sets that is perfect for your current project. Ready for a 5-minute masterclass?",
+  'pastor': "FAITH INTEL: In the chaos of this week, remember: 'Peace I leave with you; my peace I give you.' I've prepared a mid-week spiritual reset for you to find clarity before the weekend rush.",
+  'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure. We need to implement a 10-minute 'light-stack' to keep your engine from stalling.",
+  'hype': "ALGORITHM INTEL: Instagram just opened a viral window for 'Original Audio' creators. There is an upward-trend sound that fits your creative brand perfectly. If we drop a hook in the next 3 hours, we hit the Explore page."
 };
 
 // --- TYPES ---
@@ -261,18 +263,7 @@ const EXPERT_TRIGGERS = {
 };
 
 const CONFIDENCE_THRESHOLDS = {
- 'guardian': 70,
- 'lawyer': 85,
- 'doctor': 85,
- 'wealth': 85,
- 'therapist': 85,
- 'mechanic': 85,
- 'tutor': 85,
- 'pastor': 85,
- 'vitality': 85,
- 'hype': 75,
- 'bestie': 70,
- 'career': 85
+ 'guardian': 70, 'lawyer': 85, 'doctor': 85, 'wealth': 85, 'therapist': 85, 'mechanic': 85, 'tutor': 85, 'pastor': 85, 'vitality': 85, 'hype': 75, 'bestie': 70, 'career': 85
 };
 
 // --- CURATED VOICE CAST ---
@@ -387,29 +378,18 @@ function ChatInterface({
  const [loading, setLoading] = useState(false);
  const [userName, setUserName] = useState<string>('');
  const [intelligenceSync, setIntelligenceSync] = useState(0);
- const [pushEnabled, setPushEnabled] = useState(false);
- 
- // NOTIFICATIONS STATE (Real Intel Drops)
  const [notifications, setNotifications] = useState<string[]>([]);
- 
- // BESTIE CONFIG STATE
  const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
  const [showBestieSetup, setShowBestieSetup] = useState(false);
  const [setupStep, setSetupStep] = useState<'gender' | 'voice'>('gender');
  const [tempGender, setTempGender] = useState<'male' | 'female'>('female');
-
- // Audio State
  const [isRecording, setIsRecording] = useState(false);
  const isRecordingRef = useRef(false);
  const [autoTTS, setAutoTTS] = useState(true);
  const [isSpeaking, setIsSpeaking] = useState(false);
  const [currentSpeech, setCurrentSpeech] = useState<SpeechSynthesisUtterance | null>(null);
  const [showReplayButton, setShowReplayButton] = useState<string | null>(null);
- 
- // Preview Audio
  const [previewPlayingId, setPreviewPlayingId] = useState<string | null>(null);
-
- // UI State
  const [showDropdown, setShowDropdown] = useState(false);
  const [showUserDetails, setShowUserDetails] = useState(false);
  const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -418,18 +398,12 @@ function ChatInterface({
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
- 
- // Expert Hand-off State
  const [suggestedExperts, setSuggestedExperts] = useState<{[messageId: string]: PersonaConfig}>({});
- 
- // Modal State
  const [showIntelligenceModal, setShowIntelligenceModal] = useState(false);
- 
- // --- GOD MODE ACTIVATED: Forced to 'max' and 'true' ---
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [isEliteUser, setIsEliteUser] = useState(true);
- 
  const [showKnowMore, setShowKnowMore] = useState<string | null>(null);
+ const [pushEnabled, setPushEnabled] = useState(false);
  
  // Refs
  const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -438,22 +412,35 @@ function ChatInterface({
  const fileInputRef = useRef<HTMLInputElement>(null);
  const transcriptRef = useRef<string>(''); 
 
+ // --- NOTIFICATION ENGINE ---
+ const setupNotifications = async () => {
+  if (!('Notification' in window)) return;
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted') {
+    setPushEnabled(true);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.error('Push Error:', err));
+    }
+  }
+ };
+
+ const sendPushAlert = (title: string, body: string) => {
+   if (!pushEnabled) return;
+   if ('serviceWorker' in navigator) {
+     navigator.serviceWorker.ready.then(registration => {
+       registration.showNotification(title, {
+         body: body,
+         icon: '/logo192.png',
+         vibrate: [200, 100, 200]
+       });
+     });
+   }
+ };
+
  useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
 
-// Init
+ // Init
  useEffect(() => {
-  // --- NOTIFICATION ENGINE (LOCK SCREEN PUSH) ---
-  const setupNotifications = async () => {
-    if (!('Notification' in window)) return;
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      setPushEnabled(true);
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
-      }
-    }
-  };
-
   const init = async () => {
    const savedAuthToken = localStorage.getItem('lylo_auth_token');
    const savedUserEmail = (localStorage.getItem('lylo_user_email') || userEmail).toLowerCase();
@@ -465,30 +452,6 @@ function ChatInterface({
      console.log('Auto-login successful for:', savedUserEmail);
     }
    }
-
-   // --- MASTER IDENTITY LOCK (RON & MARILYN) ---
-   if (savedUserEmail.includes('stangman')) {
-     setUserName('Christopher');
-   } else if (savedUserEmail.includes('betatester6')) {
-     setUserName('Ron');
-   } else if (savedUserEmail.includes('betatester7')) {
-     setUserName('Marilyn');
-   } else {
-     const savedName = localStorage.getItem('lylo_user_name');
-     if (savedName) setUserName(savedName);
-   }
-
-   // --- INITIALIZE REAL INTEL DROPS ---
-   const activeDrops = Object.keys(REAL_INTEL_DROPS);
-   setNotifications(activeDrops);
-
-   await loadUserStats();
-   await checkEliteStatus();
-  };
-  
-  init();
-  return () => { window.speechSynthesis.cancel(); };
- }, [userEmail]);
    
    await loadUserStats();
    await checkEliteStatus();
@@ -510,7 +473,7 @@ function ChatInterface({
     }
    }
    
-   // --- MASTER IDENTITY LOGIC (RON & MARILYN ADDED) ---
+   // --- MASTER IDENTITY LOCK (RON & MARILYN ADDED) ---
    const savedName = localStorage.getItem('lylo_user_name');
    if (savedName) {
      setUserName(savedName);
@@ -582,7 +545,7 @@ function ChatInterface({
   } catch (e) { console.error(e); }
  };
 
- // Audio & Speech
+ // --- AUDIO & SPEECH ENGINE ---
  const quickStopAllAudio = () => {
   window.speechSynthesis.cancel();
   setIsSpeaking(false);
@@ -727,46 +690,48 @@ function ChatInterface({
   }
  };
 
-// --- PERSONA CHANGE & WORTHY INTEL REVEAL ---
+ // --- PERSONA CHANGE & INTEL REVEAL HANDLER ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) {
    speakText('Upgrade required.');
    return;
   }
   
-  // Bestie Setup Trigger if not configured
+  // Trigger Bestie Setup if not configured
   if (persona.id === 'bestie' && !bestieConfig) {
     setTempGender('female');
     setSetupStep('gender');
     setShowBestieSetup(true);
-    return;
+    return; // Don't switch yet
   }
 
-  // --- INTERCEPT MISSION-CRITICAL INTEL ---
+  // --- TRUTHFUL NOTIFICATION REVEAL ---
   const wasNotified = notifications.includes(persona.id);
 
   if (wasNotified) {
-    // 1. Clear badge
+    // 1. Clear the notification badge
     setNotifications(prev => prev.filter(id => id !== persona.id));
     
-    // 2. Inject REAL Intelligence (The Worthy Reason)
+    // 2. Inject the REAL intelligence as the opening message
     const intelMsg: Message = {
       id: Date.now().toString(),
-      content: REAL_INTEL_DROPS[persona.id] || "Security briefing initialized. I have an update on our last topic.",
+      content: REAL_INTEL_DROPS[persona.id] || "I've been waiting for you. I have an update on our last topic.",
       sender: 'bot',
       timestamp: new Date(),
       confidenceScore: 100
     };
     
+    // Reset the chat and show the update immediately
     setMessages([intelMsg]);
-    speakText(intelMsg.content); // Starts speaking the 2026 data immediately
+    speakText(intelMsg.content);
   } else {
-    // Standard Entry
+    // Normal behavior: Clear messages and show normal interface
     setMessages([]);
+    // Normal entry hook
     speakText(persona.spokenHook.replace('{userName}', userName || 'user'));
   }
 
-  // UI Selection Feedback
+  // UI Transitions
   quickStopAllAudio();
   setSelectedPersonaId(persona.id);
   
@@ -775,7 +740,6 @@ function ChatInterface({
    onPersonaChange(persona);
    localStorage.setItem('lylo_preferred_persona', persona.id);
    
-   // Sync and Learning Tracking
    setShowKnowMore(persona.id);
    setTimeout(() => setShowKnowMore(null), 5000);
    setSelectedPersonaId(null);
@@ -998,7 +962,7 @@ function ChatInterface({
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans" style={{ zIndex: 99999 }}>
    
-   {/* MOBILE-OPTIMIZED OVERLAYS */}
+   {/* EMERGENCY CRISIS OVERLAY */}
    {showCrisisShield && (
     <div className="fixed inset-0 z-[100050] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
      <div className="bg-red-900/20 backdrop-blur-xl border border-red-400/50 rounded-xl p-5 max-w-sm w-full shadow-2xl max-h-[80vh] overflow-y-auto">
@@ -1146,6 +1110,16 @@ function ChatInterface({
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-xl p-4 min-w-[250px] shadow-2xl z-[100001]">
         
+        {/* NEW: PUSH ALERT TOGGLE */}
+        <div className="mb-4 pb-4 border-b border-white/10">
+          <button 
+            onClick={() => { setupNotifications(); setShowDropdown(false); }}
+            className={`w-full p-3 ${pushEnabled ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-blue-500/10 border-blue-400/30 text-blue-400'} border rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-white/5 transition-all active:scale-95`}
+          >
+            {pushEnabled ? <><CheckCircle className="w-4 h-4"/> Alerts Active</> : <><Bell className="w-4 h-4"/> Enable Alerts</>}
+          </button>
+        </div>
+
         {/* BESTIE CALIBRATION */}
         <div className="mb-4 pb-4 border-b border-white/10">
           <button 
@@ -1344,7 +1318,7 @@ function ChatInterface({
          <div className={`max-w-[90%] p-4 rounded-xl backdrop-blur-xl border transition-all ${
           msg.sender === 'user' 
            ? 'bg-blue-500/20 border-blue-400/30 text-white shadow-lg' 
-           : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border`
+           : `bg-black/40 text-gray-100 ${getPersonaColorClass(activePersona, 'border')}/30 border shadow-[0_4px_20px_rgba(0,0,0,0.4)]`
          }`}>
           <div className="leading-relaxed font-medium text-base">{msg.content}</div>
           <div className={`text-xs mt-3 opacity-70 font-bold uppercase tracking-wide flex items-center justify-between ${
@@ -1377,7 +1351,7 @@ function ChatInterface({
                 <div className={`font-bold text-sm ${msg.confidenceScore > 80 ? 'text-green-100' : 'text-yellow-100'}`}>
                   Analysis Result: {msg.confidenceScore}% Confidence
                 </div>
-                <div className="text-gray-400 text-xs tracking-tighter">
+                <div className="text-gray-400 text-xs tracking-tighter font-black uppercase">
                   Consensus Check Complete
                 </div>
               </div>
@@ -1414,7 +1388,7 @@ function ChatInterface({
             </div>
             <div className="text-left">
              <div className="text-white font-bold text-sm">Transfer available</div>
-             <div className="text-gray-300 text-xs">
+             <div className="text-gray-300 text-xs uppercase font-bold">
               {suggestedExperts[msg.id].serviceLabel} specialist online
              </div>
             </div>
@@ -1529,7 +1503,7 @@ function ChatInterface({
       >
        SYNC: {intelligenceSync}%
       </button>
-      <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS</p>
+      <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v28.0</p>
       <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
      </div>
     </div>
