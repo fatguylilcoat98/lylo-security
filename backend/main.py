@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.6.0 - THE TACTICAL SHIELD"
+    version="19.7.0 - THE TRUTH LOCK"
 )
 
 # Configure CORS
@@ -258,7 +258,6 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None):
         if image_b64:
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
         
-        # FIX: Replaced generic system prompt with a dynamic instruction to follow the injection
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -285,7 +284,7 @@ async def chat(
     user_email: str = Form(...), 
     user_location: str = Form(""),
     vibe: str = Form("standard"),
-    use_long_term_memory: str = Form("false"), # Added trigger catch
+    use_long_term_memory: str = Form("false"),
     file: UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -323,7 +322,10 @@ async def chat(
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode('utf-8')
 
-    # FIX: Injected the Global Legal Wrapper and forced the AI to obey the Persona traits
+    # THE TRUTH LOCK: Check if memories actually exist
+    vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
+
+    # FIX: Injected Anti-Hallucination Protocol
     full_prompt = f"""
     GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational and strategic simulation. You provide highly tactical, specific, and aggressive strategy based on your assigned persona. You must never claim to form a legally binding attorney-client, doctor-patient, or fiduciary relationship, BUT you must also NEVER use weak disclaimers like "I am just an AI." Speak exactly like the expert defined below. Your output is defined legally as 'Educational Strategy Simulation.'
 
@@ -332,7 +334,7 @@ async def chat(
     STYLE: {v_inst}
     START WITH THIS EXACT PHRASE: "{hook}"
     
-    PINECONE VAULT (MEMORIES): {memories}
+    PINECONE VAULT (MEMORIES): {vault_status}
     LIVE SEARCH DATA: {search_intel}
     SCAM INDICATORS: {indicators}
     
@@ -343,7 +345,7 @@ async def chat(
     1. NEVER break character. You are the expert defined in the IDENTITY block.
     2. Give specific, tactical, actionable advice. Do not tell the user to 'consult a local professional' as a brush-off.
     3. If scam indicators or search data show danger, safety score = 100 and be aggressive.
-    4. Use the PINECONE VAULT to reference past conversations if relevant.
+    4. ANTI-HALLUCINATION LOCK: If the PINECONE VAULT says 'NO SECURE RECORDS FOUND', you MUST state the truth that you have no record of previous conversations. DO NOT invent names, events, or past interactions under any circumstances.
     
     JSON FORMAT:
     {{ "answer": "...", "confidence_score": 0-100, "scam_detected": boolean, "threat_level": "low/high" }}
@@ -409,7 +411,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.6.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.7.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
