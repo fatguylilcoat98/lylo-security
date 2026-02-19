@@ -1,6 +1,6 @@
 /**
  * LYLO DIGITAL BODYGUARD - API CLIENT LIBRARY
- * Version: 17.5.0 (Modular Intelligence & Total Integration)
+ * Version: 17.6.0 (Modular Intelligence & Pinecone Memory Integration)
  */
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -42,7 +42,6 @@ export interface UserStats {
     limit: number;
     percentage: number;
   };
-  // 👇 FIXED: Added this block so the build stops failing
   learning_profile: {
     top_concern: string;
     learning_style?: string;
@@ -64,6 +63,7 @@ export interface QuizAnswers {
 /**
  * SEND CHAT MESSAGE
  * The primary engine for Lylo's modular experts.
+ * Includes Pinecone Long-Term Memory (LTM) trigger.
  */
 export const sendChatMessage = async (
   message: string,
@@ -83,6 +83,11 @@ export const sendChatMessage = async (
     formData.append('language', language);
     formData.append('vibe', vibe); 
     
+    // --- PINCONE MEMORY TRIGGER ---
+    // This flag tells the backend to perform a similarity search in the 
+    // vector database before generating the AI response.
+    formData.append('use_long_term_memory', 'true'); 
+
     if (imageFile) formData.append('file', imageFile);
 
     const response = await fetch(`${API_URL}/chat`, {
@@ -95,7 +100,7 @@ export const sendChatMessage = async (
   } catch (error) {
     console.error('API Chat Error:', error);
     return {
-      answer: language === 'es' ? "Error de conexión." : "I'm having trouble reaching the team.",
+      answer: language === 'es' ? "Error de conexión." : "I'm having trouble reaching the team. Please check your connection.",
       confidence_score: 0,
       scam_detected: false,
       threat_level: 'unknown',
