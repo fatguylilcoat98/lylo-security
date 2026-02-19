@@ -19,7 +19,6 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 # --- MODULAR INTELLIGENCE DATA IMPORTS ---
-# Ensure your local intelligence_data/personas.py is updated with the V3 MAX prompts
 from intelligence_data import (
     VIBE_STYLES, VIBE_LABELS,
     PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
@@ -40,7 +39,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.7.0 - THE TRUTH LOCK"
+    version="19.8.0 - THE VAULT FIX"
 )
 
 # Configure CORS
@@ -201,7 +200,10 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
             dimensions=1024
         )
         results = memory_index.query(vector=response.data[0].embedding, filter={"user_id": user_id}, top_k=5, include_metadata=True)
-        memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.82]
+        
+        # THE FIX: Lowered the similarity threshold to 0.50 so it stops blocking relevant memories
+        memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.50]
+        
         return "\n".join(memories)
     except Exception as e:
         logger.error(f"Memory Retrieval Error: {e}")
@@ -411,7 +413,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.7.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.8.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
