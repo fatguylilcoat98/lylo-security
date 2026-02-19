@@ -175,7 +175,7 @@ ELITE_USERS = {
     "chris.betatester3@gmail.com": {"tier": "max", "name": "chrissy poo"},
     "chris.betatester4@gmail.com": {"tier": "pro", "name": "chrissy poo pro"},
     "chris.betatester5@gmail.com": {"tier": "elite", "name": "chrissy poo elite"},
-    "chris.betatester6@gmail.com": {"tier": "max", "name": "Beta 6"},
+    "chris.betatester6@gmail.com": {"tier": "max", "name": "Ron"},
     "chris.betatester7@gmail.com": {"tier": "max", "name": "Beta 7"},
     "chris.betatester8@gmail.com": {"tier": "max", "name": "Beta 8"},
     "chris.betatester9@gmail.com": {"tier": "max", "name": "Beta 9"},
