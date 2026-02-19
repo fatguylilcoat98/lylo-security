@@ -1,20 +1,15 @@
-// public/sw.js
-self.addEventListener('push', function(event) {
-  const data = event.data.json();
-  const options = {
+// public/sw.js - THE BACKGROUND BRAIN
+self.addEventListener('push', (e) => {
+  const data = e.data.json();
+  self.registration.showNotification(data.title, {
     body: data.body,
-    icon: '/logo192.png', // Ensure you have a logo in public folder
-    badge: '/badge.png',  // Optional: A small monochrome icon for the status bar
+    icon: '/logo192.png',
     vibrate: [200, 100, 200],
-    data: { url: data.url }
-  };
-  event.waitUntil(self.registration.showNotification(data.title, options));
+    data: { url: data.url || '/' }
+  });
 });
 
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
-  // Open the app when the notification is clicked
-  if (event.notification.data && event.notification.data.url) {
-    event.waitUntil(clients.openWindow(event.notification.data.url));
-  }
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(clients.openWindow(e.notification.data.url));
 });
