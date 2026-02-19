@@ -56,8 +56,6 @@ function ChatInterface({
  const [pushEnabled, setPushEnabled] = useState(false);
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [isEliteUser, setIsEliteUser] = useState(true);
- 
- // --- NEW: SENIOR MODE TOGGLE ---
  const [isSeniorMode, setIsSeniorMode] = useState(false);
  
  // --- REFS ---
@@ -208,7 +206,6 @@ function ChatInterface({
     const lastUserMsg = messages.slice().reverse().find(m => m.sender === 'user')?.content || 'Review my previous messages.';
     const handoffPrompt = `[CRITICAL HANDOFF]: Do NOT give a generic greeting. The user is currently dealing with this specific situation: "${lastUserMsg}". As ${newPersona.name}, give an immediate, step-by-step strategy to resolve this exact issue.`;
     
-    // Pass 'senior' or 'standard' to the backend based on the toggle
     const apiStyle = isSeniorMode ? 'senior' : 'standard';
     const response = await sendChatMessage(handoffPrompt, messages, newPersona.id, userEmail, null, 'en', apiStyle);
     
@@ -255,7 +252,6 @@ function ChatInterface({
   setMessages(prev => [...prev, userMsg]);
 
   try {
-   // Pass 'senior' or 'standard' to the backend based on the toggle
    const apiStyle = isSeniorMode ? 'senior' : 'standard';
    const response = await sendChatMessage(textToSend, messages, activePersona.id, userEmail, selectedImage, 'en', apiStyle);
    
@@ -398,15 +394,18 @@ function ChatInterface({
       <p className="text-gray-500 text-[8px] uppercase tracking-widest font-bold">{messages.length > 0 ? activePersona.serviceLabel : 'Operating System'}</p>
      </div>
      <div className="flex items-center gap-2">
-      {messages.length > 0 ? (
-        <button onClick={handleBackToServices} className="p-3 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
+      {/* THE FIX: Show both buttons when in a chat! */}
+      {messages.length > 0 && (
+        <button onClick={handleBackToServices} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg active:scale-95 transition-all">
           <div className="w-5 h-5 text-white">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </div>
         </button>
-      ) : (
-        <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/20 border border-red-400 rounded-lg animate-pulse"><Shield className="w-5 h-5 text-red-400" /></button>
       )}
+      <button onClick={() => setShowCrisisShield(true)} className="p-2 bg-red-500/20 border border-red-400 rounded-lg animate-pulse">
+        <Shield className="w-5 h-5 text-red-400" />
+      </button>
+
       <div className="text-right">
        <div className="text-white font-bold text-xs uppercase">{userName || 'Owner'}{isEliteUser && <Crown className="w-3 h-3 text-yellow-400 inline ml-1" />}</div>
        <div className="text-[8px] text-gray-400 font-black">SECURE</div>
@@ -528,7 +527,7 @@ function ChatInterface({
      {/* PERMANENT LEGAL DISCLAIMER & VERSIONING */}
      <div className="flex flex-col items-center mt-2 pt-2 border-t border-white/10">
        <div className="w-full flex justify-between items-center mb-1">
-         <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v33.0</p>
+         <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD OS v34.0</p>
          <div className="text-[8px] text-gray-400 uppercase font-bold">{activePersona?.serviceLabel?.split(' ')?.[0] || 'LOADING'} STATUS: ACTIVE</div>
        </div>
        <p className="text-[8px] text-gray-500 text-center leading-tight">
