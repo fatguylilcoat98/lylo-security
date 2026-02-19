@@ -387,6 +387,7 @@ function ChatInterface({
  const [loading, setLoading] = useState(false);
  const [userName, setUserName] = useState<string>('');
  const [intelligenceSync, setIntelligenceSync] = useState(0);
+ const [pushEnabled, setPushEnabled] = useState(false);
  
  // NOTIFICATIONS STATE (Real Intel Drops)
  const [notifications, setNotifications] = useState<string[]>([]);
@@ -439,8 +440,20 @@ function ChatInterface({
 
  useEffect(() => { if (initialPersona) setActivePersona(initialPersona); }, [initialPersona]);
 
- // Init
+// Init
  useEffect(() => {
+  // --- NOTIFICATION ENGINE (LOCK SCREEN PUSH) ---
+  const setupNotifications = async () => {
+    if (!('Notification' in window)) return;
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      setPushEnabled(true);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
+      }
+    }
+  };
+
   const init = async () => {
    const savedAuthToken = localStorage.getItem('lylo_auth_token');
    const savedUserEmail = (localStorage.getItem('lylo_user_email') || userEmail).toLowerCase();
@@ -452,6 +465,30 @@ function ChatInterface({
      console.log('Auto-login successful for:', savedUserEmail);
     }
    }
+
+   // --- MASTER IDENTITY LOCK (RON & MARILYN) ---
+   if (savedUserEmail.includes('stangman')) {
+     setUserName('Christopher');
+   } else if (savedUserEmail.includes('betatester6')) {
+     setUserName('Ron');
+   } else if (savedUserEmail.includes('betatester7')) {
+     setUserName('Marilyn');
+   } else {
+     const savedName = localStorage.getItem('lylo_user_name');
+     if (savedName) setUserName(savedName);
+   }
+
+   // --- INITIALIZE REAL INTEL DROPS ---
+   const activeDrops = Object.keys(REAL_INTEL_DROPS);
+   setNotifications(activeDrops);
+
+   await loadUserStats();
+   await checkEliteStatus();
+  };
+  
+  init();
+  return () => { window.speechSynthesis.cancel(); };
+ }, [userEmail]);
    
    await loadUserStats();
    await checkEliteStatus();
@@ -690,48 +727,46 @@ function ChatInterface({
   }
  };
 
- // --- PERSONA CHANGE & INTEL REVEAL HANDLER ---
+// --- PERSONA CHANGE & WORTHY INTEL REVEAL ---
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (!canAccessPersona(persona, userTier)) {
    speakText('Upgrade required.');
    return;
   }
   
-  // Trigger Bestie Setup if not configured
+  // Bestie Setup Trigger if not configured
   if (persona.id === 'bestie' && !bestieConfig) {
     setTempGender('female');
     setSetupStep('gender');
     setShowBestieSetup(true);
-    return; // Don't switch yet
+    return;
   }
 
-  // --- TRUTHFUL NOTIFICATION REVEAL ---
+  // --- INTERCEPT MISSION-CRITICAL INTEL ---
   const wasNotified = notifications.includes(persona.id);
 
   if (wasNotified) {
-    // 1. Clear the notification badge
+    // 1. Clear badge
     setNotifications(prev => prev.filter(id => id !== persona.id));
     
-    // 2. Inject the REAL intelligence as the opening message
+    // 2. Inject REAL Intelligence (The Worthy Reason)
     const intelMsg: Message = {
       id: Date.now().toString(),
-      content: REAL_INTEL_DROPS[persona.id] || "I've been waiting for you. I have an update on our last topic.",
+      content: REAL_INTEL_DROPS[persona.id] || "Security briefing initialized. I have an update on our last topic.",
       sender: 'bot',
       timestamp: new Date(),
       confidenceScore: 100
     };
     
-    // Reset the chat and show the update immediately
     setMessages([intelMsg]);
-    speakText(intelMsg.content);
+    speakText(intelMsg.content); // Starts speaking the 2026 data immediately
   } else {
-    // Normal behavior: Clear messages and show normal interface
+    // Standard Entry
     setMessages([]);
-    // Normal entry hook
     speakText(persona.spokenHook.replace('{userName}', userName || 'user'));
   }
 
-  // UI Transitions
+  // UI Selection Feedback
   quickStopAllAudio();
   setSelectedPersonaId(persona.id);
   
@@ -740,6 +775,7 @@ function ChatInterface({
    onPersonaChange(persona);
    localStorage.setItem('lylo_preferred_persona', persona.id);
    
+   // Sync and Learning Tracking
    setShowKnowMore(persona.id);
    setTimeout(() => setShowKnowMore(null), 5000);
    setSelectedPersonaId(null);
