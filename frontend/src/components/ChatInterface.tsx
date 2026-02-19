@@ -178,7 +178,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
  // STUTTER-FREE MIC REFS
  const isRecordingRef = useRef(false);
  const accumulatedRef = useRef<string>(''); 
- const inputTextRef = useRef<string>(''); // Absolute Truth for sending
+ const inputTextRef = useRef<string>(''); 
 
  // --- NOTIFICATION ENGINE ---
  const setupNotifications = async () => {
@@ -303,25 +303,36 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   recognition.continuous = true; 
+   
+   // FIX: continuous = false is REQUIRED on Android Chrome to stop the repeating text bug.
+   // We manually loop it via onend to achieve "infinite" recording seamlessly.
+   recognition.continuous = false; 
    recognition.interimResults = true; 
    recognition.lang = 'en-US';
    
    recognition.onresult = (event: any) => {
-    let sessionTranscript = '';
+    let interim = '';
+    let final = '';
     
-    // We grab EVERYTHING from the current recording block and overwrite.
-    // This stops the "duplicate words" bug in Android.
     for (let i = 0; i < event.results.length; ++i) {
-      sessionTranscript += event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
     }
     
-    const fullText = (accumulatedRef.current + ' ' + sessionTranscript).replace(/\s+/g, ' ').trim();
-    setInput(fullText); // For UI
-    inputTextRef.current = fullText; // Absolute Truth for Sending
+    // Append final chunk to the master vault
+    if (final) {
+      accumulatedRef.current += final + ' ';
+    }
+    
+    // Show vault + current thoughts without repeating
+    const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
+    setInput(fullText);
+    inputTextRef.current = fullText;
    };
 
-   // If the OS tries to kill it, ignore errors that aren't hard failures
    recognition.onerror = (event: any) => {
      if (event.error === 'not-allowed' || event.error === 'audio-capture') {
        setIsRecording(false);
@@ -330,12 +341,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
    };
 
    recognition.onend = () => {
-    // If the user DID NOT click stop, force the mic back on seamlessly
+    // INFINITE LOOP: If user hasn't hit stop, instantly start again.
+    // Because continuous is false, this handles the breaks smoothly without duplicating strings.
     if (isRecordingRef.current) {
-      accumulatedRef.current = inputTextRef.current + ' '; // Lock in progress
-      setTimeout(() => {
-        try { recognition.start(); } catch(e) {}
-      }, 10);
+      try { recognition.start(); } catch(e) {}
     }
    };
    
@@ -566,6 +575,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', zoomLev
           </div>
         );
       })}
+      {/* CLEAR ALL BUTTON */}
       {notifications.length > 0 && (
        <div className="col-span-2 mt-4">
         <button onClick={clearAllNotifications} className="w-full py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 hover:bg-red-500/30 transition-all">
