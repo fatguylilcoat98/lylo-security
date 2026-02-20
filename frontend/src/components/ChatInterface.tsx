@@ -105,7 +105,7 @@ const PERSONAS: PersonaConfig[] = [
  { id: 'pastor', name: 'The Pastor', serviceLabel: 'FAITH ANCHOR', description: 'Spiritual Lead', protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.', briefing: 'I provide spiritual counseling.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Prayer', 'Scripture guidance'], fixedVoice: 'onyx' },
  { id: 'vitality', name: 'The Vitality Coach', serviceLabel: 'HEALTH OPTIMIZER', description: 'Fitness & Food', protectiveJob: 'Wellness Lead', spokenHook: 'Let’s optimize your engine. Fuel and movement—what’s the goal today?', briefing: 'I provide workout and meal plans.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Meal planning', 'Habit building'], fixedVoice: 'nova' },
  { id: 'hype', name: 'The Hype Strategist', serviceLabel: 'CREATIVE DIRECTOR', description: 'Viral Specialist', protectiveJob: 'Creative Lead', spokenHook: 'Let’s make some noise! I’m here for hooks, jokes, and viral strategy.', briefing: 'I provide viral content strategy.', color: 'orange', requiredTier: 'pro', icon: Laugh, capabilities: ['Viral hooks', 'Humor'], fixedVoice: 'shimmer' },
- { id: 'bestie', name: 'The Bestie', serviceLabel: 'RIDE OR DIE', description: 'Inner Circle', protectiveJob: 'Loyalty Lead', spokenHook: 'I’ve got your back, 100%. No filters, no judgment. What’s actually going on?', briefing: 'I provide blunt life advice.', color: 'pink', requiredTier: 'pro', icon: Shield, capabilities: ['Venting space', 'Secret keeping'], fixedVoice: 'nova' }
+ { id: 'bestie', name: 'The Bestie', serviceLabel: 'RIDE OR DIE', description: 'Inner Circle', protectiveJob: 'Loyalty Lead', spokenHook: 'I’ve got your back, 100%. No filters, no judgment. What’s actually going on?', briefing: 'I provide blunt life advice.', color: 'pink', requiredTier: 'pro', icon: Heart, capabilities: ['Venting space', 'Secret keeping'], fixedVoice: 'nova' }
 ];
 
 const EXPERT_TRIGGERS: { [key: string]: string[] } = {
@@ -344,6 +344,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   setLoading(false);
  };
 
+ const handleBestieSetupComplete = (voiceId: string) => {
+   const config: BestieConfig = { gender: tempGender, voiceId, vibeLabel: tempGender === 'male' ? 'The Bro' : 'The Bestie' };
+   setBestieConfig(config);
+   localStorage.setItem('lylo_bestie_config', JSON.stringify(config));
+   setShowBestieSetup(false);
+   const bestiePersona = PERSONAS.find(p => p.id === 'bestie');
+   if (bestiePersona) handlePersonaChange(bestiePersona);
+ };
+
  const handleInternalBack = () => {
    setMessages([]);
    setShowPersonaGrid(true);
@@ -458,6 +467,48 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
           </div>
         </div>
         <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl tracking-widest">Return to OS</button>
+      </div>
+    </div>
+   )}
+
+   {/* THE BESTIE SETUP MODAL */}
+   {showBestieSetup && (
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100005] flex items-center justify-center p-4">
+      <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(236,72,153,0.15)] text-center">
+        <Heart className="w-12 h-12 text-pink-400 mx-auto mb-4 fill-current" />
+        <h2 className="text-white font-black text-2xl uppercase tracking-widest mb-2">Build Your Bestie</h2>
+        <p className="text-gray-400 text-sm mb-6">Who do you want in your corner?</p>
+        
+        {setupStep === 'gender' && (
+          <div className="space-y-4">
+            <button onClick={() => { setTempGender('female'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-pink-400 rounded-2xl text-white font-bold transition-all">
+              The Girls (Female)
+            </button>
+            <button onClick={() => { setTempGender('male'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-blue-400 rounded-2xl text-white font-bold transition-all">
+              The Bros (Male)
+            </button>
+          </div>
+        )}
+
+        {setupStep === 'voice' && tempGender === 'female' && (
+          <div className="space-y-3">
+            <p className="text-xs text-pink-300 uppercase tracking-widest font-bold mb-2">Select Her Voice</p>
+            <button onClick={() => handleBestieSetupComplete('nova')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Nova (Warm & Upbeat)</button>
+            <button onClick={() => handleBestieSetupComplete('shimmer')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Shimmer (Clear & Direct)</button>
+            <button onClick={() => handleBestieSetupComplete('alloy')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Alloy (Neutral & Calm)</button>
+          </div>
+        )}
+
+        {setupStep === 'voice' && tempGender === 'male' && (
+          <div className="space-y-3">
+            <p className="text-xs text-blue-300 uppercase tracking-widest font-bold mb-2">Select His Voice</p>
+            <button onClick={() => handleBestieSetupComplete('onyx')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Onyx (Deep & Serious)</button>
+            <button onClick={() => handleBestieSetupComplete('echo')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Echo (Warm & Friendly)</button>
+            <button onClick={() => handleBestieSetupComplete('fable')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Fable (Expressive & British)</button>
+          </div>
+        )}
+
+        <button onClick={() => { setShowBestieSetup(false); setSetupStep('gender'); }} className="mt-6 text-gray-500 text-xs font-bold uppercase">Cancel Setup</button>
       </div>
     </div>
    )}
