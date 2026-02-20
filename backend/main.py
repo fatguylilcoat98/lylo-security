@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.13.0 - ANNUAL BILLING SYNC"
+    version="19.27.0 - VISION MONOLITH"
 )
 
 # Configure CORS
@@ -180,6 +180,7 @@ async def view_waitlist(admin_email: str):
             "emails": list(WAITLIST_DB)
         }
     return {"error": "UNAUTHORIZED ACCESS"}
+
 # ---------------------------------------------------------
 # LOGIC: STRIPE WEBHOOK AUTOMATION (MONTHLY & YEARLY)
 # ---------------------------------------------------------
@@ -407,10 +408,12 @@ async def chat(
     memories = await retrieve_intelligence_sync(user_id, msg) if use_long_term_memory == "true" else ""
     search_intel = await search_personalized_web(msg, user_location) if any(k in msg.lower() for k in ["news","weather","search","price","check","law","code"]) else ""
     indicators = analyze_scam_indicators(msg)
-    p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS["guardian"])
+    
+    p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS.get("guardian", "Security Lead"))
     p_ext = PERSONA_EXTENDED.get(persona, "")
     v_inst = VIBE_STYLES.get(vibe, "")
     hook = get_random_hook(persona)
+    
     image_b64 = None
     if file:
         file_bytes = await file.read()
@@ -421,8 +424,8 @@ async def chat(
     if image_b64:
         visual_directive = """
         CRITICAL VISUAL PROTOCOL: A file/image has been uploaded.
-        You MUST perform immediate technical and visual analysis.
-        Acknowledge visual findings first in your response.
+        You MUST perform immediate technical and visual analysis of the image data.
+        Acknowledge what you see in the photo immediately in your first sentence.
         """
 
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
@@ -438,13 +441,13 @@ async def chat(
     PINECONE VAULT: {vault_status}
     SEARCH INTEL: {search_intel}
     SCAM INDICATORS: {indicators}
-    USER: {user_data['name']}
+    USER: {user_data.get('name', 'User')}
     MESSAGE: {msg}
 
     INSTRUCTIONS:
-    1. If an image is present, prioritize technical/visual analysis.
-    2. Give only specific tactical responses.
-    Output ONLY valid JSON.
+    1. If an image is present, your first priority is a technical and visual analysis of that image data.
+    2. Acknowledge what you see in the photo immediately in your first sentence.
+    3. Output must be valid JSON only.
 
     FORMAT: {{
         "answer": "...",
@@ -453,6 +456,7 @@ async def chat(
         "threat_level": "low/high"
     }}
     """
+
     openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
     gemini_engine = "gemini-1.5-pro" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-1.5-flash"
 
@@ -488,7 +492,7 @@ async def chat(
         "scam_detected": winner.get("scam_detected", False),
         "threat_level": winner.get("threat_level", "low"),
         "persona_hook": hook,
-        "bodyguard_model": winner.get("model", "LYLO-CORE")
+        "bodyguard_model": winner.get("model", "LYLO-CORE"),
     }
 
 # ---------------------------------------------------------
@@ -547,8 +551,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.13.0",
-        "experts_active": len(PERSONA_DEFINITIONS)
+        "version": "19.27.0 - VISION MONOLITH",
     }
 
 if __name__ == "__main__":
