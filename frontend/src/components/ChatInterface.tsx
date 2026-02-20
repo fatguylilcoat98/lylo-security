@@ -172,10 +172,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
  
- // THE 4-STAGE FONT LEVEL
  const [fontLevel, setFontLevel] = useState<number>(1);
- 
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+ const [previewUrl, setPreviewUrl] = useState<string | null>(null); // NEW: Image Preview state
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
 
@@ -216,8 +215,17 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
  }, [messages]);
 
- // --- NEW: SILENT AUDIO FETCHER ---
- // This grabs the audio file *before* we put the text on the screen
+ // --- NEW: PREVIEW LOGIC ---
+ useEffect(() => {
+    if (!selectedImage) {
+        setPreviewUrl(null);
+        return;
+    }
+    const objectUrl = URL.createObjectURL(selectedImage);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+ }, [selectedImage]);
+
  const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
    try {
      const formData = new FormData();
@@ -228,20 +236,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      if (data.audio_b64) {
        return new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
      }
-   } catch (e) {
-     console.error("Audio fetch failed", e);
-   }
+   } catch (e) { console.error("Audio fetch failed", e); }
    return null;
  };
 
- // --- NEW: SYNCHRONIZED PLAYBACK ---
  const playAudioSafely = (audioElement: HTMLAudioElement) => {
-   // Stop any currently playing audio immediately
    if (currentlyPlayingAudioRef.current) {
      currentlyPlayingAudioRef.current.pause();
      currentlyPlayingAudioRef.current.currentTime = 0;
    }
-   
    currentlyPlayingAudioRef.current = audioElement;
    setIsSpeaking(true);
    audioElement.onended = () => setIsSpeaking(false);
@@ -291,71 +294,55 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   const text = inputTextRef.current.trim() || input.trim();
   if (!text && !selectedImage) return;
   
-  setLoading(true); // Start the loading spinner
+  setLoading(true);
   setInput('');
   inputTextRef.current = '';
   accumulatedRef.current = '';
   setShowPersonaGrid(false);
   
-  // Instantly show the user's message
-  const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
+  // Save the current preview URL to the message before clearing state
+  const currentImagePreview = previewUrl;
+
+  const userMsg: Message = { 
+    id: Date.now().toString(), 
+    content: text, 
+    sender: 'user', 
+    timestamp: new Date(),
+    imageUrl: currentImagePreview // --- NEW: Attach preview to message bubble ---
+  };
   setMessages(prev => [...prev, userMsg]);
   
   try {
-   // 1. Get the text answer from the AI
    const response = await sendChatMessage(text, messages, activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
-   
-   // 2. Fetch the audio silently in the background (Loader is still spinning)
    const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
    const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
 
-   // 3. Audio is ready! Drop both the text and the voice on the screen at the EXACT same millisecond.
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
    
-   setMessages(prev => [...prev, botMsg]); // Text hits the screen
-   
-   if (audioToPlay) {
-     playAudioSafely(audioToPlay); // Voice plays instantly
-   }
+   setMessages(prev => [...prev, botMsg]);
+   if (audioToPlay) playAudioSafely(audioToPlay);
 
-  } catch (e) { 
-    console.error(e); 
-  } finally { 
-    setLoading(false); 
-    setSelectedImage(null); 
-  }
+  } catch (e) { console.error(e); } 
+  finally { setLoading(false); setSelectedImage(null); }
  };
 
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
-  
-  // Stop any previous voice immediately
   if (currentlyPlayingAudioRef.current) {
     currentlyPlayingAudioRef.current.pause();
     currentlyPlayingAudioRef.current.currentTime = 0;
   }
-  
   setActivePersona(persona);
   onPersonaChange(persona);
   setShowDropdown(false);
   setShowPersonaGrid(false);
-  
-  setLoading(true); // Show loader during transition
-  
+  setLoading(true);
   const hookText = persona.spokenHook.replace('{userName}', userName);
   const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
-  
-  // Fetch the transition hook audio silently
   const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
-  
-  // Drop text and audio simultaneously
   const hookMsg: Message = { id: Date.now().toString(), content: hookText, sender: 'bot', timestamp: new Date() };
   setMessages([hookMsg]);
-  
-  if (audioToPlay) {
-    playAudioSafely(audioToPlay);
-  }
-  
+  if (audioToPlay) playAudioSafely(audioToPlay);
   setLoading(false);
  };
 
@@ -402,14 +389,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
      <div className="relative flex gap-2 z-10">
-      {/* INTERNAL BACK BUTTON */}
       {!showPersonaGrid && (
         <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
       )}
-      
-      {/* HAMBURGER MENU */}
       <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
         <Menu className="w-5 h-5" />
       </button>
@@ -436,13 +420,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      </div>
 
      <div className="flex items-center gap-2 z-10">
-      {/* USER NAME AND TIER */}
       <div className="flex flex-col items-end justify-center mr-1">
         <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
         <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
       </div>
-
-      {/* THE RED SHIELD EMERGENCY HUB BUTTON */}
       <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
         <Shield className="w-5 h-5 fill-current" />
       </button>
@@ -464,10 +445,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
           </div>
           <button onClick={() => setShowCrisisShield(false)} className="p-2 bg-white/5 rounded-full text-white"><X className="w-6 h-6" /></button>
         </div>
-
         <div className="space-y-4 mb-6">
-          <p className="text-sm text-gray-300">You are currently consulting with <strong>{activePersona.name}</strong>. Here are direct, verified links to official resources regarding this specific sector:</p>
-          
+          <p className="text-sm text-gray-300">Direct resources for <strong>{activePersona.name}</strong>:</p>
           <div className="space-y-3">
             {(CRISIS_LINKS[activePersona.id] || []).map((link, idx) => (
               <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
@@ -480,7 +459,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
             ))}
           </div>
         </div>
-
         <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl tracking-widest">Return to OS</button>
       </div>
     </div>
@@ -519,6 +497,14 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+       
+       {/* --- NEW: RENDER IMAGE IN CHAT BUBBLE --- */}
+       {msg.imageUrl && (
+         <div className="mb-2 max-w-[85%] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+           <img src={msg.imageUrl} alt="Uploaded" className="w-full h-auto object-cover max-h-[300px]" />
+         </div>
+       )}
+
        <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
         {msg.content}
         {msg.sender === 'bot' && msg.confidenceScore && (
@@ -549,7 +535,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      );
     })}
 
-    {/* THE LOADING SPINNER */}
     {loading && (
       <div className="flex justify-start">
         <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex items-center gap-3">
@@ -565,23 +550,29 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
     <div className="max-w-md mx-auto space-y-4">
      
-     {/* MICROPHONE & TEXT SIZE ROW */}
+     {/* --- NEW: PREVIEW AREA ABOVE MIC --- */}
+     {previewUrl && (
+       <div className="flex justify-center mb-2 animate-in slide-in-from-bottom-2">
+         <div className="relative group">
+           <img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500 shadow-2xl" alt="Preview" />
+           <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg">
+             <X className="w-4 h-4" />
+           </button>
+         </div>
+       </div>
+     )}
+
      <div className="flex gap-2 mb-2">
-       {/* TEXT SIZE BUTTON */}
        <button onClick={cycleFontSize} className="w-1/3 py-3 bg-white/5 border border-white/10 rounded-[32px] text-white flex flex-col items-center justify-center shadow-lg hover:bg-white/10 transition-colors">
          <span className="text-xl font-black leading-none">A+</span>
          <span className="text-[8px] uppercase tracking-widest font-bold mt-1 text-gray-400">Text Size</span>
        </button>
-       
-       {/* ENGAGE VOICE LINK BUTTON */}
        <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
         {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
        </button>
      </div>
      
-     {/* TEXT INPUT & CAMERA ROW */}
      <div className="flex gap-2">
-      {/* CAMERA MENU SYSTEM */}
       <div className="relative">
         <button onClick={() => setShowCameraMenu(!showCameraMenu)} disabled={loading} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50">
           <Camera className="w-6 h-6" />
@@ -599,7 +590,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
         )}
       </div>
 
-      {/* HIDDEN INPUTS */}
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       
