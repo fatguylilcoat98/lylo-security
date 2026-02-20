@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.11.0 - THE SOFT UPSELL"
+    version="19.13.0 - ANNUAL BILLING SYNC"
 )
 
 # Configure CORS
@@ -183,7 +183,7 @@ async def view_waitlist(admin_email: str):
     return {"error": "UNAUTHORIZED ACCESS"}
 
 # ---------------------------------------------------------
-# LOGIC: STRIPE WEBHOOK AUTOMATION
+# LOGIC: STRIPE WEBHOOK AUTOMATION (MONTHLY & YEARLY)
 # ---------------------------------------------------------
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
@@ -208,10 +208,13 @@ async def stripe_webhook(request: Request):
             email_lower = customer_email.lower().strip()
             
             new_tier = "free"
-            if amount_total == 199:
+            # PRO: 1.99 Monthly OR 19.99 Yearly
+            if amount_total in [199, 1999]:
                 new_tier = "pro"
-            elif amount_total == 499:
+            # ELITE: 4.99 Monthly OR 49.99 Yearly
+            elif amount_total in [499, 4999]:
                 new_tier = "elite"
+            # MAX: 9.99 Monthly OR 99.99+ Yearly
             elif amount_total >= 999:
                 new_tier = "max"
                 
@@ -390,7 +393,6 @@ async def chat(
         }
         upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
         
-        # We return it as a high-confidence bot message so it renders perfectly in the UI
         return {
             "answer": upsell_msg, 
             "confidence_score": 100, 
@@ -487,7 +489,7 @@ async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
     if not openai_client: return {"error": "Voice offline"}
     try:
         clean_text = text.replace("**", "").replace("#", "").strip()
-        response = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean_text[:600])
+        response = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean_text[:4000])
         return {"audio_b64": base64.b64encode(response.content).decode('utf-8')}
     except Exception as e: return {"error": str(e)}
 
@@ -510,7 +512,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.11.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.13.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
