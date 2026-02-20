@@ -15,8 +15,8 @@ const Gatekeeper = ({ children }: { children: React.ReactNode }) => {
     const userEmail = localStorage.getItem('userEmail');
     
     if (!userEmail) {
-      // UNAUTHORIZED: Eject them immediately to the main website
-      window.location.assign('https://lylo.pro');
+      // UNAUTHORIZED: Eject them immediately to the correct main website
+      window.location.assign('https://mylylo.pro');
     } else {
       // AUTHORIZED: Let them pass
       setIsAuthorized(true);
