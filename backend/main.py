@@ -450,7 +450,9 @@ async def chat(
         memories = await retrieve_intelligence_sync(user_id, msg)
 
     search_intel = ""
-    if any(k in msg.lower() for k in ["news", "weather", "search", "price", "check", "law", "code"]):
+    # THE UPGRADED TAVILY TRIGGER
+    search_keywords = ["news", "weather", "search", "price", "check", "law", "code", "today", "now", "current", "date", "latest", "recent", "2026", "update"]
+    if any(k in msg.lower() for k in search_keywords):
         search_intel = await search_personalized_web(msg, user_location)
 
     indicators = analyze_scam_indicators(msg)
@@ -480,10 +482,14 @@ async def chat(
 
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
 
+    # --- THE LIVE CLOCK INJECTION ---
+    current_real_time = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
+
     # --- UPDATED PROMPT INTEGRATION ---
     full_prompt = f"""
     GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational strategy simulation. Speak exactly like the expert defined below.
     {visual_directive}
+    CURRENT REAL-TIME DATE: {current_real_time}
     IDENTITY: {p_def}
     HOOK: "{hook}"
     STYLE: {v_inst}
@@ -495,8 +501,10 @@ async def chat(
     MESSAGE: {msg}
 
     INSTRUCTIONS:
-    1. If an image is present, your first priority is a technical and visual analysis of that image data.
-    2. Give only specific and tactical responses—output must be valid JSON only.
+    1. It is currently {current_real_time}. NEVER claim your knowledge is cut off in an old year.
+    2. If SEARCH INTEL contains recent information, you MUST prioritize it over your internal training data.
+    3. If an image is present, your first priority is a technical and visual analysis of that image data.
+    4. Give only specific and tactical responses—output must be valid JSON only.
 
     FORMAT: {{
         "answer": "...",
