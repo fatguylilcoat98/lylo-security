@@ -171,6 +171,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showCameraMenu, setShowCameraMenu] = useState(false);
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
+ 
+ // THE 4-STAGE FONT LEVEL (1=Standard, 2=Large, 3=Huge, 4=Massive)
+ const [fontLevel, setFontLevel] = useState<number>(1);
+ 
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
@@ -199,6 +203,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   
   const savedStyle = localStorage.getItem('lylo_communication_style');
   if (savedStyle) setCommunicationStyle(savedStyle);
+
+  const savedFont = localStorage.getItem('lylo_font_level');
+  if (savedFont) setFontLevel(parseInt(savedFont, 10));
 
   const allDrops = Object.keys(REAL_INTEL_DROPS);
   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
@@ -303,14 +310,33 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    window.speechSynthesis.cancel();
  };
 
- const toggleFontSize = () => {
-   const newStyle = communicationStyle === 'senior' ? 'standard' : 'senior';
-   setCommunicationStyle(newStyle);
-   localStorage.setItem('lylo_communication_style', newStyle);
+ // THE 4-STAGE CYCLE FUNCTION
+ const cycleFontSize = () => {
+   const nextLevel = fontLevel >= 4 ? 1 : fontLevel + 1;
+   setFontLevel(nextLevel);
+   localStorage.setItem('lylo_font_level', nextLevel.toString());
  };
 
+ // DYNAMIC TAILWIND CLASS GENERATOR BASED ON LEVEL
  const getDynamicFontSize = () => {
-   return communicationStyle === 'senior' ? 'text-2xl leading-relaxed tracking-wide' : 'text-sm';
+   switch(fontLevel) {
+     case 1: return 'text-sm leading-normal';
+     case 2: return 'text-lg leading-relaxed';
+     case 3: return 'text-2xl leading-relaxed tracking-wide';
+     case 4: return 'text-4xl leading-loose tracking-wide font-black'; // 4x Massive
+     default: return 'text-sm leading-normal';
+   }
+ };
+
+ // Cap the input box size so it doesn't break the layout on massive
+ const getInputFontSize = () => {
+   switch(fontLevel) {
+     case 1: return 'text-sm';
+     case 2: return 'text-lg';
+     case 3: return 'text-xl';
+     case 4: return 'text-2xl'; 
+     default: return 'text-sm';
+   }
  };
 
  return (
@@ -319,7 +345,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    {/* HEADER */}
    <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
-     <div className="relative flex gap-2">
+     <div className="relative flex gap-2 z-10">
       {/* INTERNAL BACK BUTTON */}
       {!showPersonaGrid && (
         <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
@@ -334,10 +360,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
         <div className="mb-6">
-          <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style & Display</p>
+          <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style</p>
           <select value={communicationStyle} onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }} className="w-full bg-white/10 text-white p-3 rounded-xl font-bold mb-4">
-            <option value="standard">Standard Text</option>
-            <option value="senior">Large Text (Senior Friendly)</option>
+            <option value="standard">Standard Tone</option>
             <option value="business">Business Professional</option>
             <option value="roast">Roast Mode</option>
           </select>
@@ -347,24 +372,19 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       )}
      </div>
      
-     <div className="text-center absolute left-1/2 -translate-x-1/2">
+     <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
       <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">
         L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
       </h1>
-      <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1">{activePersona.serviceLabel}</p>
+      <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
      </div>
 
-     <div className="flex items-center gap-3">
-      {/* USER NAME AND TIER - Moved here per request */}
-      <div className="text-right hidden sm:block">
-        <p className="text-white font-black text-xs uppercase leading-none">{userName}</p>
-        <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier} TIER</p>
+     <div className="flex items-center gap-2 z-10">
+      {/* USER NAME AND TIER - Forced visible on Mobile */}
+      <div className="flex flex-col items-end justify-center mr-1">
+        <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
+        <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
       </div>
-
-      {/* QUICK FONT TOGGLE */}
-      <button onClick={toggleFontSize} className="w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 rounded-xl text-white font-black text-sm hover:bg-white/10 transition-colors">
-        A+
-      </button>
 
       {/* THE RED SHIELD EMERGENCY HUB BUTTON */}
       <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
@@ -477,14 +497,26 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    {/* FOOTER */}
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
     <div className="max-w-md mx-auto space-y-4">
-     <button onClick={handleWalkieTalkieMic} className={`w-full py-5 rounded-[32px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'}`}>
-      {isRecording ? <><MicOff className="w-6 h-6"/> STOP & SEND</> : <><Mic className="w-6 h-6"/> ENGAGE VOICE LINK</>}
-     </button>
      
+     {/* MICROPHONE & TEXT SIZE ROW */}
+     <div className="flex gap-2 mb-2">
+       {/* TEXT SIZE BUTTON */}
+       <button onClick={cycleFontSize} className="w-1/3 py-3 bg-white/5 border border-white/10 rounded-[32px] text-white flex flex-col items-center justify-center shadow-lg hover:bg-white/10 transition-colors">
+         <span className="text-xl font-black leading-none">A+</span>
+         <span className="text-[8px] uppercase tracking-widest font-bold mt-1 text-gray-400">Text Size</span>
+       </button>
+       
+       {/* ENGAGE VOICE LINK BUTTON */}
+       <button onClick={handleWalkieTalkieMic} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'}`}>
+        {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
+       </button>
+     </div>
+     
+     {/* TEXT INPUT & CAMERA ROW */}
      <div className="flex gap-2">
       {/* CAMERA MENU SYSTEM */}
       <div className="relative">
-        <button onClick={() => setShowCameraMenu(!showCameraMenu)} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors">
+        <button onClick={() => setShowCameraMenu(!showCameraMenu)} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center">
           <Camera className="w-6 h-6" />
         </button>
         {showCameraMenu && (
@@ -504,9 +536,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       
-      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-6 py-5 ${communicationStyle === 'senior' ? 'text-xl' : 'text-sm'} text-white outline-none font-bold`} />
+      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0`} />
       
-      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors">
+      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center">
         <ArrowRight className="w-6 h-6" />
       </button>
      </div>
