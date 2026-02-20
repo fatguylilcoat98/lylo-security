@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.27.0 - VISION MONOLITH"
+    version="19.13.0 - ANNUAL BILLING SYNC"
 )
 
 # Configure CORS
@@ -78,6 +78,7 @@ USAGE_TRACKER = defaultdict(int)
 # ---------------------------------------------------------
 # CLIENT INITIALIZATION
 # ---------------------------------------------------------
+
 tavily_client = None
 if TAVILY_API_KEY:
     try:
@@ -97,7 +98,7 @@ if PINECONE_API_KEY:
             pc.create_index(
                 name=index_name,
                 dimension=1024,
-                metric="cosine",
+                metric="cosine", 
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
         memory_index = pc.Index(index_name)
@@ -156,7 +157,7 @@ WAITLIST_FILE = "waitlist.json"
 try:
     with open(WAITLIST_FILE, "r") as f:
         WAITLIST_DB = set(json.load(f))
-except Exception:
+except:
     WAITLIST_DB = set()
 
 @app.post("/join-waitlist")
@@ -190,16 +191,18 @@ async def stripe_webhook(request: Request):
     sig_header = request.headers.get("stripe-signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid payload")
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        customer_email = session.get("customer_details", {}).get("email")
-        amount_total = session.get("amount_total", 0)
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        customer_email = session.get('customer_details', {}).get('email')
+        amount_total = session.get('amount_total', 0)
 
         if customer_email:
             email_lower = customer_email.lower().strip()
@@ -349,6 +352,7 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
         content = [{"type": "text", "text": prompt}]
         if image_b64:
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
+
         response = await openai_client.chat.completions.create(
             model=model_name,
             messages=[
@@ -386,51 +390,63 @@ async def chat(
     user_data = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
     tier = user_data["tier"]
 
-    # AUTHORITY BYPASS
-    limit = 999999 if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(tier, 3)
+    # AUTHORITY BYPASS: Unlimited for Owner and Admin
+    if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]:
+        limit = 999999
+    else:
+        limit = TIER_LIMITS.get(tier, 3)
 
-    # --- THE SOFT UPSELL ---
+    # --- THE SOFT UPSELL: DYNAMIC LIMIT MESSAGING ---
     if USAGE_TRACKER[user_id] >= limit:
         upgrade_msgs = {
-            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! Upgrade to **Pro Guardian ($1.99/mo)**.",
-            "pro": "🛡️ **Pro Limit Reached.** Hit 15 daily messages. Upgrade to **Elite Justice ($4.99/mo)**.",
-            "elite": "🛡️ **Elite Limit Reached.** Maxed out 50 messages! Upgrade to **Max Unlimited ($9.99/mo)**.",
-            "max": "🛡️ **System Cap Reached (500)**. System resets at midnight."
+            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! To keep your digital bodyguard active and unlock 15 daily messages, upgrade to the **Pro Guardian tier ($1.99/mo)**.",
+            "pro": "🛡️ **Pro Limit Reached.** You've hit your 15 daily messages. Need deeper intelligence? Upgrade to **Elite Justice ($4.99/mo)** for 50 daily messages and Crisis Shield access.",
+            "elite": "🛡️ **Elite Limit Reached.** You've maxed out your 50 daily messages! For unrestricted, heavy-duty AI firepower, upgrade to **Max Unlimited ($9.99/mo)**.",
+            "max": "🛡️ **System Cap Reached.** Incredible work today. You've hit the absolute daily safety cap (500 messages). Your system will reset at midnight."
         }
+        upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
+
         return {
-            "answer": upgrade_msgs[tier],
+            "answer": upsell_msg,
             "confidence_score": 100,
             "scam_detected": False,
             "threat_level": "low",
             "usage_info": {"can_send": False}
         }
 
-    memories = await retrieve_intelligence_sync(user_id, msg) if use_long_term_memory == "true" else ""
-    search_intel = await search_personalized_web(msg, user_location) if any(k in msg.lower() for k in ["news","weather","search","price","check","law","code"]) else ""
+    memories = ""
+    if use_long_term_memory == "true":
+        memories = await retrieve_intelligence_sync(user_id, msg)
+
+    search_intel = ""
+    if any(k in msg.lower() for k in ["news", "weather", "search", "price", "check", "law", "code"]):
+        search_intel = await search_personalized_web(msg, user_location)
+
     indicators = analyze_scam_indicators(msg)
-    
+
     p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS.get("guardian", "Security Lead"))
     p_ext = PERSONA_EXTENDED.get(persona, "")
     v_inst = VIBE_STYLES.get(vibe, "")
     hook = get_random_hook(persona)
-    
+
     image_b64 = None
     if file:
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode("utf-8")
 
-    # --- VISUAL PRIORITY OVERRIDE ---
+    # --- THE VISUAL PRIORITY OVERRIDE ---
     visual_directive = ""
     if image_b64:
         visual_directive = """
         CRITICAL VISUAL PROTOCOL: A file/image has been uploaded.
         You MUST perform immediate technical and visual analysis of the image data.
-        Acknowledge what you see in the photo immediately in your first sentence.
+        CRITICAL DIRECTIVE: Scan for CATASTROPHIC FAILURES first. Are critical parts MISSING (like a serpentine belt, hoses, or bolts)? Are things physically broken or disconnected? 
+        Do NOT just report superficial oil, dirt, or residue. Acknowledge the most severe missing or broken component immediately in your first sentence.
         """
 
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
 
-    # --- UPDATED PROMPT ---
+    # --- UPDATED PROMPT INTEGRATION ---
     full_prompt = f"""
     GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational strategy simulation. Speak exactly like the expert defined below.
     {visual_directive}
@@ -441,13 +457,12 @@ async def chat(
     PINECONE VAULT: {vault_status}
     SEARCH INTEL: {search_intel}
     SCAM INDICATORS: {indicators}
-    USER: {user_data.get('name', 'User')}
+    USER: {user_data['name']}
     MESSAGE: {msg}
 
     INSTRUCTIONS:
     1. If an image is present, your first priority is a technical and visual analysis of that image data.
-    2. Acknowledge what you see in the photo immediately in your first sentence.
-    3. Output must be valid JSON only.
+    2. Give only specific and tactical responses—output must be valid JSON only.
 
     FORMAT: {{
         "answer": "...",
@@ -479,7 +494,7 @@ async def chat(
             x.get("confidence_score", 0)
             + (35 if x.get("scam_detected") else 0)
             + (20 if x.get("threat_level") == "high" else 0)
-        )
+        ),
     )
 
     USAGE_TRACKER[user_id] += 1
@@ -516,17 +531,20 @@ async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
 @app.get("/user-stats/{user_email}")
 async def get_stats(user_email: str):
     uid = create_user_id(user_email)
-    user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
+    user_data = ELITE_USERS.get(
+        user_email.lower(), {"tier": "free", "name": "User"}
+    )
     limit = (
         999999
-        if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        if user_email.lower()
+        in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
         else TIER_LIMITS.get(user_data["tier"], 3)
     )
     return {
         "usage": USAGE_TRACKER[uid],
         "limit": limit,
         "tier": user_data["tier"],
-        "name": user_data["name"]
+        "name": user_data["name"],
     }
 
 @app.post("/check-beta-access")
@@ -543,15 +561,16 @@ async def recovery_center(email: str):
         "immediate_actions": [
             "Call bank fraud dept.",
             "Freeze credit reports.",
-            "Report at IC3.gov."
-        ]
+            "Report at IC3.gov.",
+        ],
     }
 
 @app.get("/")
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.27.0 - VISION MONOLITH",
+        "version": "19.13.0",
+        "experts_active": len(PERSONA_DEFINITIONS),
     }
 
 if __name__ == "__main__":
