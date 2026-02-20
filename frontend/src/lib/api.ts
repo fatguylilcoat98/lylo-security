@@ -1,6 +1,6 @@
 /**
  * LYLO DIGITAL BODYGUARD - API CLIENT LIBRARY
- * Version: 17.6.1 (Total Memory Lock & Christopher Sync)
+ * Version: 17.6.2 (Total Memory Lock & Image Build Fix)
  */
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -13,6 +13,7 @@ export interface Message {
   confidenceScore?: number;
   scamDetected?: boolean;
   scamIndicators?: string[];
+  imageUrl?: string | null; // FIXED: Added for image rendering in conversation
 }
 
 export interface ChatResponse {
@@ -56,7 +57,8 @@ export const sendChatMessage = async (
   userEmail: string,
   imageFile?: File | null,
   language: string = 'en',
-  vibe: string = 'standard'
+  vibe: string = 'standard',
+  communicationStyle: string = 'standard' // Added for UI sync
 ): Promise<ChatResponse> => {
   try {
     const formData = new FormData();
@@ -66,12 +68,15 @@ export const sendChatMessage = async (
     formData.append('user_email', userEmail);
     formData.append('language', language);
     formData.append('vibe', vibe); 
+    formData.append('communication_style', communicationStyle);
     
-    // THE TRUTH LOCK: This forces the backend to search Pinecone before answering.
+    // THE TRUTH LOCK: Forces Pinecone search
     formData.append('use_long_term_memory', 'true'); 
     formData.append('force_christopher_sync', 'true');
 
-    if (imageFile) formData.append('file', imageFile);
+    if (imageFile) {
+      formData.append('file', imageFile);
+    }
 
     const response = await fetch(`${API_URL}/chat`, {
       method: 'POST',
@@ -93,7 +98,7 @@ export const sendChatMessage = async (
 };
 
 export const getUserStats = async (email: string): Promise<UserStats> => {
-  const response = await fetch(`${API_URL}/user-stats/${email}`);
+  const response = await fetch(`${API_URL}/user-stats/${encodeURIComponent(email)}`);
   if (!response.ok) throw new Error('Failed to fetch stats');
   return await response.json();
 };
@@ -120,7 +125,7 @@ export const saveQuiz = async (userEmail: string, answers: QuizAnswers) => {
 };
 
 export const getScamRecoveryGuide = async (email: string) => {
-  const response = await fetch(`${API_URL}/scam-recovery/${email}`);
+  const response = await fetch(`${API_URL}/scam-recovery/${encodeURIComponent(email)}`);
   if (!response.ok) throw new Error('Recovery guide access denied');
   return await response.json();
 };
