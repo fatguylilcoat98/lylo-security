@@ -5,7 +5,8 @@ import {
  Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, Phone, CreditCard, 
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
  StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
- Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink
+ Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink,
+ Menu, Image as ImageIcon, Camera as CameraIcon
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -167,6 +168,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [isRecording, setIsRecording] = useState(false);
  const [isSpeaking, setIsSpeaking] = useState(false);
  const [showDropdown, setShowDropdown] = useState(false);
+ const [showCameraMenu, setShowCameraMenu] = useState(false);
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -174,7 +176,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
 
  const chatContainerRef = useRef<HTMLDivElement>(null);
- const fileInputRef = useRef<HTMLInputElement>(null);
+ const fileInputRef = useRef<HTMLInputElement>(null); // For Gallery
+ const photoInputRef = useRef<HTMLInputElement>(null); // For Native Camera
  const recognitionRef = useRef<any>(null);
  const isRecordingRef = useRef(false);
  const shouldSendRef = useRef(false);
@@ -183,9 +186,13 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
-  if (emailRaw.includes('stangman')) setUserName('Christopher');
-  else if (emailRaw.includes('betatester6')) setUserName('Ron');
-  else if (emailRaw.includes('betatester7')) setUserName('Marilyn');
+  const storedName = localStorage.getItem('userName');
+  const storedTier = localStorage.getItem('userTier') as any;
+  
+  if (storedName) setUserName(storedName);
+  else if (emailRaw.includes('stangman')) setUserName('Christopher');
+  
+  if (storedTier) setUserTier(storedTier);
 
   const savedBestie = localStorage.getItem('lylo_bestie_config');
   if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
@@ -290,14 +297,18 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   speakText(hook, persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice);
  };
 
- // THE BACK BUTTON FIX: Wipes current chat and returns to Persona Grid without leaving app
  const handleInternalBack = () => {
    setMessages([]);
    setShowPersonaGrid(true);
    window.speechSynthesis.cancel();
  };
 
- // THE FONT MAGNIFIER: Massively increased the text size and line height for Senior mode
+ const toggleFontSize = () => {
+   const newStyle = communicationStyle === 'senior' ? 'standard' : 'senior';
+   setCommunicationStyle(newStyle);
+   localStorage.setItem('lylo_communication_style', newStyle);
+ };
+
  const getDynamicFontSize = () => {
    return communicationStyle === 'senior' ? 'text-2xl leading-relaxed tracking-wide' : 'text-sm';
  };
@@ -316,12 +327,15 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
         </button>
       )}
       
-      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white"><Settings className="w-5 h-5" /></button>
+      {/* HAMBURGER MENU */}
+      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
         <div className="mb-6">
           <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style & Display</p>
-          <select value={communicationStyle} onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }} className="w-full bg-white/10 text-white p-3 rounded-xl font-bold">
+          <select value={communicationStyle} onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }} className="w-full bg-white/10 text-white p-3 rounded-xl font-bold mb-4">
             <option value="standard">Standard Text</option>
             <option value="senior">Large Text (Senior Friendly)</option>
             <option value="business">Business Professional</option>
@@ -341,6 +355,17 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      </div>
 
      <div className="flex items-center gap-3">
+      {/* USER NAME AND TIER - Moved here per request */}
+      <div className="text-right hidden sm:block">
+        <p className="text-white font-black text-xs uppercase leading-none">{userName}</p>
+        <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier} TIER</p>
+      </div>
+
+      {/* QUICK FONT TOGGLE */}
+      <button onClick={toggleFontSize} className="w-10 h-10 flex items-center justify-center bg-white/5 border border-white/10 rounded-xl text-white font-black text-sm hover:bg-white/10 transition-colors">
+        A+
+      </button>
+
       {/* THE RED SHIELD EMERGENCY HUB BUTTON */}
       <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
         <Shield className="w-5 h-5 fill-current" />
@@ -455,12 +480,37 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      <button onClick={handleWalkieTalkieMic} className={`w-full py-5 rounded-[32px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'}`}>
       {isRecording ? <><MicOff className="w-6 h-6"/> STOP & SEND</> : <><Mic className="w-6 h-6"/> ENGAGE VOICE LINK</>}
      </button>
+     
      <div className="flex gap-2">
-      <button onClick={() => fileInputRef.current?.click()} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400"><Camera className="w-6 h-6" /></button>
+      {/* CAMERA MENU SYSTEM */}
+      <div className="relative">
+        <button onClick={() => setShowCameraMenu(!showCameraMenu)} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors">
+          <Camera className="w-6 h-6" />
+        </button>
+        {showCameraMenu && (
+          <div className="absolute bottom-16 left-0 bg-[#111] border border-white/10 rounded-2xl p-2 min-w-[180px] shadow-2xl z-[100003] animate-in slide-in-from-bottom-2">
+            <button onClick={() => { photoInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
+              <CameraIcon className="w-5 h-5 text-blue-400" /> Take Photo
+            </button>
+            <div className="h-px w-full bg-white/5 my-1"></div>
+            <button onClick={() => { fileInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
+              <ImageIcon className="w-5 h-5 text-purple-400" /> Upload Image
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* HIDDEN INPUTS */}
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+      <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+      
       <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-6 py-5 ${communicationStyle === 'senior' ? 'text-xl' : 'text-sm'} text-white outline-none font-bold`} />
-      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl"><ArrowRight className="w-6 h-6" /></button>
+      
+      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors">
+        <ArrowRight className="w-6 h-6" />
+      </button>
      </div>
+     
      <div className="flex items-center justify-between pt-2 border-t border-white/10">
       <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest">
         <AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.
