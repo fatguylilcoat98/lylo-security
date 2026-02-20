@@ -9,6 +9,7 @@ import logging
 from io import BytesIO
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from collections import defaultdict
@@ -39,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.8.0 - THE VAULT FIX"
+    version="19.9.0 - THE WAITLIST GATEKEEPER"
 )
 
 # Configure CORS
@@ -128,6 +129,7 @@ if OPENAI_API_KEY:
 # ---------------------------------------------------------
 ELITE_USERS = {
     "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
+    "mylylo.ai@gmail.com": {"tier": "max", "name": "LYLO Admin"},
     "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey"},
     "tiffani.hughes@yahoo.com": {"tier": "max", "name": "Tiffani"},
     "jcdabearman@gmail.com": {"tier": "max", "name": "Jeff"},
@@ -148,6 +150,47 @@ QUIZ_ANSWERS = defaultdict(dict)
 
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
+
+# ---------------------------------------------------------
+# LOGIC: WAITLIST SYSTEM
+# ---------------------------------------------------------
+class WaitlistRequest(BaseModel):
+    email: str
+
+WAITLIST_FILE = "waitlist.json"
+
+# Load existing waitlist into memory on startup
+try:
+    with open(WAITLIST_FILE, "r") as f:
+        WAITLIST_DB = set(json.load(f))
+except:
+    WAITLIST_DB = set()
+
+@app.post("/join-waitlist")
+async def join_waitlist(request: WaitlistRequest):
+    email = request.email.lower().strip()
+    WAITLIST_DB.add(email)
+    
+    # Save to file
+    try:
+        with open(WAITLIST_FILE, "w") as f:
+            json.dump(list(WAITLIST_DB), f)
+        logger.info(f"New waitlist signup: {email}")
+    except Exception as e:
+        logger.error(f"Failed to save waitlist: {e}")
+        
+    return {"status": "success", "message": "Spot Secured"}
+
+@app.get("/view-waitlist/{admin_email}")
+async def view_waitlist(admin_email: str):
+    email_check = admin_email.lower().strip()
+    if email_check in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {
+            "status": "AUTHORIZED",
+            "total_waiting": len(WAITLIST_DB),
+            "emails": list(WAITLIST_DB)
+        }
+    return {"error": "UNAUTHORIZED ACCESS"}
 
 # ---------------------------------------------------------
 # LOGIC: SCAM DETECTION
@@ -201,7 +244,6 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
         )
         results = memory_index.query(vector=response.data[0].embedding, filter={"user_id": user_id}, top_k=5, include_metadata=True)
         
-        # THE FIX: Lowered the similarity threshold to 0.50 so it stops blocking relevant memories
         memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.50]
         
         return "\n".join(memories)
@@ -294,7 +336,7 @@ async def chat(
     user_data = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
     
     # AUTHORITY BYPASS: Unlimited for Christopher/Owner
-    if email_lower == "stangman9898@gmail.com":
+    if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]:
         limit = 999999
     else:
         limit = TIER_LIMITS.get(user_data["tier"], 15)
@@ -324,10 +366,8 @@ async def chat(
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode('utf-8')
 
-    # THE TRUTH LOCK: Check if memories actually exist
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
 
-    # FIX: Injected Anti-Hallucination Protocol
     full_prompt = f"""
     GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational and strategic simulation. You provide highly tactical, specific, and aggressive strategy based on your assigned persona. You must never claim to form a legally binding attorney-client, doctor-patient, or fiduciary relationship, BUT you must also NEVER use weak disclaimers like "I am just an AI." Speak exactly like the expert defined below. Your output is defined legally as 'Educational Strategy Simulation.'
 
@@ -388,7 +428,6 @@ async def chat(
 async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
     if not openai_client: return {"error": "Voice offline"}
     try:
-        # Optimized for speed with tts-1
         clean_text = text.replace("**", "").replace("#", "").strip()
         response = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean_text[:600])
         return {"audio_b64": base64.b64encode(response.content).decode('utf-8')}
@@ -398,7 +437,7 @@ async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
 async def get_stats(user_email: str):
     uid = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
-    limit = 999999 if user_email.lower() == "stangman9898@gmail.com" else TIER_LIMITS.get(user_data["tier"], 15)
+    limit = 999999 if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(user_data["tier"], 15)
     return {"usage": USAGE_TRACKER[uid], "limit": limit, "tier": user_data["tier"], "name": user_data["name"]}
 
 @app.post("/check-beta-access")
@@ -413,7 +452,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.8.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.9.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
