@@ -106,6 +106,19 @@ const PERSONAS: PersonaConfig[] = [
  { id: 'bestie', name: 'The Bestie', serviceLabel: 'RIDE OR DIE', description: 'Inner Circle', protectiveJob: 'Loyalty Lead', spokenHook: 'I’ve got your back, 100%. No filters, no judgment. What’s actually going on?', briefing: 'I provide blunt life advice.', color: 'pink', requiredTier: 'pro', icon: Heart, capabilities: ['Venting space', 'Secret keeping'], fixedVoice: 'nova' }
 ];
 
+const EXPERT_TRIGGERS: { [key: string]: string[] } = {
+ 'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech'],
+ 'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'evicted', 'notice'],
+ 'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor'],
+ 'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$', '180'],
+ 'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental'],
+ 'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise'],
+ 'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school'],
+ 'pastor': ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith', 'spiritual'],
+ 'hype': ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content', 'social media'],
+ 'career': ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired', 'employer']
+};
+
 const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 'bg' | 'text' = 'border') => {
  const colorMap: any = {
   blue: { border: 'border-blue-400', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]', bg: 'bg-blue-500', text: 'text-blue-400' },
@@ -116,10 +129,27 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
   purple: { border: 'border-purple-400', glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]', bg: 'bg-purple-500', text: 'text-purple-400' },
   indigo: { border: 'border-indigo-400', glow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]', bg: 'bg-indigo-500', text: 'text-indigo-400' },
   pink: { border: 'border-pink-400', glow: 'shadow-[0_0_20px_rgba(236,72,153,0.3)]', bg: 'bg-pink-500', text: 'text-pink-400' },
-  red: { border: 'border-red-400', glow: 'shadow-[0_0_20_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
+  red: { border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
   green: { border: 'border-green-400', glow: 'shadow-[0_0_20px_rgba(34,197,94,0.3)]', bg: 'bg-green-500', text: 'text-green-400' }
  };
  return colorMap[persona.color]?.[type] || colorMap.blue[type];
+};
+
+const canAccessPersona = (persona: PersonaConfig, tier: string) => {
+ const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
+ return (tiers[tier] || 0) >= tiers[persona.requiredTier];
+};
+
+const detectExpertSuggestion = (text: string, currentId: string, userTier: string): PersonaConfig | null => {
+  const lower = text.toLowerCase();
+  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
+    if (id === currentId) continue;
+    if (keywords.some(k => lower.includes(k))) {
+      const expert = PERSONAS.find(p => p.id === id);
+      if (expert && canAccessPersona(expert, userTier)) return expert;
+    }
+  }
+  return null;
 };
 
 function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {} }: ChatInterfaceProps) {
@@ -139,6 +169,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showCameraMenu, setShowCameraMenu] = useState(false);
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
+ 
  const [fontLevel, setFontLevel] = useState<number>(1);
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -158,15 +189,21 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   const emailRaw = userEmail.toLowerCase();
   const storedName = localStorage.getItem('userName');
   const storedTier = localStorage.getItem('userTier') as any;
+  
   if (storedName) setUserName(storedName);
   else if (emailRaw.includes('stangman')) setUserName('Christopher');
+  
   if (storedTier) setUserTier(storedTier);
+
   const savedBestie = localStorage.getItem('lylo_bestie_config');
   if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
+  
   const savedStyle = localStorage.getItem('lylo_communication_style');
   if (savedStyle) setCommunicationStyle(savedStyle);
+
   const savedFont = localStorage.getItem('lylo_font_level');
   if (savedFont) setFontLevel(parseInt(savedFont, 10));
+
   const allDrops = Object.keys(REAL_INTEL_DROPS);
   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
   setNotifications(allDrops.filter(id => !cleared.includes(id)).sort(() => 0.5 - Math.random()).slice(0, 3));
@@ -177,32 +214,43 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  }, [messages]);
 
  useEffect(() => {
-    if (!selectedImage) { setPreviewUrl(null); return; }
+    if (!selectedImage) {
+        setPreviewUrl(null);
+        return;
+    }
     const objectUrl = URL.createObjectURL(selectedImage);
     setPreviewUrl(objectUrl);
  }, [selectedImage]);
 
- // --- ECHO KILLER LOGIC ---
+ const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
+   try {
+     const formData = new FormData();
+     formData.append('text', text);
+     formData.append('voice', voice || 'onyx');
+     const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
+     const data = await response.json();
+     if (data.audio_b64) {
+       return new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
+     }
+   } catch (e) { console.error("Audio fetch failed", e); }
+   return null;
+ };
+
  const playAudioSafely = (audioElement: HTMLAudioElement) => {
    if (currentlyPlayingAudioRef.current) {
      currentlyPlayingAudioRef.current.pause();
      currentlyPlayingAudioRef.current.currentTime = 0;
    }
    
-   // FORCE STOP MIC TO PREVENT ECHO
    if (isRecordingRef.current) {
-     recognitionRef.current?.stop();
      isRecordingRef.current = false;
      setIsRecording(false);
+     recognitionRef.current?.stop();
    }
 
    currentlyPlayingAudioRef.current = audioElement;
    setIsSpeaking(true);
-   
-   audioElement.onended = () => {
-     setIsSpeaking(false);
-   };
-   
+   audioElement.onended = () => setIsSpeaking(false);
    audioElement.play();
  };
 
@@ -210,14 +258,14 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   recognition.continuous = true; 
+   recognition.continuous = false; 
    recognition.interimResults = true; 
    recognition.lang = 'en-US';
    
    recognition.onresult = (event: any) => {
-    if (isSpeaking) return; // IGNORE INPUT WHILE AI SPEAKS
+    if (isSpeaking) return;
     let interim = '', final = '';
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
+    for (let i = 0; i < event.results.length; ++i) {
       if (event.results[i].isFinal) final += event.results[i][0].transcript;
       else interim += event.results[i][0].transcript;
     }
@@ -226,11 +274,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     setInput(fullText);
     inputTextRef.current = fullText;
    };
-
-   recognition.onend = () => {
-    if (isRecordingRef.current && !isSpeaking) {
-        recognition.start();
-    }
+   
+   recognition.onend = () => { 
+       if (isRecordingRef.current && !isSpeaking) recognition.start(); 
    };
    recognitionRef.current = recognition;
   }
@@ -243,9 +289,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    recognitionRef.current?.stop();
    setTimeout(() => {
        if (inputTextRef.current.trim()) handleSend();
-   }, 300);
+   }, 400);
   } else {
-   if (isSpeaking) return; 
+   if (isSpeaking) return;
    setIsRecording(true);
    isRecordingRef.current = true;
    setInput('');
@@ -258,39 +304,44 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const handleSend = async () => {
   const text = inputTextRef.current.trim() || input.trim();
   if (!text && !selectedImage) return;
+  
   setLoading(true);
   setInput('');
   inputTextRef.current = '';
   accumulatedRef.current = '';
   setShowPersonaGrid(false);
+  
   const currentImagePreview = previewUrl;
-  const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date(), imageUrl: currentImagePreview };
+
+  const userMsg: Message = { 
+    id: Date.now().toString(), 
+    content: text, 
+    sender: 'user', 
+    timestamp: new Date(),
+    imageUrl: currentImagePreview 
+  };
   setMessages(prev => [...prev, userMsg]);
+  
   try {
    const response = await sendChatMessage(text, messages, activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
    const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
-   
-   // Fetch audio
-   const formData = new FormData();
-   formData.append('text', response.answer);
-   formData.append('voice', voiceToUse || 'onyx');
-   const audioRes = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
-   const audioData = await audioRes.json();
-   
-   const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
-   setMessages(prev => [...prev, botMsg]);
+   const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
 
-   if (audioData.audio_b64) {
-     const audio = new Audio(`data:audio/mp3;base64,${audioData.audio_b64}`);
-     playAudioSafely(audio);
-   }
+   const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
+   
+   setMessages(prev => [...prev, botMsg]);
+   if (audioToPlay) playAudioSafely(audioToPlay);
+
   } catch (e) { console.error(e); } 
   finally { setLoading(false); setSelectedImage(null); }
  };
 
  const handlePersonaChange = async (persona: PersonaConfig) => {
   if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
-  if (currentlyPlayingAudioRef.current) { currentlyPlayingAudioRef.current.pause(); currentlyPlayingAudioRef.current.currentTime = 0; }
+  if (currentlyPlayingAudioRef.current) {
+    currentlyPlayingAudioRef.current.pause();
+    currentlyPlayingAudioRef.current.currentTime = 0;
+  }
   setActivePersona(persona);
   onPersonaChange(persona);
   setShowDropdown(false);
@@ -298,20 +349,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   setLoading(true);
   const hookText = persona.spokenHook.replace('{userName}', userName);
   const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
-  
-  const formData = new FormData();
-  formData.append('text', hookText);
-  formData.append('voice', voiceToUse || 'onyx');
-  const audioRes = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
-  const audioData = await audioRes.json();
-  
+  const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
   const hookMsg: Message = { id: Date.now().toString(), content: hookText, sender: 'bot', timestamp: new Date() };
   setMessages([hookMsg]);
-
-  if (audioData.audio_b64) {
-    const audio = new Audio(`data:audio/mp3;base64,${audioData.audio_b64}`);
-    playAudioSafely(audio);
-  }
+  if (audioToPlay) playAudioSafely(audioToPlay);
   setLoading(false);
  };
 
@@ -327,7 +368,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const handleInternalBack = () => {
    setMessages([]);
    setShowPersonaGrid(true);
-   if (currentlyPlayingAudioRef.current) { currentlyPlayingAudioRef.current.pause(); currentlyPlayingAudioRef.current.currentTime = 0; }
+   if (currentlyPlayingAudioRef.current) {
+     currentlyPlayingAudioRef.current.pause();
+     currentlyPlayingAudioRef.current.currentTime = 0;
+   }
    setIsSpeaking(false);
  };
 
@@ -347,16 +391,30 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    }
  };
 
+ const getInputFontSize = () => {
+   switch(fontLevel) {
+     case 1: return 'text-sm';
+     case 2: return 'text-lg';
+     case 3: return 'text-xl';
+     case 4: return 'text-2xl'; 
+     default: return 'text-sm';
+   }
+ };
+
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
-   {/* HEADER */}
+   
    <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
      <div className="relative flex gap-2 z-10">
       {!showPersonaGrid && (
-        <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+        <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
+          <ChevronLeft className="w-5 h-5" />
+        </button>
       )}
-      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><Menu className="w-5 h-5" /></button>
+      <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
+        <Menu className="w-5 h-5" />
+      </button>
       {showDropdown && (
        <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
         <div className="mb-6">
@@ -371,116 +429,239 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
        </div>
       )}
      </div>
+     
      <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
-      <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO</h1>
+      <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">
+        L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
+      </h1>
       <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
      </div>
+
      <div className="flex items-center gap-2 z-10">
       <div className="flex flex-col items-end justify-center mr-1">
         <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
         <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
       </div>
-      <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse"><Shield className="w-5 h-5 fill-current" /></button>
+      <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
+        <Shield className="w-5 h-5 fill-current" />
+      </button>
      </div>
     </div>
    </div>
 
-   {/* EMERGENCY MODAL */}
    {showCrisisShield && (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100002] flex items-center justify-center p-4">
       <div className="bg-[#111] border border-red-500/50 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <Shield className="w-8 h-8 text-red-500 fill-current" />
-            <h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2>
+            <div>
+              <h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2>
+              <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mt-1">Direct Federal & Professional Links</p>
+            </div>
           </div>
           <button onClick={() => setShowCrisisShield(false)} className="p-2 bg-white/5 rounded-full text-white"><X className="w-6 h-6" /></button>
         </div>
         <div className="space-y-4 mb-6">
-          {(CRISIS_LINKS[activePersona.id] || []).map((link, idx) => (
-            <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block p-4 bg-white/5 border border-white/10 rounded-2xl">
-              <span className="text-white font-bold">{link.label}</span>
-              <p className="text-xs text-gray-400">{link.description}</p>
-            </a>
-          ))}
+          <p className="text-sm text-gray-300">Direct resources for <strong>{activePersona.name}</strong>:</p>
+          <div className="space-y-3">
+            {(CRISIS_LINKS[activePersona.id] || []).map((link, idx) => (
+              <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-white font-bold">{link.label}</span>
+                  <ExternalLink className="w-4 h-4 text-gray-400" />
+                </div>
+                <p className="text-xs text-gray-400">{link.description}</p>
+              </a>
+            ))}
+          </div>
         </div>
-        <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl">Return</button>
+        <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl tracking-widest">Return to OS</button>
       </div>
     </div>
    )}
 
-   {/* BESTIE SETUP */}
    {showBestieSetup && (
-    <div className="fixed inset-0 bg-black/95 z-[100005] flex items-center justify-center p-4">
-      <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 text-center">
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100005] flex items-center justify-center p-4">
+      <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(236,72,153,0.15)] text-center">
         <Heart className="w-12 h-12 text-pink-400 mx-auto mb-4 fill-current" />
-        <h2 className="text-white font-black text-2xl uppercase tracking-widest mb-6">Build Your Bestie</h2>
-        {setupStep === 'gender' ? (
+        <h2 className="text-white font-black text-2xl uppercase tracking-widest mb-2">Build Your Bestie</h2>
+        <p className="text-gray-400 text-sm mb-6">Who do you want in your corner?</p>
+        
+        {setupStep === 'gender' && (
           <div className="space-y-4">
-            <button onClick={() => { setTempGender('female'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl text-white font-bold">The Girls (Female)</button>
-            <button onClick={() => { setTempGender('male'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl text-white font-bold">The Bros (Male)</button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {tempGender === 'female' ? (
-              ['nova', 'shimmer', 'alloy'].map(v => <button key={v} onClick={() => handleBestieSetupComplete(v)} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white uppercase font-bold">{v}</button>)
-            ) : (
-              ['onyx', 'echo', 'fable'].map(v => <button key={v} onClick={() => handleBestieSetupComplete(v)} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white uppercase font-bold">{v}</button>)
-            )}
+            <button onClick={() => { setTempGender('female'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-pink-400 rounded-2xl text-white font-bold transition-all">
+              The Girls (Female)
+            </button>
+            <button onClick={() => { setTempGender('male'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-blue-400 rounded-2xl text-white font-bold transition-all">
+              The Bros (Male)
+            </button>
           </div>
         )}
-        <button onClick={() => setShowBestieSetup(false)} className="mt-6 text-gray-500 text-xs font-bold uppercase tracking-widest">Cancel</button>
+
+        {setupStep === 'voice' && tempGender === 'female' && (
+          <div className="space-y-3">
+            <p className="text-xs text-pink-300 uppercase tracking-widest font-bold mb-2">Select Her Voice</p>
+            <button onClick={() => handleBestieSetupComplete('nova')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Nova (Warm & Upbeat)</button>
+            <button onClick={() => handleBestieSetupComplete('shimmer')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Shimmer (Clear & Direct)</button>
+            <button onClick={() => handleBestieSetupComplete('alloy')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Alloy (Neutral & Calm)</button>
+          </div>
+        )}
+
+        {setupStep === 'voice' && tempGender === 'male' && (
+          <div className="space-y-3">
+            <p className="text-xs text-blue-300 uppercase tracking-widest font-bold mb-2">Select His Voice</p>
+            <button onClick={() => handleBestieSetupComplete('onyx')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Onyx (Deep & Serious)</button>
+            <button onClick={() => handleBestieSetupComplete('echo')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Echo (Warm & Friendly)</button>
+            <button onClick={() => handleBestieSetupComplete('fable')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Fable (Expressive & British)</button>
+          </div>
+        )}
+
+        <button onClick={() => { setShowBestieSetup(false); setSetupStep('gender'); }} className="mt-6 text-gray-500 text-xs font-bold uppercase">Cancel Setup</button>
       </div>
     </div>
    )}
 
-   {/* CHAT AREA */}
-   <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6" style={{ paddingBottom: '300px' }}>
+   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: '300px' }}>
+    
+    {showPersonaGrid && notifications.length > 0 && (
+     <div className="space-y-3">
+      {notifications.map(id => (
+       <div key={id} className="bg-white/5 border border-white/10 p-5 rounded-3xl relative animate-in slide-in-from-right">
+        <button onClick={() => setNotifications(prev => prev.filter(n => n !== id))} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
+        <div className="flex gap-4">
+         <div className="p-2 bg-yellow-500/20 rounded-xl"><Zap className="w-4 h-4 text-yellow-400" /></div>
+         <p className={`${getDynamicFontSize()} text-gray-200 font-bold`}>{REAL_INTEL_DROPS[id]}</p>
+        </div>
+       </div>
+      ))}
+     </div>
+    )}
+
     {showPersonaGrid && (
      <div className="grid grid-cols-2 gap-3">
       {PERSONAS.map(p => (
        <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-4 transition-all ${activePersona.id === p.id ? `${getPersonaColorClass(p, 'bg')} border-transparent` : 'bg-white/5 border-white/10'}`}>
         <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getPersonaColorClass(p, 'text')}`} />
-        <span className="text-[10px] text-white font-black uppercase tracking-widest">{p.name}</span>
+        <span className="text-[10px] text-white font-black uppercase tracking-widest text-center">{p.name}</span>
        </button>
       ))}
      </div>
     )}
 
-    {messages.map((msg) => (
+    {messages.map((msg, idx) => {
+     const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
+     const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
+     return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-       {msg.imageUrl && <img src={msg.imageUrl} className="mb-2 max-w-[85%] rounded-2xl border border-white/10" />}
-       <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} ${msg.sender === 'user' ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold` : 'bg-white/10 text-gray-100 border border-white/10'}`}>
+       
+       {msg.imageUrl && (
+         <div className="mb-2 max-w-[85%] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+           <img src={msg.imageUrl} alt="Uploaded" className="w-full h-auto object-cover max-h-[300px]" />
+         </div>
+       )}
+
+       <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
         {msg.content}
+        {msg.sender === 'bot' && msg.confidenceScore && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1">
+              <span>System Confidence</span>
+              <span className="text-green-400">{msg.confidenceScore}%</span>
+            </div>
+            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+              <div className="h-full bg-green-500" style={{ width: `${msg.confidenceScore}%` }}></div>
+            </div>
+          </div>
+        )}
        </div>
+       
+       {suggestion && (
+        <div className="mt-4 w-full max-w-[85%] p-5 bg-indigo-600 border border-indigo-400 rounded-[32px] shadow-2xl animate-in zoom-in-95">
+         <div className="flex items-center gap-3 mb-4 text-white">
+           <Zap className="w-4 h-4 fill-current" />
+           <p className="text-[11px] font-black uppercase tracking-widest">Expert Transition Found</p>
+         </div>
+         <button onClick={() => handlePersonaChange(suggestion)} className="w-full py-4 bg-white text-indigo-700 text-xs font-black uppercase rounded-2xl flex items-center justify-center gap-3">
+          Transfer to {suggestion.name} <ArrowRight className="w-5 h-5" />
+         </button>
+        </div>
+       )}
       </div>
-    ))}
-    {loading && <div className="p-5 rounded-3xl bg-white/5 w-20 flex gap-2"><div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-75"></div></div>}
+     );
+    })}
+
+    {loading && (
+      <div className="flex justify-start">
+        <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex items-center gap-3">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+        </div>
+      </div>
+    )}
    </div>
 
-   {/* FOOTER */}
-   <div className="fixed bottom-0 left-0 right-0 bg-black/95 border-t border-white/10 p-4 z-[100] pb-10">
+   <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
     <div className="max-w-md mx-auto space-y-4">
+     
      {previewUrl && (
-       <div className="flex justify-center mb-2">
-         <div className="relative"><img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500" /><button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="w-4 h-4" /></button></div>
+       <div className="flex justify-center mb-2 animate-in slide-in-from-bottom-2">
+         <div className="relative group">
+           <img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500 shadow-2xl" alt="Preview" />
+           <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg">
+             <X className="w-4 h-4" />
+           </button>
+         </div>
        </div>
      )}
-     <div className="flex gap-2">
-       <button onClick={cycleFontSize} className="w-1/3 py-3 bg-white/5 border border-white/10 rounded-[32px] text-white flex flex-col items-center justify-center font-black">A+ <span className="text-[8px] text-gray-400 uppercase">Text</span></button>
-       <button onClick={handleWalkieTalkieMic} disabled={loading || isSpeaking} className={`w-2/3 py-5 rounded-[32px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${isRecording ? 'bg-red-500 text-white' : 'bg-white text-black'} disabled:opacity-30`}>
-        {isRecording ? <MicOff className="w-5 h-5"/> : <Mic className="w-5 h-5"/>} {isRecording ? 'STOP' : 'VOICE'}
+
+     <div className="flex gap-2 mb-2">
+       <button onClick={cycleFontSize} className="w-1/3 py-3 bg-white/5 border border-white/10 rounded-[32px] text-white flex flex-col items-center justify-center shadow-lg hover:bg-white/10 transition-colors">
+         <span className="text-xl font-black leading-none">A+</span>
+         <span className="text-[8px] uppercase tracking-widest font-bold mt-1 text-gray-400">Text Size</span>
+       </button>
+       <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
        </button>
      </div>
+     
      <div className="flex gap-2">
-      <button onClick={() => setShowCameraMenu(!showCameraMenu)} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400"><Camera className="w-6 h-6" /></button>
-      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={`Command...`} className="flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 text-white font-bold outline-none" />
-      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl"><ArrowRight className="w-6 h-6" /></button>
+      <div className="relative">
+        <button onClick={() => setShowCameraMenu(!showCameraMenu)} disabled={loading} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50">
+          <Camera className="w-6 h-6" />
+        </button>
+        {showCameraMenu && (
+          <div className="absolute bottom-16 left-0 bg-[#111] border border-white/10 rounded-2xl p-2 min-w-[180px] shadow-2xl z-[100003] animate-in slide-in-from-bottom-2">
+            <button onClick={() => { photoInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
+              <CameraIcon className="w-5 h-5 text-blue-400" /> Take Photo
+            </button>
+            <div className="h-px w-full bg-white/5 my-1"></div>
+            <button onClick={() => { fileInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
+              <ImageIcon className="w-5 h-5 text-purple-400" /> Upload Image
+            </button>
+          </div>
+        )}
+      </div>
+
+      <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+      <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+      
+      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`} />
+      
+      <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50">
+        <ArrowRight className="w-6 h-6" />
+      </button>
+     </div>
+     
+     <div className="flex items-center justify-between pt-2 border-t border-white/10">
+      <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest">
+        <AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.
+      </div>
+      <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD v3.0 MAX</p>
      </div>
     </div>
    </div>
-   <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
-   <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
   </div>
  );
 }
