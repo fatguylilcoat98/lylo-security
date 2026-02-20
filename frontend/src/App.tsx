@@ -1,22 +1,77 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
+// --- THE GATEKEEPER ---
+// This component wraps your routes. If a user is not logged in, 
+// it intercepts them and ejects them back to the waitlist.
+const Gatekeeper = ({ children }: { children: React.ReactNode }) => {
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check if the user has a valid session in local storage
+    const userEmail = localStorage.getItem('userEmail');
+    
+    if (!userEmail) {
+      // UNAUTHORIZED: Eject them immediately to the main website
+      window.location.assign('https://lylo.pro');
+    } else {
+      // AUTHORIZED: Let them pass
+      setIsAuthorized(true);
+    }
+  }, []);
+
+  // If they aren't authorized yet, render a black screen to prevent the UI from flashing
+  if (!isAuthorized) {
+    return <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw' }} />;
+  }
+
+  return <>{children}</>;
+};
+
 export default function App() {
   return (
     <HashRouter>
       <Routes>
-        {/* SET ASSESSMENT AS THE PRIMARY ROOT GATE */}
-        {/* Using HashRouter ensures that the /#/ routes from index.html are caught by React */}
-        <Route path="/" element={<Assessment />} />
+        {/* We wrap every single route inside the <Gatekeeper> to ensure total lockdown */}
         
-        {/* APP ROUTES */}
-        {/* These paths will now be accessible via /#/assessment and /#/dashboard */}
-        <Route path="/assessment" element={<Assessment />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin/beta-testers" element={<BetaTesterAdmin />} /> 
+        <Route 
+          path="/" 
+          element={
+            <Gatekeeper>
+              <Assessment />
+            </Gatekeeper>
+          } 
+        />
+        
+        <Route 
+          path="/assessment" 
+          element={
+            <Gatekeeper>
+              <Assessment />
+            </Gatekeeper>
+          } 
+        />
+        
+        <Route 
+          path="/dashboard" 
+          element={
+            <Gatekeeper>
+              <Dashboard />
+            </Gatekeeper>
+          } 
+        />
+        
+        <Route 
+          path="/admin/beta-testers" 
+          element={
+            <Gatekeeper>
+              <BetaTesterAdmin />
+            </Gatekeeper>
+          } 
+        /> 
       </Routes>
     </HashRouter>
   );
