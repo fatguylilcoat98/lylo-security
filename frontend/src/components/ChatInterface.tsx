@@ -172,7 +172,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [userTier, setUserTier] = useState<'free' | 'pro' | 'elite' | 'max'>('max');
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
  
- // THE 4-STAGE FONT LEVEL (1=Standard, 2=Large, 3=Huge, 4=Massive)
+ // THE 4-STAGE FONT LEVEL
  const [fontLevel, setFontLevel] = useState<number>(1);
  
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -180,13 +180,13 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
 
  const chatContainerRef = useRef<HTMLDivElement>(null);
- const fileInputRef = useRef<HTMLInputElement>(null); // For Gallery
- const photoInputRef = useRef<HTMLInputElement>(null); // For Native Camera
+ const fileInputRef = useRef<HTMLInputElement>(null);
+ const photoInputRef = useRef<HTMLInputElement>(null);
  const recognitionRef = useRef<any>(null);
  const isRecordingRef = useRef(false);
- const shouldSendRef = useRef(false);
  const accumulatedRef = useRef<string>(''); 
  const inputTextRef = useRef<string>(''); 
+ const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
 
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
@@ -216,21 +216,36 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
  }, [messages]);
 
- const speakText = async (text: string, voice?: string) => {
-  window.speechSynthesis.cancel();
-  setIsSpeaking(true);
-  try {
-   const formData = new FormData();
-   formData.append('text', text);
-   formData.append('voice', voice || activePersona.fixedVoice || 'onyx');
-   const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
-   const data = await response.json();
-   if (data.audio_b64) {
-    const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-    audio.onended = () => setIsSpeaking(false);
-    await audio.play();
+ // --- NEW: SILENT AUDIO FETCHER ---
+ // This grabs the audio file *before* we put the text on the screen
+ const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
+   try {
+     const formData = new FormData();
+     formData.append('text', text);
+     formData.append('voice', voice || 'onyx');
+     const response = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: formData });
+     const data = await response.json();
+     if (data.audio_b64) {
+       return new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
+     }
+   } catch (e) {
+     console.error("Audio fetch failed", e);
    }
-  } catch (e) { setIsSpeaking(false); }
+   return null;
+ };
+
+ // --- NEW: SYNCHRONIZED PLAYBACK ---
+ const playAudioSafely = (audioElement: HTMLAudioElement) => {
+   // Stop any currently playing audio immediately
+   if (currentlyPlayingAudioRef.current) {
+     currentlyPlayingAudioRef.current.pause();
+     currentlyPlayingAudioRef.current.currentTime = 0;
+   }
+   
+   currentlyPlayingAudioRef.current = audioElement;
+   setIsSpeaking(true);
+   audioElement.onended = () => setIsSpeaking(false);
+   audioElement.play();
  };
 
  useEffect(() => {
@@ -275,60 +290,101 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const handleSend = async () => {
   const text = inputTextRef.current.trim() || input.trim();
   if (!text && !selectedImage) return;
-  setLoading(true);
+  
+  setLoading(true); // Start the loading spinner
   setInput('');
   inputTextRef.current = '';
   accumulatedRef.current = '';
   setShowPersonaGrid(false);
+  
+  // Instantly show the user's message
   const userMsg: Message = { id: Date.now().toString(), content: text, sender: 'user', timestamp: new Date() };
   setMessages(prev => [...prev, userMsg]);
+  
   try {
+   // 1. Get the text answer from the AI
    const response = await sendChatMessage(text, messages, activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
+   
+   // 2. Fetch the audio silently in the background (Loader is still spinning)
+   const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+   const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
+
+   // 3. Audio is ready! Drop both the text and the voice on the screen at the EXACT same millisecond.
    const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
-   setMessages(prev => [...prev, botMsg]);
-   speakText(botMsg.content, activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice);
-  } catch (e) { console.error(e); } 
-  finally { setLoading(false); setSelectedImage(null); }
+   
+   setMessages(prev => [...prev, botMsg]); // Text hits the screen
+   
+   if (audioToPlay) {
+     playAudioSafely(audioToPlay); // Voice plays instantly
+   }
+
+  } catch (e) { 
+    console.error(e); 
+  } finally { 
+    setLoading(false); 
+    setSelectedImage(null); 
+  }
  };
 
- const handlePersonaChange = (persona: PersonaConfig) => {
+ const handlePersonaChange = async (persona: PersonaConfig) => {
   if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
-  window.speechSynthesis.cancel();
+  
+  // Stop any previous voice immediately
+  if (currentlyPlayingAudioRef.current) {
+    currentlyPlayingAudioRef.current.pause();
+    currentlyPlayingAudioRef.current.currentTime = 0;
+  }
+  
   setActivePersona(persona);
   onPersonaChange(persona);
   setShowDropdown(false);
   setShowPersonaGrid(false);
-  const hook = persona.spokenHook.replace('{userName}', userName);
-  const hookMsg: Message = { id: Date.now().toString(), content: hook, sender: 'bot', timestamp: new Date() };
+  
+  setLoading(true); // Show loader during transition
+  
+  const hookText = persona.spokenHook.replace('{userName}', userName);
+  const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
+  
+  // Fetch the transition hook audio silently
+  const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
+  
+  // Drop text and audio simultaneously
+  const hookMsg: Message = { id: Date.now().toString(), content: hookText, sender: 'bot', timestamp: new Date() };
   setMessages([hookMsg]);
-  speakText(hook, persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice);
+  
+  if (audioToPlay) {
+    playAudioSafely(audioToPlay);
+  }
+  
+  setLoading(false);
  };
 
  const handleInternalBack = () => {
    setMessages([]);
    setShowPersonaGrid(true);
-   window.speechSynthesis.cancel();
+   if (currentlyPlayingAudioRef.current) {
+     currentlyPlayingAudioRef.current.pause();
+     currentlyPlayingAudioRef.current.currentTime = 0;
+   }
+   setIsSpeaking(false);
  };
 
- // THE 4-STAGE CYCLE FUNCTION
  const cycleFontSize = () => {
    const nextLevel = fontLevel >= 4 ? 1 : fontLevel + 1;
    setFontLevel(nextLevel);
    localStorage.setItem('lylo_font_level', nextLevel.toString());
  };
 
- // DYNAMIC TAILWIND CLASS GENERATOR BASED ON LEVEL
  const getDynamicFontSize = () => {
    switch(fontLevel) {
      case 1: return 'text-sm leading-normal';
      case 2: return 'text-lg leading-relaxed';
      case 3: return 'text-2xl leading-relaxed tracking-wide';
-     case 4: return 'text-4xl leading-loose tracking-wide font-black'; // 4x Massive
+     case 4: return 'text-4xl leading-loose tracking-wide font-black';
      default: return 'text-sm leading-normal';
    }
  };
 
- // Cap the input box size so it doesn't break the layout on massive
  const getInputFontSize = () => {
    switch(fontLevel) {
      case 1: return 'text-sm';
@@ -380,7 +436,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      </div>
 
      <div className="flex items-center gap-2 z-10">
-      {/* USER NAME AND TIER - Forced visible on Mobile */}
+      {/* USER NAME AND TIER */}
       <div className="flex flex-col items-end justify-center mr-1">
         <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
         <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
@@ -492,6 +548,17 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       </div>
      );
     })}
+
+    {/* THE LOADING SPINNER */}
+    {loading && (
+      <div className="flex justify-start">
+        <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex items-center gap-3">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+        </div>
+      </div>
+    )}
    </div>
 
    {/* FOOTER */}
@@ -507,7 +574,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
        </button>
        
        {/* ENGAGE VOICE LINK BUTTON */}
-       <button onClick={handleWalkieTalkieMic} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'}`}>
+       <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
         {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
        </button>
      </div>
@@ -516,7 +583,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      <div className="flex gap-2">
       {/* CAMERA MENU SYSTEM */}
       <div className="relative">
-        <button onClick={() => setShowCameraMenu(!showCameraMenu)} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center">
+        <button onClick={() => setShowCameraMenu(!showCameraMenu)} disabled={loading} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50">
           <Camera className="w-6 h-6" />
         </button>
         {showCameraMenu && (
@@ -536,9 +603,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
       
-      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0`} />
+      <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }} disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }} placeholder={`Command ${activePersona.name}...`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`} />
       
-      <button onClick={handleSend} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center">
+      <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50">
         <ArrowRight className="w-6 h-6" />
       </button>
      </div>
