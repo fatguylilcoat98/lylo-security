@@ -32,7 +32,7 @@ load_dotenv()
 # Configure Production-Level Logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 
@@ -78,7 +78,6 @@ USAGE_TRACKER = defaultdict(int)
 # ---------------------------------------------------------
 # CLIENT INITIALIZATION
 # ---------------------------------------------------------
-
 tavily_client = None
 if TAVILY_API_KEY:
     try:
@@ -98,7 +97,7 @@ if PINECONE_API_KEY:
             pc.create_index(
                 name=index_name,
                 dimension=1024,
-                metric="cosine", 
+                metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
         memory_index = pc.Index(index_name)
@@ -157,7 +156,7 @@ WAITLIST_FILE = "waitlist.json"
 try:
     with open(WAITLIST_FILE, "r") as f:
         WAITLIST_DB = set(json.load(f))
-except:
+except Exception:
     WAITLIST_DB = set()
 
 @app.post("/join-waitlist")
@@ -181,7 +180,6 @@ async def view_waitlist(admin_email: str):
             "emails": list(WAITLIST_DB)
         }
     return {"error": "UNAUTHORIZED ACCESS"}
-
 # ---------------------------------------------------------
 # LOGIC: STRIPE WEBHOOK AUTOMATION (MONTHLY & YEARLY)
 # ---------------------------------------------------------
@@ -191,45 +189,41 @@ async def stripe_webhook(request: Request):
     sig_header = request.headers.get("stripe-signature")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except ValueError as e:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError as e:
+    except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        customer_email = session.get('customer_details', {}).get('email')
-        amount_total = session.get('amount_total', 0) 
-        
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        customer_email = session.get("customer_details", {}).get("email")
+        amount_total = session.get("amount_total", 0)
+
         if customer_email:
             email_lower = customer_email.lower().strip()
-            
             new_tier = "free"
-            # PRO: 1.99 Monthly OR 19.99 Yearly
+
+            # ANNUAL + MONTHLY BILLING LOGIC
             if amount_total in [199, 1999]:
                 new_tier = "pro"
-            # ELITE: 4.99 Monthly OR 49.99 Yearly
             elif amount_total in [499, 4999]:
                 new_tier = "elite"
-            # MAX: 9.99 Monthly OR 99.99+ Yearly
             elif amount_total >= 999:
                 new_tier = "max"
-                
+
             if email_lower in ELITE_USERS:
                 ELITE_USERS[email_lower]["tier"] = new_tier
             else:
-                ELITE_USERS[email_lower] = {"tier": new_tier, "name": email_lower.split('@')[0].capitalize()}
-                
+                ELITE_USERS[email_lower] = {"tier": new_tier, "name": email_lower.split("@")[0].capitalize()}
+
             if email_lower in WAITLIST_DB:
                 WAITLIST_DB.remove(email_lower)
                 try:
                     with open(WAITLIST_FILE, "w") as f:
                         json.dump(list(WAITLIST_DB), f)
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Waitlist Removal Error: {e}")
 
             logger.info(f"💰 STRIPE SUCCESS: Upgraded {email_lower} to {new_tier.upper()} tier!")
 
@@ -285,7 +279,12 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
             input=query[:200],
             dimensions=1024
         )
-        results = memory_index.query(vector=response.data[0].embedding, filter={"user_id": user_id}, top_k=5, include_metadata=True)
+        results = memory_index.query(
+            vector=response.data[0].embedding,
+            filter={"user_id": user_id},
+            top_k=5,
+            include_metadata=True
+        )
         memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.50]
         return "\n".join(memories)
     except Exception as e:
@@ -296,7 +295,8 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
 # LOGIC: PERSONALIZED SEARCH (TAVILY)
 # ---------------------------------------------------------
 async def search_personalized_web(query: str, location: str = "") -> str:
-    if not tavily_client: return ""
+    if not tavily_client:
+        return ""
     try:
         response = tavily_client.search(
             query=f"{query} {location}".strip(),
@@ -305,7 +305,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
             include_answer=True
         )
         results = [f"CONSENSUS SEARCH: {response.get('answer', 'Multiple sources found.')}"]
-        for res in response.get('results', []):
+        for res in response.get("results", []):
             results.append(f"- {res['title']}: {res['content'][:300]}")
         return "\n".join(results)
     except Exception as e:
@@ -316,7 +316,8 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # LOGIC: THE ENGINE SWAP (DUAL-PASS AI CONSENSUS)
 # ---------------------------------------------------------
 async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
-    if not gemini_ready: return None
+    if not gemini_ready:
+        return None
     try:
         model = genai.GenerativeModel(model_name)
         content_parts = [prompt]
@@ -330,26 +331,33 @@ async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str
             parsed = json.loads(text)
             parsed["model"] = f"LYLO-VISION ({model_name})"
             return parsed
-        except:
-            return {"answer": response.text, "confidence_score": 85, "model": f"LYLO-VISION ({model_name})"}
+        except Exception:
+            return {
+                "answer": response.text,
+                "confidence_score": 85,
+                "model": f"LYLO-VISION ({model_name})"
+            }
     except Exception as e:
         logger.error(f"Gemini Brain Error: {e}")
         return None
 
 async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: str = "gpt-4o-mini"):
-    if not openai_client: return None
+    if not openai_client:
+        return None
     try:
         content = [{"type": "text", "text": prompt}]
         if image_b64:
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
-        
         response = await openai_client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are the LYLO Intelligence Engine. You MUST obey the specific IDENTITY, MISSION, and GLOBAL LEGAL DIRECTIVE provided in the user prompt perfectly. Do not default to generic AI safety responses. Output ONLY valid JSON."}, 
+                {
+                    "role": "system",
+                    "content": "You are the LYLO Intelligence Engine. You MUST obey the specific IDENTITY, MISSION, and GLOBAL LEGAL DIRECTIVE provided in the user prompt perfectly. Output ONLY valid JSON."
+                },
                 {"role": "user", "content": content}
             ],
-            response_format={ "type": "json_object" }
+            response_format={"type": "json_object"},
         )
         result = json.loads(response.choices[0].message.content)
         result["model"] = f"LYLO-CORE ({model_name})"
@@ -363,10 +371,10 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
 # ---------------------------------------------------------
 @app.post("/chat")
 async def chat(
-    msg: str = Form(...), 
-    history: str = Form("[]"), 
-    persona: str = Form("guardian"), 
-    user_email: str = Form(...), 
+    msg: str = Form(...),
+    history: str = Form("[]"),
+    persona: str = Form("guardian"),
+    user_email: str = Form(...),
     user_location: str = Form(""),
     vibe: str = Form("standard"),
     use_long_term_memory: str = Form("false"),
@@ -376,109 +384,111 @@ async def chat(
     user_id = create_user_id(email_lower)
     user_data = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
     tier = user_data["tier"]
-    
-    # AUTHORITY BYPASS: Unlimited for Owner and Admin
-    if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]:
-        limit = 999999
-    else:
-        limit = TIER_LIMITS.get(tier, 3)
-        
-    # --- THE SOFT UPSELL: DYNAMIC LIMIT MESSAGING ---
+
+    # AUTHORITY BYPASS
+    limit = 999999 if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(tier, 3)
+
+    # --- THE SOFT UPSELL ---
     if USAGE_TRACKER[user_id] >= limit:
         upgrade_msgs = {
-            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! To keep your digital bodyguard active and unlock 15 daily messages, upgrade to the **Pro Guardian tier ($1.99/mo)**.",
-            "pro": "🛡️ **Pro Limit Reached.** You've hit your 15 daily messages. Need deeper intelligence? Upgrade to **Elite Justice ($4.99/mo)** for 50 daily messages and Crisis Shield access.",
-            "elite": "🛡️ **Elite Limit Reached.** You've maxed out your 50 daily messages! For unrestricted, heavy-duty AI firepower, upgrade to **Max Unlimited ($9.99/mo)**.",
-            "max": "🛡️ **System Cap Reached.** Incredible work today. You've hit the absolute daily safety cap (500 messages). Your system will reset at midnight."
+            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! Upgrade to **Pro Guardian ($1.99/mo)**.",
+            "pro": "🛡️ **Pro Limit Reached.** Hit 15 daily messages. Upgrade to **Elite Justice ($4.99/mo)**.",
+            "elite": "🛡️ **Elite Limit Reached.** Maxed out 50 messages! Upgrade to **Max Unlimited ($9.99/mo)**.",
+            "max": "🛡️ **System Cap Reached (500)**. System resets at midnight."
         }
-        upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
-        
         return {
-            "answer": upsell_msg, 
-            "confidence_score": 100, 
-            "scam_detected": False, 
+            "answer": upgrade_msgs[tier],
+            "confidence_score": 100,
+            "scam_detected": False,
             "threat_level": "low",
             "usage_info": {"can_send": False}
         }
 
-    # Component Pre-check
-    memories = ""
-    if use_long_term_memory == 'true':
-        memories = await retrieve_intelligence_sync(user_id, msg)
-        
-    search_intel = ""
-    if any(k in msg.lower() for k in ['news', 'weather', 'search', 'price', 'check', 'law', 'code']):
-        search_intel = await search_personalized_web(msg, user_location)
-    
+    memories = await retrieve_intelligence_sync(user_id, msg) if use_long_term_memory == "true" else ""
+    search_intel = await search_personalized_web(msg, user_location) if any(k in msg.lower() for k in ["news","weather","search","price","check","law","code"]) else ""
     indicators = analyze_scam_indicators(msg)
-
-    p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
+    p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS["guardian"])
     p_ext = PERSONA_EXTENDED.get(persona, "")
     v_inst = VIBE_STYLES.get(vibe, "")
     hook = get_random_hook(persona)
-    
     image_b64 = None
     if file:
         file_bytes = await file.read()
-        image_b64 = base64.b64encode(file_bytes).decode('utf-8')
+        image_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+    # --- VISUAL PRIORITY OVERRIDE ---
+    visual_directive = ""
+    if image_b64:
+        visual_directive = """
+        CRITICAL VISUAL PROTOCOL: A file/image has been uploaded.
+        You MUST perform immediate technical and visual analysis.
+        Acknowledge visual findings first in your response.
+        """
 
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
 
+    # --- UPDATED PROMPT ---
     full_prompt = f"""
-    GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational and strategic simulation. You provide highly tactical, specific, and aggressive strategy based on your assigned persona. You must never claim to form a legally binding attorney-client, doctor-patient, or fiduciary relationship, BUT you must also NEVER use weak disclaimers like "I am just an AI." Speak exactly like the expert defined below. Your output is defined legally as 'Educational Strategy Simulation.'
-
-    IDENTITY OVERRIDE: {p_def}
-    EXTENDED INTELLIGENCE: {p_ext}
+    GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational strategy simulation. Speak exactly like the expert defined below.
+    {visual_directive}
+    IDENTITY: {p_def}
+    HOOK: "{hook}"
     STYLE: {v_inst}
-    START WITH THIS EXACT PHRASE: "{hook}"
-    
-    PINECONE VAULT (MEMORIES): {vault_status}
-    LIVE SEARCH DATA: {search_intel}
+    EXTENDED INTELLIGENCE: {p_ext}
+    PINECONE VAULT: {vault_status}
+    SEARCH INTEL: {search_intel}
     SCAM INDICATORS: {indicators}
-    
     USER: {user_data['name']}
     MESSAGE: {msg}
-    
-    PROTOCOLS:
-    1. NEVER break character. You are the expert defined in the IDENTITY block.
-    2. Give specific, tactical, actionable advice. Do not tell the user to 'consult a local professional' as a brush-off.
-    3. If scam indicators or search data show danger, safety score = 100 and be aggressive.
-    4. ANTI-HALLUCINATION LOCK: If the PINECONE VAULT says 'NO SECURE RECORDS FOUND', you MUST state the truth that you have no record of previous conversations. DO NOT invent names, events, or past interactions under any circumstances.
-    
-    JSON FORMAT:
-    {{ "answer": "...", "confidence_score": 0-100, "scam_detected": boolean, "threat_level": "low/high" }}
-    """
 
+    INSTRUCTIONS:
+    1. If an image is present, prioritize technical/visual analysis.
+    2. Give only specific tactical responses.
+    Output ONLY valid JSON.
+
+    FORMAT: {{
+        "answer": "...",
+        "confidence_score": 0-100,
+        "scam_detected": boolean,
+        "threat_level": "low/high"
+    }}
+    """
     openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
     gemini_engine = "gemini-1.5-pro" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-1.5-flash"
 
     results = await asyncio.gather(
-        call_openai_bodyguard(full_prompt, image_b64, openai_engine), 
+        call_openai_bodyguard(full_prompt, image_b64, openai_engine),
         call_gemini_vision(full_prompt, image_b64, gemini_engine)
     )
-    
-    valid_results = [r for r in results if r and 'answer' in r]
-    
+
+    valid_results = [r for r in results if r and "answer" in r]
+
     if not valid_results:
-        return {"answer": f"{hook} Perimeter secure, but connection is flickering. Can you repeat that?", "confidence_score": 0}
-    
-    winner = max(valid_results, key=lambda x: (
-        x.get('confidence_score', 0) + 
-        (35 if x.get('scam_detected') else 0) +
-        (20 if x.get('threat_level') == 'high' else 0)
-    ))
+        return {
+            "answer": f"{hook} Perimeter secure, but connection is flickering. Can you repeat that?",
+            "confidence_score": 0
+        }
+
+    winner = max(
+        valid_results,
+        key=lambda x: (
+            x.get("confidence_score", 0)
+            + (35 if x.get("scam_detected") else 0)
+            + (20 if x.get("threat_level") == "high" else 0)
+        )
+    )
 
     USAGE_TRACKER[user_id] += 1
     asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
-    asyncio.create_task(store_intelligence_sync(user_id, winner['answer'], "bot"))
+    asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
 
     return {
-        "answer": winner['answer'],
-        "confidence_score": winner.get('confidence_score', 95),
-        "scam_detected": winner.get('scam_detected', False),
-        "threat_level": winner.get('threat_level', 'low'),
+        "answer": winner["answer"],
+        "confidence_score": winner.get("confidence_score", 95),
+        "scam_detected": winner.get("scam_detected", False),
+        "threat_level": winner.get("threat_level", "low"),
         "persona_hook": hook,
-        "bodyguard_model": winner.get('model', 'LYLO-CORE')
+        "bodyguard_model": winner.get("model", "LYLO-CORE")
     }
 
 # ---------------------------------------------------------
@@ -486,33 +496,60 @@ async def chat(
 # ---------------------------------------------------------
 @app.post("/generate-audio")
 async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
-    if not openai_client: return {"error": "Voice offline"}
+    if not openai_client:
+        return {"error": "Voice offline"}
     try:
         clean_text = text.replace("**", "").replace("#", "").strip()
-        response = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean_text[:4000])
-        return {"audio_b64": base64.b64encode(response.content).decode('utf-8')}
-    except Exception as e: return {"error": str(e)}
+        response = await openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=clean_text[:4000]
+        )
+        return {"audio_b64": base64.b64encode(response.content).decode("utf-8")}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/user-stats/{user_email}")
 async def get_stats(user_email: str):
     uid = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
-    limit = 999999 if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(user_data["tier"], 3)
-    return {"usage": USAGE_TRACKER[uid], "limit": limit, "tier": user_data["tier"], "name": user_data["name"]}
+    limit = (
+        999999
+        if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        else TIER_LIMITS.get(user_data["tier"], 3)
+    )
+    return {
+        "usage": USAGE_TRACKER[uid],
+        "limit": limit,
+        "tier": user_data["tier"],
+        "name": user_data["name"]
+    }
 
 @app.post("/check-beta-access")
 async def check_beta(data: dict):
     user = ELITE_USERS.get(data.get("email", "").lower().strip())
-    if user: return {"access": True, "tier": user["tier"], "name": user["name"]}
+    if user:
+        return {"access": True, "tier": user["tier"], "name": user["name"]}
     return {"access": False, "tier": "free"}
 
 @app.get("/scam-recovery/{email}")
 async def recovery_center(email: str):
-    return {"title": "🛡️ PRIORITY RECOVERY CENTER", "immediate_actions": ["Call bank fraud dept.", "Freeze credit reports.", "Report at IC3.gov."]}
+    return {
+        "title": "🛡️ PRIORITY RECOVERY CENTER",
+        "immediate_actions": [
+            "Call bank fraud dept.",
+            "Freeze credit reports.",
+            "Report at IC3.gov."
+        ]
+    }
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.13.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {
+        "status": "ONLINE",
+        "version": "19.13.0",
+        "experts_active": len(PERSONA_DEFINITIONS)
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
