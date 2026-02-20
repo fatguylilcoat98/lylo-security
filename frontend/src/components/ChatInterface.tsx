@@ -112,7 +112,7 @@ const EXPERT_TRIGGERS: { [key: string]: string[] } = {
  'mechanic': ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech'],
  'lawyer': ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'evicted', 'notice'],
  'doctor': ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor'],
- 'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$', '180'],
+ 'wealth': ['money', 'budget', 'invest', 'stock', 'debt', 'college', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$', '180'],
  'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental'],
  'vitality': ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise'],
  'tutor': ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school'],
@@ -131,7 +131,7 @@ const getPersonaColorClass = (persona: PersonaConfig, type: 'border' | 'glow' | 
   purple: { border: 'border-purple-400', glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]', bg: 'bg-purple-500', text: 'text-purple-400' },
   indigo: { border: 'border-indigo-400', glow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]', bg: 'bg-indigo-500', text: 'text-indigo-400' },
   pink: { border: 'border-pink-400', glow: 'shadow-[0_0_20px_rgba(236,72,153,0.3)]', bg: 'bg-pink-500', text: 'text-pink-400' },
-  red: { border: 'border-red-400', glow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
+  red: { border: 'border-red-400', glow: 'shadow-[0_0_20_rgba(239,68,68,0.3)]', bg: 'bg-red-500', text: 'text-red-400' },
   green: { border: 'border-green-400', glow: 'shadow-[0_0_20px_rgba(34,197,94,0.3)]', bg: 'bg-green-500', text: 'text-green-400' }
  };
  return colorMap[persona.color]?.[type] || colorMap.blue[type];
@@ -222,7 +222,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     }
     const objectUrl = URL.createObjectURL(selectedImage);
     setPreviewUrl(objectUrl);
-    // FIXED: Intentionally NOT revoking the object URL here so the image stays visible in the chat history.
  }, [selectedImage]);
 
  const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
@@ -254,12 +253,13 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
    const recognition = new SpeechRecognition();
-   recognition.continuous = false; 
+   recognition.continuous = true; 
    recognition.interimResults = true; 
    recognition.lang = 'en-US';
+   
    recognition.onresult = (event: any) => {
     let interim = '', final = '';
-    for (let i = 0; i < event.results.length; ++i) {
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
       if (event.results[i].isFinal) final += event.results[i][0].transcript;
       else interim += event.results[i][0].transcript;
     }
@@ -268,18 +268,33 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     setInput(fullText);
     inputTextRef.current = fullText;
    };
-   recognition.onend = () => { if (isRecordingRef.current) recognition.start(); };
+
+   recognition.onend = () => {
+    // If we stopped but we ARE in "recording mode" (waiting for the release), restart it
+    if (isRecordingRef.current) {
+        recognition.start();
+    }
+   };
    recognitionRef.current = recognition;
   }
  }, []);
 
  const handleWalkieTalkieMic = () => {
   if (isRecording) {
+   // STOP COMMAND
    isRecordingRef.current = false;
    setIsRecording(false);
    recognitionRef.current?.stop();
-   if (inputTextRef.current.trim()) handleSend();
+   
+   // SISTER'S FIX: Use a tiny timeout to let the final 'onresult' finish updating transcript state
+   setTimeout(() => {
+       if (inputTextRef.current.trim()) {
+           handleSend();
+       }
+   }, 300);
+
   } else {
+   // START COMMAND
    setIsRecording(true);
    isRecordingRef.current = true;
    setInput('');
