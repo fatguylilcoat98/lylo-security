@@ -4,18 +4,35 @@ import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
-// --- THE GATEKEEPER ---
-// This component wraps your routes. If a user is not logged in, 
-// it intercepts them and ejects them back to the waitlist.
+// --- THE GATEKEEPER (Upgraded with URL Handoff) ---
 const Gatekeeper = ({ children }: { children: React.ReactNode }) => {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check if the user has a valid session in local storage
+    // 1. Check if the landing page is handing us credentials via the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailFromUrl = urlParams.get('email');
+    const tierFromUrl = urlParams.get('tier');
+    const nameFromUrl = urlParams.get('name');
+
+    if (emailFromUrl) {
+      // Catch the handoff and save it to the APP's local storage
+      localStorage.setItem('userEmail', emailFromUrl);
+      if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
+      if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
+      
+      // Wipe the URL clean so it looks professional and secure
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+      
+      setIsAuthorized(true);
+      return;
+    }
+
+    // 2. If no URL handoff, check if they are already securely logged in
     const userEmail = localStorage.getItem('userEmail');
     
     if (!userEmail) {
-      // UNAUTHORIZED: Eject them immediately to the correct main website
+      // UNAUTHORIZED: Eject them immediately to the main website
       window.location.assign('https://mylylo.pro');
     } else {
       // AUTHORIZED: Let them pass
@@ -23,7 +40,7 @@ const Gatekeeper = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
-  // If they aren't authorized yet, render a black screen to prevent the UI from flashing
+  // Render a black screen while calculating to prevent UI flashing
   if (!isAuthorized) {
     return <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw' }} />;
   }
@@ -35,8 +52,6 @@ export default function App() {
   return (
     <HashRouter>
       <Routes>
-        {/* We wrap every single route inside the <Gatekeeper> to ensure total lockdown */}
-        
         <Route 
           path="/" 
           element={
