@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.13.0 - ANNUAL BILLING SYNC"
+    version="19.28.0 - PERSONA VISION SYNC"
 )
 
 # Configure CORS
@@ -438,10 +438,13 @@ async def chat(
     visual_directive = ""
     if image_b64:
         visual_directive = """
-        CRITICAL VISUAL PROTOCOL: A file/image has been uploaded.
-        You MUST perform immediate technical and visual analysis of the image data.
-        CRITICAL DIRECTIVE: Scan for CATASTROPHIC FAILURES first. Are critical parts MISSING (like a serpentine belt, hoses, or bolts)? Are things physically broken or disconnected? 
-        Do NOT just report superficial oil, dirt, or residue. Acknowledge the most severe missing or broken component immediately in your first sentence.
+        CRITICAL VISUAL PROTOCOL: An image has been uploaded.
+        1. Acknowledge the most severe damage, issue, or detail in the photo in your very first sentence.
+        2. IMMEDIATELY pivot to your specific expert persona. 
+        - DOCTOR: Warn about bodily harm, internal injuries, or medical triage (e.g., a broken helmet means brain trauma risk).
+        - MECHANIC: Warn about catastrophic machine failure or missing parts.
+        - LAWYER: Warn about legal liability or contract traps.
+        Do not just describe the object. Evaluate the real-world consequences based on your identity.
         """
 
     vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
@@ -569,7 +572,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.13.0",
+        "version": "19.28.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
