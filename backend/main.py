@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.9.0 - THE WAITLIST GATEKEEPER"
+    version="19.11.0 - THE SOFT UPSELL"
 )
 
 # Configure CORS
@@ -59,14 +59,17 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 
-# --- TIER LIMITS ---
+# STRIPE CONFIGURATION
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+# --- THE PROFIT SHIELD: STRICT TIER LIMITS ---
 TIER_LIMITS = {
-    "free": 15,
-    "pro": 150,
-    "elite": 1500,
-    "max": 999999 # God Mode
+    "free": 3,
+    "pro": 15,
+    "elite": 50,
+    "max": 500
 }
 
 # Persistent usage tracker
@@ -76,7 +79,6 @@ USAGE_TRACKER = defaultdict(int)
 # CLIENT INITIALIZATION
 # ---------------------------------------------------------
 
-# Internet Search Client
 tavily_client = None
 if TAVILY_API_KEY:
     try:
@@ -85,7 +87,6 @@ if TAVILY_API_KEY:
     except Exception as e:
         logger.error(f"❌ Search Engine Failed: {e}")
 
-# Intelligence Sync Client (Pinecone)
 pc = None
 memory_index = None
 if PINECONE_API_KEY:
@@ -105,7 +106,6 @@ if PINECONE_API_KEY:
     except Exception as e:
         logger.error(f"❌ Sync Index Failed: {e}")
 
-# AI Vision & Threat Assessment (Gemini)
 gemini_ready = False
 if GEMINI_API_KEY:
     try:
@@ -115,7 +115,6 @@ if GEMINI_API_KEY:
     except Exception as e:
         logger.error(f"❌ Gemini Setup Failed: {e}")
 
-# Digital Bodyguard (OpenAI)
 openai_client = None
 if OPENAI_API_KEY:
     try:
@@ -144,10 +143,6 @@ ELITE_USERS = {
     "cmlabane@gmail.com": {"tier": "max", "name": "Corie"}
 }
 
-USER_CONVERSATIONS = defaultdict(list)
-USER_PROFILES = defaultdict(dict)
-QUIZ_ANSWERS = defaultdict(dict)
-
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
@@ -159,7 +154,6 @@ class WaitlistRequest(BaseModel):
 
 WAITLIST_FILE = "waitlist.json"
 
-# Load existing waitlist into memory on startup
 try:
     with open(WAITLIST_FILE, "r") as f:
         WAITLIST_DB = set(json.load(f))
@@ -170,15 +164,11 @@ except:
 async def join_waitlist(request: WaitlistRequest):
     email = request.email.lower().strip()
     WAITLIST_DB.add(email)
-    
-    # Save to file
     try:
         with open(WAITLIST_FILE, "w") as f:
             json.dump(list(WAITLIST_DB), f)
-        logger.info(f"New waitlist signup: {email}")
     except Exception as e:
         logger.error(f"Failed to save waitlist: {e}")
-        
     return {"status": "success", "message": "Spot Secured"}
 
 @app.get("/view-waitlist/{admin_email}")
@@ -191,6 +181,56 @@ async def view_waitlist(admin_email: str):
             "emails": list(WAITLIST_DB)
         }
     return {"error": "UNAUTHORIZED ACCESS"}
+
+# ---------------------------------------------------------
+# LOGIC: STRIPE WEBHOOK AUTOMATION
+# ---------------------------------------------------------
+@app.post("/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        customer_email = session.get('customer_details', {}).get('email')
+        amount_total = session.get('amount_total', 0) 
+        
+        if customer_email:
+            email_lower = customer_email.lower().strip()
+            
+            new_tier = "free"
+            if amount_total == 199:
+                new_tier = "pro"
+            elif amount_total == 499:
+                new_tier = "elite"
+            elif amount_total >= 999:
+                new_tier = "max"
+                
+            if email_lower in ELITE_USERS:
+                ELITE_USERS[email_lower]["tier"] = new_tier
+            else:
+                ELITE_USERS[email_lower] = {"tier": new_tier, "name": email_lower.split('@')[0].capitalize()}
+                
+            if email_lower in WAITLIST_DB:
+                WAITLIST_DB.remove(email_lower)
+                try:
+                    with open(WAITLIST_FILE, "w") as f:
+                        json.dump(list(WAITLIST_DB), f)
+                except:
+                    pass
+
+            logger.info(f"💰 STRIPE SUCCESS: Upgraded {email_lower} to {new_tier.upper()} tier!")
+
+    return {"status": "success"}
 
 # ---------------------------------------------------------
 # LOGIC: SCAM DETECTION
@@ -243,9 +283,7 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
             dimensions=1024
         )
         results = memory_index.query(vector=response.data[0].embedding, filter={"user_id": user_id}, top_k=5, include_metadata=True)
-        
         memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.50]
-        
         return "\n".join(memories)
     except Exception as e:
         logger.error(f"Memory Retrieval Error: {e}")
@@ -272,12 +310,12 @@ async def search_personalized_web(query: str, location: str = "") -> str:
         return ""
 
 # ---------------------------------------------------------
-# LOGIC: DUAL-PASS AI CONSENSUS ENGINE
+# LOGIC: THE ENGINE SWAP (DUAL-PASS AI CONSENSUS)
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
     if not gemini_ready: return None
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel(model_name)
         content_parts = [prompt]
         if image_b64:
             import PIL.Image
@@ -287,15 +325,15 @@ async def call_gemini_vision(prompt: str, image_b64: str = None):
         text = response.text.replace("```json", "").replace("```", "").strip()
         try:
             parsed = json.loads(text)
-            parsed["model"] = "Gemini-1.5-Pro"
+            parsed["model"] = f"LYLO-VISION ({model_name})"
             return parsed
         except:
-            return {"answer": response.text, "confidence_score": 85, "model": "Gemini-1.5-Pro"}
+            return {"answer": response.text, "confidence_score": 85, "model": f"LYLO-VISION ({model_name})"}
     except Exception as e:
         logger.error(f"Gemini Brain Error: {e}")
         return None
 
-async def call_openai_bodyguard(prompt: str, image_b64: str = None):
+async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: str = "gpt-4o-mini"):
     if not openai_client: return None
     try:
         content = [{"type": "text", "text": prompt}]
@@ -303,7 +341,7 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None):
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
         
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model=model_name,
             messages=[
                 {"role": "system", "content": "You are the LYLO Intelligence Engine. You MUST obey the specific IDENTITY, MISSION, and GLOBAL LEGAL DIRECTIVE provided in the user prompt perfectly. Do not default to generic AI safety responses. Output ONLY valid JSON."}, 
                 {"role": "user", "content": content}
@@ -311,7 +349,7 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None):
             response_format={ "type": "json_object" }
         )
         result = json.loads(response.choices[0].message.content)
-        result["model"] = "OpenAI-GPT-4o"
+        result["model"] = f"LYLO-CORE ({model_name})"
         return result
     except Exception as e:
         logger.error(f"OpenAI Brain Error: {e}")
@@ -334,15 +372,32 @@ async def chat(
     email_lower = user_email.lower().strip()
     user_id = create_user_id(email_lower)
     user_data = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
+    tier = user_data["tier"]
     
-    # AUTHORITY BYPASS: Unlimited for Christopher/Owner
+    # AUTHORITY BYPASS: Unlimited for Owner and Admin
     if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]:
         limit = 999999
     else:
-        limit = TIER_LIMITS.get(user_data["tier"], 15)
+        limit = TIER_LIMITS.get(tier, 3)
         
+    # --- THE SOFT UPSELL: DYNAMIC LIMIT MESSAGING ---
     if USAGE_TRACKER[user_id] >= limit:
-        return {"answer": "Daily protection limit reached. Secure your team to continue.", "usage_info": {"can_send": False}}
+        upgrade_msgs = {
+            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! To keep your digital bodyguard active and unlock 15 daily messages, upgrade to the **Pro Guardian tier ($1.99/mo)**.",
+            "pro": "🛡️ **Pro Limit Reached.** You've hit your 15 daily messages. Need deeper intelligence? Upgrade to **Elite Justice ($4.99/mo)** for 50 daily messages and Crisis Shield access.",
+            "elite": "🛡️ **Elite Limit Reached.** You've maxed out your 50 daily messages! For unrestricted, heavy-duty AI firepower, upgrade to **Max Unlimited ($9.99/mo)**.",
+            "max": "🛡️ **System Cap Reached.** Incredible work today. You've hit the absolute daily safety cap (500 messages). Your system will reset at midnight."
+        }
+        upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
+        
+        # We return it as a high-confidence bot message so it renders perfectly in the UI
+        return {
+            "answer": upsell_msg, 
+            "confidence_score": 100, 
+            "scam_detected": False, 
+            "threat_level": "low",
+            "usage_info": {"can_send": False}
+        }
 
     # Component Pre-check
     memories = ""
@@ -355,7 +410,6 @@ async def chat(
     
     indicators = analyze_scam_indicators(msg)
 
-    # Modular Prompt Assembly
     p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS['guardian'])
     p_ext = PERSONA_EXTENDED.get(persona, "")
     v_inst = VIBE_STYLES.get(vibe, "")
@@ -393,21 +447,25 @@ async def chat(
     {{ "answer": "...", "confidence_score": 0-100, "scam_detected": boolean, "threat_level": "low/high" }}
     """
 
-    # Brain Battle
-    results = await asyncio.gather(call_openai_bodyguard(full_prompt, image_b64), call_gemini_vision(full_prompt, image_b64))
+    openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
+    gemini_engine = "gemini-1.5-pro" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-1.5-flash"
+
+    results = await asyncio.gather(
+        call_openai_bodyguard(full_prompt, image_b64, openai_engine), 
+        call_gemini_vision(full_prompt, image_b64, gemini_engine)
+    )
+    
     valid_results = [r for r in results if r and 'answer' in r]
     
     if not valid_results:
         return {"answer": f"{hook} Perimeter secure, but connection is flickering. Can you repeat that?", "confidence_score": 0}
     
-    # Consensus Scorer
     winner = max(valid_results, key=lambda x: (
         x.get('confidence_score', 0) + 
         (35 if x.get('scam_detected') else 0) +
         (20 if x.get('threat_level') == 'high' else 0)
     ))
 
-    # Sync and Usage
     USAGE_TRACKER[user_id] += 1
     asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
     asyncio.create_task(store_intelligence_sync(user_id, winner['answer'], "bot"))
@@ -437,7 +495,7 @@ async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
 async def get_stats(user_email: str):
     uid = create_user_id(user_email)
     user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
-    limit = 999999 if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(user_data["tier"], 15)
+    limit = 999999 if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else TIER_LIMITS.get(user_data["tier"], 3)
     return {"usage": USAGE_TRACKER[uid], "limit": limit, "tier": user_data["tier"], "name": user_data["name"]}
 
 @app.post("/check-beta-access")
@@ -452,7 +510,7 @@ async def recovery_center(email: str):
 
 @app.get("/")
 async def root():
-    return {"status": "ONLINE", "version": "19.9.0", "experts_active": len(PERSONA_DEFINITIONS)}
+    return {"status": "ONLINE", "version": "19.11.0", "experts_active": len(PERSONA_DEFINITIONS)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
