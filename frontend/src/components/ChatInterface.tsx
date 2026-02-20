@@ -174,7 +174,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  
  const [fontLevel, setFontLevel] = useState<number>(1);
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
- const [previewUrl, setPreviewUrl] = useState<string | null>(null); // NEW: Image Preview state
+ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
 
@@ -215,7 +215,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
  }, [messages]);
 
- // --- NEW: PREVIEW LOGIC ---
  useEffect(() => {
     if (!selectedImage) {
         setPreviewUrl(null);
@@ -223,7 +222,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     }
     const objectUrl = URL.createObjectURL(selectedImage);
     setPreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
+    // FIXED: Intentionally NOT revoking the object URL here so the image stays visible in the chat history.
  }, [selectedImage]);
 
  const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
@@ -300,7 +299,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   accumulatedRef.current = '';
   setShowPersonaGrid(false);
   
-  // Save the current preview URL to the message before clearing state
   const currentImagePreview = previewUrl;
 
   const userMsg: Message = { 
@@ -308,7 +306,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     content: text, 
     sender: 'user', 
     timestamp: new Date(),
-    imageUrl: currentImagePreview // --- NEW: Attach preview to message bubble ---
+    imageUrl: currentImagePreview 
   };
   setMessages(prev => [...prev, userMsg]);
   
@@ -498,7 +496,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
        
-       {/* --- NEW: RENDER IMAGE IN CHAT BUBBLE --- */}
        {msg.imageUrl && (
          <div className="mb-2 max-w-[85%] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
            <img src={msg.imageUrl} alt="Uploaded" className="w-full h-auto object-cover max-h-[300px]" />
@@ -550,7 +547,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
     <div className="max-w-md mx-auto space-y-4">
      
-     {/* --- NEW: PREVIEW AREA ABOVE MIC --- */}
      {previewUrl && (
        <div className="flex justify-center mb-2 animate-in slide-in-from-bottom-2">
          <div className="relative group">
