@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.28.0 - PERSONA VISION SYNC"
+    version="19.29.0 - MANUAL APPROVAL GATE"
 )
 
 # Configure CORS
@@ -147,18 +147,25 @@ def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
 # ---------------------------------------------------------
-# LOGIC: WAITLIST SYSTEM
+# LOGIC: WAITLIST & PAID QUEUE SYSTEM
 # ---------------------------------------------------------
 class WaitlistRequest(BaseModel):
     email: str
 
 WAITLIST_FILE = "waitlist.json"
+PAID_QUEUE_FILE = "paid_queue.json"
 
 try:
     with open(WAITLIST_FILE, "r") as f:
         WAITLIST_DB = set(json.load(f))
-except:
+except Exception:
     WAITLIST_DB = set()
+
+try:
+    with open(PAID_QUEUE_FILE, "r") as f:
+        PAID_QUEUE_DB = json.load(f)
+except Exception:
+    PAID_QUEUE_DB = {}
 
 @app.post("/join-waitlist")
 async def join_waitlist(request: WaitlistRequest):
@@ -182,8 +189,19 @@ async def view_waitlist(admin_email: str):
         }
     return {"error": "UNAUTHORIZED ACCESS"}
 
+@app.get("/view-paid-queue/{admin_email}")
+async def view_paid_queue(admin_email: str):
+    email_check = admin_email.lower().strip()
+    if email_check in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {
+            "status": "AUTHORIZED",
+            "total_pending": len(PAID_QUEUE_DB),
+            "pending_users": PAID_QUEUE_DB
+        }
+    return {"error": "UNAUTHORIZED ACCESS"}
+
 # ---------------------------------------------------------
-# LOGIC: STRIPE WEBHOOK AUTOMATION (MONTHLY & YEARLY)
+# LOGIC: STRIPE WEBHOOK AUTOMATION (THE MANUAL GATE)
 # ---------------------------------------------------------
 @app.post("/webhook")
 async def stripe_webhook(request: Request):
@@ -217,10 +235,25 @@ async def stripe_webhook(request: Request):
                 new_tier = "max"
 
             if email_lower in ELITE_USERS:
+                # User is already approved in the system, just bump their tier
                 ELITE_USERS[email_lower]["tier"] = new_tier
+                logger.info(f"💰 STRIPE SUCCESS: Upgraded existing user {email_lower} to {new_tier.upper()} tier!")
             else:
-                ELITE_USERS[email_lower] = {"tier": new_tier, "name": email_lower.split("@")[0].capitalize()}
+                # NEW USER SECURITY GATE: Add to the Manual Approval Queue, NOT the live app
+                PAID_QUEUE_DB[email_lower] = {
+                    "tier": new_tier, 
+                    "name": email_lower.split("@")[0].capitalize(),
+                    "status": "pending_admin_approval"
+                }
+                try:
+                    with open(PAID_QUEUE_FILE, "w") as f:
+                        json.dump(PAID_QUEUE_DB, f)
+                except Exception as e:
+                    logger.error(f"Failed to save paid queue: {e}")
+                
+                logger.info(f"💰 STRIPE SUCCESS: New user {email_lower} paid. Placed in MANUAL APPROVAL QUEUE.")
 
+            # Purge them from the waitlist if they are waiting
             if email_lower in WAITLIST_DB:
                 WAITLIST_DB.remove(email_lower)
                 try:
@@ -228,8 +261,6 @@ async def stripe_webhook(request: Request):
                         json.dump(list(WAITLIST_DB), f)
                 except Exception as e:
                     logger.error(f"Waitlist Removal Error: {e}")
-
-            logger.info(f"💰 STRIPE SUCCESS: Upgraded {email_lower} to {new_tier.upper()} tier!")
 
     return {"status": "success"}
 
@@ -572,7 +603,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.28.0",
+        "version": "19.29.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
