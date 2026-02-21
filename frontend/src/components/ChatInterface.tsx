@@ -6,7 +6,7 @@ import {
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
  StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
  Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink,
- Menu, Image as ImageIcon, Camera as CameraIcon
+ Menu, Image as ImageIcon, Camera as CameraIcon, Type
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -171,6 +171,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
  
  const [fontLevel, setFontLevel] = useState<number>(1);
+ const [isVoiceEnabled, setIsVoiceEnabled] = useState<boolean>(true);
  const [selectedImage, setSelectedImage] = useState<File | null>(null);
  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
  const [showCrisisShield, setShowCrisisShield] = useState(false);
@@ -184,6 +185,24 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const accumulatedRef = useRef<string>(''); 
  const inputTextRef = useRef<string>(''); 
  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
+
+ // Back button handling
+ useEffect(() => {
+   const handlePopState = (e: PopStateEvent) => {
+     if (!showPersonaGrid) {
+       e.preventDefault();
+       handleInternalBack();
+       window.history.pushState(null, '', window.location.pathname);
+     }
+   };
+   
+   window.history.pushState(null, '', window.location.pathname);
+   window.addEventListener('popstate', handlePopState);
+   
+   return () => {
+     window.removeEventListener('popstate', handlePopState);
+   };
+ }, [showPersonaGrid]);
 
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
@@ -204,6 +223,9 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   const savedFont = localStorage.getItem('lylo_font_level');
   if (savedFont) setFontLevel(parseInt(savedFont, 10));
 
+  const savedVoiceToggle = localStorage.getItem('lylo_voice_enabled');
+  if (savedVoiceToggle !== null) setIsVoiceEnabled(savedVoiceToggle === 'true');
+
   const allDrops = Object.keys(REAL_INTEL_DROPS);
   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
   setNotifications(allDrops.filter(id => !cleared.includes(id)).sort(() => 0.5 - Math.random()).slice(0, 3));
@@ -223,6 +245,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  }, [selectedImage]);
 
  const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
+   if (!isVoiceEnabled) return null;
    try {
      const formData = new FormData();
      formData.append('text', text);
@@ -381,6 +404,32 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    localStorage.setItem('lylo_font_level', nextLevel.toString());
  };
 
+ const toggleVoice = () => {
+   const newState = !isVoiceEnabled;
+   setIsVoiceEnabled(newState);
+   localStorage.setItem('lylo_voice_enabled', newState.toString());
+   if (!newState && currentlyPlayingAudioRef.current) {
+     currentlyPlayingAudioRef.current.pause();
+     currentlyPlayingAudioRef.current.currentTime = 0;
+     setIsSpeaking(false);
+   }
+ };
+
+ const dismissIntel = (id: string) => {
+   setNotifications(prev => prev.filter(n => n !== id));
+   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
+   if (!cleared.includes(id)) {
+     cleared.push(id);
+     localStorage.setItem('lylo_cleared_intel', JSON.stringify(cleared));
+   }
+ };
+
+ const dismissAllIntel = () => {
+   const newCleared = [...JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]'), ...notifications];
+   localStorage.setItem('lylo_cleared_intel', JSON.stringify(Array.from(new Set(newCleared))));
+   setNotifications([]);
+ };
+
  const getDynamicFontSize = () => {
    switch(fontLevel) {
      case 1: return 'text-sm leading-normal';
@@ -425,6 +474,34 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
             <option value="roast">Roast Mode</option>
           </select>
         </div>
+        
+        <div className="mb-6 space-y-3">
+          <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+            <div className="flex items-center gap-3">
+              <Type className="w-5 h-5 text-blue-400" />
+              <span className="font-bold">Text Size</span>
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-gray-400">Level {fontLevel}</span>
+          </button>
+          
+          <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+            <div className="flex items-center gap-3">
+              {isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}
+              <span className="font-bold">Voice Output</span>
+            </div>
+            <span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {showPersonaGrid && notifications.length > 0 && (
+            <button onClick={dismissAllIntel} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+              <div className="flex items-center gap-3">
+                <Trash2 className="w-5 h-5 text-yellow-400" />
+                <span className="font-bold">Clear Intel</span>
+              </div>
+            </button>
+          )}
+        </div>
+
         <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl"><LogOut className="w-4 h-4"/> Terminate Session</button>
        </div>
       )}
@@ -528,10 +605,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      <div className="space-y-3">
       {notifications.map(id => (
        <div key={id} className="bg-white/5 border border-white/10 p-5 rounded-3xl relative animate-in slide-in-from-right">
-        <button onClick={() => setNotifications(prev => prev.filter(n => n !== id))} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
+        <button onClick={() => dismissIntel(id)} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
         <div className="flex gap-4">
-         <div className="p-2 bg-yellow-500/20 rounded-xl"><Zap className="w-4 h-4 text-yellow-400" /></div>
-         <p className={`${getDynamicFontSize()} text-gray-200 font-bold`}>{REAL_INTEL_DROPS[id]}</p>
+         <div className="p-2 bg-yellow-500/20 rounded-xl h-fit"><Zap className="w-4 h-4 text-yellow-400" /></div>
+         <p className={`${getDynamicFontSize()} text-gray-200 font-bold pr-4`}>{REAL_INTEL_DROPS[id]}</p>
         </div>
        </div>
       ))}
@@ -551,7 +628,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
     {messages.map((msg, idx) => {
      const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-     const suggestion = isLatestBot ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
+     // Disable transitions if we're dealing with an image upload response to stop looping
+     const suggestion = isLatestBot && !msg.imageUrl ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
        
@@ -617,11 +695,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      )}
 
      <div className="flex gap-2 mb-2">
-       <button onClick={cycleFontSize} className="w-1/3 py-3 bg-white/5 border border-white/10 rounded-[32px] text-white flex flex-col items-center justify-center shadow-lg hover:bg-white/10 transition-colors">
-         <span className="text-xl font-black leading-none">A+</span>
-         <span className="text-[8px] uppercase tracking-widest font-bold mt-1 text-gray-400">Text Size</span>
-       </button>
-       <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-2/3 py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+       <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-full py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
         {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
        </button>
      </div>
