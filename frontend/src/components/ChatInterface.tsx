@@ -6,7 +6,7 @@ import {
  FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
  StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
  Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink,
- Menu, Image as ImageIcon, Camera as CameraIcon, Type
+ Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -152,6 +152,16 @@ const detectExpertSuggestion = (text: string, currentId: string, userTier: strin
   return null;
 };
 
+// Generate or retrieve persistent Device ID
+const getDeviceId = () => {
+  let deviceId = localStorage.getItem('lylo_device_id');
+  if (!deviceId) {
+    deviceId = crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + Math.random().toString(36).substring(2);
+    localStorage.setItem('lylo_device_id', deviceId);
+  }
+  return deviceId;
+};
+
 function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {} }: ChatInterfaceProps) {
  const [activePersona, setActivePersona] = useState<PersonaConfig>(() => initialPersona || PERSONAS[0]);
  const [messages, setMessages] = useState<Message[]>([]);
@@ -176,6 +186,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
+ 
+ // Onboarding State
+ const [showOnboarding, setShowOnboarding] = useState(false);
+ const [onboardingStep, setOnboardingStep] = useState(1);
+ const [deviceId] = useState(() => getDeviceId());
 
  const chatContainerRef = useRef<HTMLDivElement>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,24 +201,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const inputTextRef = useRef<string>(''); 
  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
 
- // Back button handling
- useEffect(() => {
-   const handlePopState = (e: PopStateEvent) => {
-     if (!showPersonaGrid) {
-       e.preventDefault();
-       handleInternalBack();
-       window.history.pushState(null, '', window.location.pathname);
-     }
-   };
-   
-   window.history.pushState(null, '', window.location.pathname);
-   window.addEventListener('popstate', handlePopState);
-   
-   return () => {
-     window.removeEventListener('popstate', handlePopState);
-   };
- }, [showPersonaGrid]);
-
+ // Initialize User State and Onboarding Check
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
   const storedName = localStorage.getItem('userName');
@@ -226,10 +224,33 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   const savedVoiceToggle = localStorage.getItem('lylo_voice_enabled');
   if (savedVoiceToggle !== null) setIsVoiceEnabled(savedVoiceToggle === 'true');
 
+  const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
+  if (!hasOnboarded) {
+    setShowOnboarding(true);
+  }
+
   const allDrops = Object.keys(REAL_INTEL_DROPS);
   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
   setNotifications(allDrops.filter(id => !cleared.includes(id)).sort(() => 0.5 - Math.random()).slice(0, 3));
  }, [userEmail]);
+
+ // Back button handling
+ useEffect(() => {
+   const handlePopState = (e: PopStateEvent) => {
+     if (!showPersonaGrid && !showOnboarding) {
+       e.preventDefault();
+       handleInternalBack();
+       window.history.pushState(null, '', window.location.pathname);
+     }
+   };
+   
+   window.history.pushState(null, '', window.location.pathname);
+   window.addEventListener('popstate', handlePopState);
+   
+   return () => {
+     window.removeEventListener('popstate', handlePopState);
+   };
+ }, [showPersonaGrid, showOnboarding]);
 
  useEffect(() => {
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -346,11 +367,42 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   setMessages(prev => [...prev, userMsg]);
   
   try {
-   const response = await sendChatMessage(text, messages, activePersona.id, userEmail, selectedImage, 'en', communicationStyle);
-   const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
-   const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
+   // INJECTED: Pass deviceId to the API call
+   const formData = new FormData();
+   formData.append('msg', text);
+   formData.append('history', JSON.stringify(messages.slice(-6)));
+   formData.append('persona', activePersona.id);
+   formData.append('user_email', userEmail);
+   formData.append('vibe', communicationStyle);
+   formData.append('use_long_term_memory', 'true');
+   formData.append('device_id', deviceId); // Device lock integration
+   
+   if (selectedImage) {
+     formData.append('file', selectedImage);
+   }
 
-   const botMsg: Message = { id: Date.now().toString(), content: response.answer, sender: 'bot', timestamp: new Date(), confidenceScore: response.confidence_score, scamDetected: response.scam_detected };
+   const apiResponse = await fetch(`${API_URL}/chat`, {
+      method: 'POST',
+      body: formData,
+   });
+
+   if (!apiResponse.ok) throw new Error("API Network Error");
+   const response = await apiResponse.json();
+
+   // Handle the security lockout message gracefully
+   const isLockout = response.threat_level === "high" && response.answer.includes("DEVICE LIMIT EXCEEDED");
+
+   const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+   const audioToPlay = isLockout ? null : await fetchAudioSilently(response.answer, voiceToUse);
+
+   const botMsg: Message = { 
+     id: Date.now().toString(), 
+     content: response.answer, 
+     sender: 'bot', 
+     timestamp: new Date(), 
+     confidenceScore: response.confidence_score, 
+     scamDetected: response.scam_detected 
+   };
    
    setMessages(prev => [...prev, botMsg]);
    if (audioToPlay) playAudioSafely(audioToPlay);
@@ -430,6 +482,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    setNotifications([]);
  };
 
+ const completeOnboarding = () => {
+   localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
+   setShowOnboarding(false);
+ };
+
  const getDynamicFontSize = () => {
    switch(fontLevel) {
      case 1: return 'text-sm leading-normal';
@@ -449,6 +506,135 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
      default: return 'text-sm';
    }
  };
+
+ // ONBOARDING MODAL
+ if (showOnboarding) {
+   return (
+     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
+       <div className="bg-[#111] border border-blue-500/30 rounded-3xl w-full max-w-lg p-6 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative overflow-hidden">
+         
+         <div className="absolute top-0 left-0 w-full h-1 bg-white/10">
+           <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${(onboardingStep / 3) * 100}%` }}></div>
+         </div>
+
+         {onboardingStep === 1 && (
+           <div className="animate-in fade-in zoom-in-95 duration-300">
+             <div className="flex items-center gap-4 mb-6">
+               <Shield className="w-10 h-10 text-blue-500 fill-current" />
+               <div>
+                 <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">System Briefing</h2>
+                 <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mt-1">Security Clearance Granted</p>
+               </div>
+             </div>
+             
+             <div className="space-y-4 mb-8 text-gray-300 text-sm leading-relaxed max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+               <p><strong className="text-white">Read this entirely.</strong> You are no longer just searching the web. You are now backed by a proactive Digital Task Force. Here is the telemetry under the hood:</p>
+               
+               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                 <strong className="text-white flex items-center gap-2 mb-1"><Brain className="w-4 h-4 text-purple-400" /> 1. THE WAR ROOM (Dual-Brain)</strong>
+                 <p className="text-xs text-gray-400">Your prompt is injected into both GPT-4o and Gemini 1.5 Pro. They battle it out, verify the data, and deliver the highest-confidence consensus.</p>
+               </div>
+
+               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                 <strong className="text-white flex items-center gap-2 mb-1"><CheckCircle className="w-4 h-4 text-green-400" /> 2. THE TRUTH PROTOCOL</strong>
+                 <p className="text-xs text-gray-400">Most AIs "hallucinate". Lylo will not make up an answer. You will get 100% honest, tactical truth, or we will ask for more intel.</p>
+               </div>
+
+               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                 <strong className="text-white flex items-center gap-2 mb-1"><Lock className="w-4 h-4 text-blue-400" /> 3. IRONCLAD PRIVACY</strong>
+                 <p className="text-xs text-gray-400">Your identity is cryptographically hashed. We never sell your data, and your private conversations are never used to train public AI models.</p>
+               </div>
+
+               <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+                 <strong className="text-white flex items-center gap-2 mb-1"><CameraIcon className="w-4 h-4 text-pink-400" /> 4. VISUAL SENSORS</strong>
+                 <p className="text-xs text-gray-400">Upload photos. Have the Mechanic scan your engine. Have the Lawyer read a lease. We do not just describe the photo—we analyze the consequences.</p>
+               </div>
+             </div>
+
+             <button onClick={() => setOnboardingStep(2)} className="w-full py-4 bg-blue-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-blue-500 transition-all">
+               Acknowledge & Continue <ArrowRight className="w-5 h-5" />
+             </button>
+           </div>
+         )}
+
+         {onboardingStep === 2 && (
+           <div className="animate-in fade-in slide-in-from-right-8 duration-300">
+             <div className="flex items-center gap-4 mb-6">
+               <Sliders className="w-10 h-10 text-purple-500" />
+               <div>
+                 <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">Calibrate HUD</h2>
+                 <p className="text-purple-400 text-xs font-bold uppercase tracking-widest mt-1">Interface Setup</p>
+               </div>
+             </div>
+
+             <div className="space-y-6 mb-8">
+               <div>
+                 <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Communication Style</p>
+                 <select value={communicationStyle} onChange={(e) => { setCommunicationStyle(e.target.value); localStorage.setItem('lylo_communication_style', e.target.value); }} className="w-full bg-white/10 text-white p-4 rounded-xl font-bold border border-white/10">
+                   <option value="standard">Standard Tone (Direct & Helpful)</option>
+                   <option value="business">Business Professional (Formal)</option>
+                   <option value="roast">Roast Mode (Brutally Straight)</option>
+                 </select>
+               </div>
+
+               <div>
+                 <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Text Display Size</p>
+                 <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+                   <div className="flex items-center gap-3">
+                     <Type className="w-5 h-5 text-blue-400" />
+                     <span className="font-bold">Text Size</span>
+                   </div>
+                   <span className="text-xs font-black uppercase tracking-widest text-blue-400">Level {fontLevel}</span>
+                 </button>
+               </div>
+
+               <div>
+                 <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Voice Output</p>
+                 <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+                   <div className="flex items-center gap-3">
+                     {isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}
+                     <span className="font-bold">Voice System</span>
+                   </div>
+                   <span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'MUTED'}</span>
+                 </button>
+               </div>
+             </div>
+
+             <button onClick={() => setOnboardingStep(3)} className="w-full py-4 bg-purple-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-purple-500 transition-all">
+               Confirm Settings <ArrowRight className="w-5 h-5" />
+             </button>
+           </div>
+         )}
+
+         {onboardingStep === 3 && (
+           <div className="animate-in fade-in slide-in-from-right-8 duration-300">
+             <div className="flex items-center gap-4 mb-6">
+               <Lock className="w-10 h-10 text-red-500" />
+               <div>
+                 <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">Security Lock</h2>
+                 <p className="text-red-400 text-xs font-bold uppercase tracking-widest mt-1">Device Authorization</p>
+               </div>
+             </div>
+
+             <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-2xl mb-8">
+               <h3 className="text-red-500 font-black uppercase tracking-widest mb-2 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> DEVICE LIMIT DETECTED</h3>
+               <p className="text-gray-300 text-sm leading-relaxed">
+                 Your Lylo OS clearance is cryptographically tied to your specific hardware. To ensure peak server performance and ironclad privacy, your account is strictly limited to <strong>two (2) active devices</strong>.
+                 <br/><br/>
+                 Any unauthorized attempt to breach this limit from a third device will result in an immediate access denial. Do not share your clearance credentials.
+               </p>
+             </div>
+
+             <button onClick={completeOnboarding} className="w-full py-4 bg-green-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-green-500 transition-all">
+               Initialize System <CheckCircle className="w-5 h-5" />
+             </button>
+           </div>
+         )}
+
+       </div>
+     </div>
+   );
+ }
 
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
@@ -500,6 +686,13 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
               </div>
             </button>
           )}
+
+          <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(1); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
+            <div className="flex items-center gap-3">
+              <Info className="w-5 h-5 text-blue-400" />
+              <span className="font-bold">System Briefing</span>
+            </div>
+          </button>
         </div>
 
         <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl"><LogOut className="w-4 h-4"/> Terminate Session</button>
