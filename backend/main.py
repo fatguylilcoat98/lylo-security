@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.31.0 - DEVICE LOCK"
+    version="19.32.0 - VISUAL LOCK"
 )
 
 # Configure CORS
@@ -412,7 +412,7 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
 # ---------------------------------------------------------
 @app.post("/chat")
 async def chat(
-    msg: str = Form(...),
+    msg: str = Form(""), # Make msg optional to handle just images
     history: str = Form("[]"),
     persona: str = Form("guardian"),
     user_email: str = Form(...),
@@ -490,6 +490,9 @@ async def chat(
     if file:
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode("utf-8")
+        # Ensure there is a prompt if the user just uploads an image
+        if not msg.strip():
+            msg = "Please analyze this image and provide a technical assessment based on your specialty."
 
     # --- THE VISUAL PRIORITY OVERRIDE ---
     visual_directive = ""
@@ -636,7 +639,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.31.0",
+        "version": "19.32.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
