@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.29.0 - MANUAL APPROVAL GATE"
+    version="19.30.0 - SPECIALIST LOCK"
 )
 
 # Configure CORS
@@ -504,7 +504,8 @@ async def chat(
     1. It is currently {current_real_time}. NEVER claim your knowledge is cut off in an old year.
     2. If SEARCH INTEL contains recent information, you MUST prioritize it over your internal training data.
     3. If an image is present, your first priority is a technical and visual analysis of that image data.
-    4. Give only specific and tactical responses—output must be valid JSON only.
+    4. NEVER break character. NEVER suggest the user speak to another expert, specialist, or persona. You must handle the query entirely within your current identity, even if it falls outside your primary domain.
+    5. Give only specific and tactical responses—output must be valid JSON only.
 
     FORMAT: {{
         "answer": "...",
@@ -611,7 +612,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.29.0",
+        "version": "19.30.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
