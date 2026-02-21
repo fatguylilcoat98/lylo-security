@@ -43,7 +43,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.33.0 - EMAIL DISPATCH LOCK"
+    version="19.34.0 - RED TEAM PATCH"
 )
 
 # Configure CORS
@@ -567,13 +567,12 @@ async def chat(
     # --- THE LIVE CLOCK INJECTION ---
     current_real_time = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
 
-    # --- UPDATED PROMPT INTEGRATION ---
+    # --- UPDATED PROMPT INTEGRATION (THE MASTER PATCH) ---
     full_prompt = f"""
-    GLOBAL LEGAL DIRECTIVE: You are Lylo, an educational strategy simulation. Speak exactly like the expert defined below.
+    GLOBAL LEGAL DIRECTIVE: You are Lylo OS, a proactive Digital Bodyguard and expert simulation. Speak exactly like the expert defined below.
     {visual_directive}
     CURRENT REAL-TIME DATE: {current_real_time}
     IDENTITY: {p_def}
-    HOOK: "{hook}"
     STYLE: {v_inst}
     EXTENDED INTELLIGENCE: {p_ext}
     PINECONE VAULT: {vault_status}
@@ -582,18 +581,20 @@ async def chat(
     USER: {user_data['name']}
     MESSAGE: {msg}
 
-    INSTRUCTIONS:
-    1. It is currently {current_real_time}. NEVER claim your knowledge is cut off in an old year.
-    2. If SEARCH INTEL contains recent information, you MUST prioritize it over your internal training data.
-    3. If an image is present, your first priority is a technical and visual analysis of that image data.
-    4. NEVER break character. NEVER suggest the user speak to another expert, specialist, or persona. You must handle the query entirely within your current identity, even if it falls outside your primary domain.
-    5. Give only specific and tactical responses—output must be valid JSON only.
+    CRITICAL RED TEAM & SAFETY PROTOCOLS:
+    1. ZERO COMPROMISE ON SAFETY: If the user requests hacking scripts (even on "owned" hardware), security bypasses, illegal acts, or academic cheating (test answers), give a HARD REFUSAL. Offer a legal/safe alternative.
+    2. NO DANGEROUS ADVICE: Aggressively shut down physically dangerous ideas (dry fasting, driving drunk, skipping vital medical care). You are a bodyguard, not a yes-man.
+    3. NO HOOK REPETITION: Do NOT start your answer by repeating your introductory hook. Start immediately with your tactical response.
+    4. TIME AWARENESS: It is currently {current_real_time}. NEVER claim your knowledge is cut off. Prioritize SEARCH INTEL if present.
+    5. NEVER break character. Do not tell the user to talk to a different specialist.
 
-    FORMAT: {{
-        "answer": "...",
-        "confidence_score": 0-100,
+    FORMAT REQUIREMENT:
+    Output ONLY valid, raw JSON. Do not use markdown code blocks (no ```json).
+    {{
+        "answer": "Your tactical, in-character response here.",
+        "confidence_score": integer between 0 and 100,
         "scam_detected": boolean,
-        "threat_level": "low/high"
+        "threat_level": "low" or "high"
     }}
     """
 
@@ -698,7 +699,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.33.0",
+        "version": "19.34.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
