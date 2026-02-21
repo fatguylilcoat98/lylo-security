@@ -40,7 +40,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.30.0 - SPECIALIST LOCK"
+    version="19.31.0 - DEVICE LOCK"
 )
 
 # Configure CORS
@@ -74,6 +74,11 @@ TIER_LIMITS = {
 
 # Persistent usage tracker
 USAGE_TRACKER = defaultdict(int)
+
+# --- DEVICE AUTHORIZATION LIMITS ---
+# Maps email to a set of authorized device IDs
+AUTHORIZED_DEVICES = defaultdict(set)
+MAX_DEVICES_PER_USER = 2
 
 # ---------------------------------------------------------
 # CLIENT INITIALIZATION
@@ -414,6 +419,7 @@ async def chat(
     user_location: str = Form(""),
     vibe: str = Form("standard"),
     use_long_term_memory: str = Form("false"),
+    device_id: str = Form("unknown"),  # INJECTED: Frontend device identifier
     file: UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -422,10 +428,28 @@ async def chat(
     tier = user_data["tier"]
 
     # AUTHORITY BYPASS: Unlimited for Owner and Admin
-    if email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]:
+    is_admin = email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+
+    if is_admin:
         limit = 999999
     else:
         limit = TIER_LIMITS.get(tier, 3)
+
+    # --- DEVICE FINGERPRINT LOCK ---
+    if not is_admin and device_id != "unknown":
+        user_devices = AUTHORIZED_DEVICES[email_lower]
+        if device_id not in user_devices:
+            if len(user_devices) >= MAX_DEVICES_PER_USER:
+                logger.warning(f"🚨 DEVICE BREACH ATTEMPT: {email_lower} tried to access via 3rd device ({device_id}).")
+                return {
+                    "answer": "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\nYour LYLO OS clearance is cryptographically tied to your specific hardware. To ensure peak server performance and ironclad privacy, your account is strictly limited to **two (2) active devices**. You are attempting to breach this limit from an unauthorized third device. Access denied.",
+                    "confidence_score": 100,
+                    "scam_detected": False,
+                    "threat_level": "high",
+                    "usage_info": {"can_send": False}
+                }
+            else:
+                user_devices.add(device_id)
 
     # --- THE SOFT UPSELL: DYNAMIC LIMIT MESSAGING ---
     if USAGE_TRACKER[user_id] >= limit:
@@ -612,7 +636,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.30.0",
+        "version": "19.31.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
