@@ -259,7 +259,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
  useEffect(() => {
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
- }, [messages]);
+ }, [messages, previewUrl]);
 
  useEffect(() => {
     if (!selectedImage) {
@@ -752,7 +752,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     </div>
    )}
 
-   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: '300px' }}>
+   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '350px' : '220px' }}>
     
     {showPersonaGrid && (
      <div className="grid grid-cols-2 gap-3">
@@ -819,34 +819,36 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    </div>
 
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
+    
+    {/* --- IMAGE PREVIEW MOVED TO ABSOLUTE OVERLAY --- */}
+    {previewUrl && (
+      <div className="absolute bottom-[100%] left-0 right-0 flex flex-col items-center pb-4 pointer-events-none">
+        <div className="pointer-events-auto flex flex-col items-center gap-3 w-full max-w-md px-4">
+          
+          {/* Email toggle */}
+          <div className="flex items-center justify-between bg-indigo-900/90 backdrop-blur-xl border border-indigo-500/50 p-3 rounded-xl w-full shadow-[0_0_30px_rgba(79,70,229,0.3)] animate-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-indigo-400" />
+              <span className="text-[10px] text-white font-black uppercase tracking-widest">Send Copy to Email?</span>
+            </div>
+            <button onClick={() => setEmailConsent(!emailConsent)} className={`w-10 h-5 rounded-full transition-all relative ${emailConsent ? 'bg-green-500' : 'bg-gray-600'}`}>
+              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${emailConsent ? 'right-1' : 'left-1'}`} />
+            </button>
+          </div>
+
+          {/* Image Thumbnail */}
+          <div className="relative group animate-in slide-in-from-bottom-2">
+            <img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500 shadow-2xl" alt="Preview" />
+            <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-400 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+        </div>
+      </div>
+    )}
+
     <div className="max-w-md mx-auto space-y-4">
-     
-     {previewUrl && (
-       <div className="flex items-center justify-between bg-indigo-900/40 border border-indigo-500/30 p-3 rounded-xl mb-2 animate-in slide-in-from-bottom-2">
-         <div className="flex items-center gap-2">
-           <Bell className="w-4 h-4 text-indigo-400" />
-           <span className="text-[10px] text-white font-black uppercase tracking-widest">Send Copy to Email?</span>
-         </div>
-         <button 
-           onClick={() => setEmailConsent(!emailConsent)}
-           className={`w-10 h-5 rounded-full transition-all relative ${emailConsent ? 'bg-green-500' : 'bg-gray-600'}`}
-         >
-           <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${emailConsent ? 'right-1' : 'left-1'}`} />
-         </button>
-       </div>
-     )}
-
-     {previewUrl && (
-       <div className="flex justify-center mb-2 animate-in slide-in-from-bottom-2">
-         <div className="relative group">
-           <img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500 shadow-2xl" alt="Preview" />
-           <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg">
-             <X className="w-4 h-4" />
-           </button>
-         </div>
-       </div>
-     )}
-
      <div className="flex gap-2 mb-2">
        <button onClick={handleWalkieTalkieMic} disabled={loading} className={`w-full py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
         {isRecording ? <><MicOff className="w-5 h-5"/> STOP & SEND</> : <><Mic className="w-5 h-5"/> ENGAGE VOICE</>}
