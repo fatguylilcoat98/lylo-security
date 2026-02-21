@@ -11,21 +11,6 @@ import {
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
-const REAL_INTEL_DROPS: { [key: string]: string } = {
-  'guardian': "URGENT SECURITY INTEL: I've detected a massive spike in 'Toll Road' smishing. 437 new fraudulent E-ZPass sites were registered this week targeting California residents. If you get a text about unpaid tolls, it is a 100% trap.",
-  'wealth': "MARKET INTEL: I found a high-yield opportunity at 4.09% APY—that is 7x the national average. Based on your goals, shifting $100 to this account today would net you an extra $55 in annual interest.",
-  'lawyer': "LEGAL INTEL: California just activated AB 628 and SB 610. Landlords are now legally required to maintain working refrigerators, and wildfire debris cleanup is now strictly the owner's responsibility.",
-  'career': "ATS ALERT: The 2026 hiring algorithms just shifted. Resumes without 'Predictive Analytics' or 'Boolean AI Sourcing' are being auto-rejected by major firms.",
-  'doctor': "HEALTH INTEL: CDPH issued a Sacramento-area alert for measles. Also, your current winter data suggests a critical Vitamin D window is closing.",
-  'mechanic': "SYSTEM INTEL: Microsoft's Feb 2026 'Patch Tuesday' just dropped. There is an active Zero-Day (CVE-2026-21510) in the Windows Shell that bypasses all safety prompts.",
-  'bestie': "I've been thinking about that drama you told me about... I did some digging and I have a much better plan to handle it.",
-  'therapist': "WELLNESS INTEL: I noticed your digital interaction frequency spiked last night. You might be hitting a burnout wall.",
-  'tutor': "KNOWLEDGE INTEL: The Open Visualization Academy just launched a new method for simplifying complex data sets.",
-  'pastor': "FAITH INTEL: I've prepared a mid-week spiritual reset for you to find clarity in the chaos of this week.",
-  'vitality': "PERFORMANCE INTEL: Winter performance data is in. Your recovery scores are dipping due to low sun exposure.",
-  'hype': "ALGORITHM INTEL: Instagram just opened a viral window for 'Original Audio' creators. If we drop a hook in the next 3 hours, we hit the Explore page."
-};
-
 const CRISIS_LINKS: { [key: string]: { label: string, url: string, description: string }[] } = {
   'guardian': [
     { label: "FBI IC3 Fraud Reporting", url: "https://www.ic3.gov/", description: "Report stolen funds or digital extortion immediately." },
@@ -152,7 +137,6 @@ const detectExpertSuggestion = (text: string, currentId: string, userTier: strin
   return null;
 };
 
-// Generate or retrieve persistent Device ID
 const getDeviceId = () => {
   let deviceId = localStorage.getItem('lylo_device_id');
   if (!deviceId) {
@@ -168,7 +152,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [input, setInput] = useState('');
  const [loading, setLoading] = useState(false);
  const [userName, setUserName] = useState<string>('User');
- const [notifications, setNotifications] = useState<string[]>([]);
  const [bestieConfig, setBestieConfig] = useState<BestieConfig | null>(null);
  const [showBestieSetup, setShowBestieSetup] = useState(false);
  const [setupStep, setSetupStep] = useState<'gender' | 'voice'>('gender');
@@ -187,7 +170,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showCrisisShield, setShowCrisisShield] = useState(false);
  const [showPersonaGrid, setShowPersonaGrid] = useState(true);
  
- // Onboarding State
  const [showOnboarding, setShowOnboarding] = useState(false);
  const [onboardingStep, setOnboardingStep] = useState(1);
  const [deviceId] = useState(() => getDeviceId());
@@ -201,7 +183,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const inputTextRef = useRef<string>(''); 
  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
 
- // Initialize User State and Onboarding Check
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
   const storedName = localStorage.getItem('userName');
@@ -228,29 +209,33 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   if (!hasOnboarded) {
     setShowOnboarding(true);
   }
-
-  const allDrops = Object.keys(REAL_INTEL_DROPS);
-  const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
-  setNotifications(allDrops.filter(id => !cleared.includes(id)).sort(() => 0.5 - Math.random()).slice(0, 3));
  }, [userEmail]);
 
- // Back button handling
+ // UPGRADED HARDWARE BACK BUTTON LOCK
  useEffect(() => {
+   // Push initial state so we have something to pop
+   window.history.pushState(null, '', window.location.pathname);
+   
    const handlePopState = (e: PopStateEvent) => {
-     if (!showPersonaGrid && !showOnboarding) {
-       e.preventDefault();
+     // Push another state immediately to trap the user
+     window.history.pushState(null, '', window.location.pathname);
+     
+     if (showOnboarding) {
+       // Do nothing, force them to finish onboarding
+     } else if (showDropdown) {
+       setShowDropdown(false);
+     } else if (showCameraMenu) {
+       setShowCameraMenu(false);
+     } else if (showCrisisShield) {
+       setShowCrisisShield(false);
+     } else if (!showPersonaGrid) {
        handleInternalBack();
-       window.history.pushState(null, '', window.location.pathname);
      }
    };
    
-   window.history.pushState(null, '', window.location.pathname);
    window.addEventListener('popstate', handlePopState);
-   
-   return () => {
-     window.removeEventListener('popstate', handlePopState);
-   };
- }, [showPersonaGrid, showOnboarding]);
+   return () => window.removeEventListener('popstate', handlePopState);
+ }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
  useEffect(() => {
   if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -367,7 +352,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   setMessages(prev => [...prev, userMsg]);
   
   try {
-   // INJECTED: Pass deviceId to the API call
    const formData = new FormData();
    formData.append('msg', text);
    formData.append('history', JSON.stringify(messages.slice(-6)));
@@ -375,7 +359,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    formData.append('user_email', userEmail);
    formData.append('vibe', communicationStyle);
    formData.append('use_long_term_memory', 'true');
-   formData.append('device_id', deviceId); // Device lock integration
+   formData.append('device_id', deviceId);
    
    if (selectedImage) {
      formData.append('file', selectedImage);
@@ -389,9 +373,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    if (!apiResponse.ok) throw new Error("API Network Error");
    const response = await apiResponse.json();
 
-   // Handle the security lockout message gracefully
    const isLockout = response.threat_level === "high" && response.answer.includes("DEVICE LIMIT EXCEEDED");
-
    const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
    const audioToPlay = isLockout ? null : await fetchAudioSilently(response.answer, voiceToUse);
 
@@ -467,21 +449,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    }
  };
 
- const dismissIntel = (id: string) => {
-   setNotifications(prev => prev.filter(n => n !== id));
-   const cleared = JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]');
-   if (!cleared.includes(id)) {
-     cleared.push(id);
-     localStorage.setItem('lylo_cleared_intel', JSON.stringify(cleared));
-   }
- };
-
- const dismissAllIntel = () => {
-   const newCleared = [...JSON.parse(localStorage.getItem('lylo_cleared_intel') || '[]'), ...notifications];
-   localStorage.setItem('lylo_cleared_intel', JSON.stringify(Array.from(new Set(newCleared))));
-   setNotifications([]);
- };
-
  const completeOnboarding = () => {
    localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
    setShowOnboarding(false);
@@ -507,16 +474,13 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    }
  };
 
- // ONBOARDING MODAL
  if (showOnboarding) {
    return (
      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
        <div className="bg-[#111] border border-blue-500/30 rounded-3xl w-full max-w-lg p-6 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative overflow-hidden">
-         
          <div className="absolute top-0 left-0 w-full h-1 bg-white/10">
            <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${(onboardingStep / 3) * 100}%` }}></div>
          </div>
-
          {onboardingStep === 1 && (
            <div className="animate-in fade-in zoom-in-95 duration-300">
              <div className="flex items-center gap-4 mb-6">
@@ -526,37 +490,30 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                  <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mt-1">Security Clearance Granted</p>
                </div>
              </div>
-             
              <div className="space-y-4 mb-8 text-gray-300 text-sm leading-relaxed max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                <p><strong className="text-white">Read this entirely.</strong> You are no longer just searching the web. You are now backed by a proactive Digital Task Force. Here is the telemetry under the hood:</p>
-               
                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                  <strong className="text-white flex items-center gap-2 mb-1"><Brain className="w-4 h-4 text-purple-400" /> 1. THE WAR ROOM (Dual-Brain)</strong>
                  <p className="text-xs text-gray-400">Your prompt is injected into both GPT-4o and Gemini 1.5 Pro. They battle it out, verify the data, and deliver the highest-confidence consensus.</p>
                </div>
-
                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                  <strong className="text-white flex items-center gap-2 mb-1"><CheckCircle className="w-4 h-4 text-green-400" /> 2. THE TRUTH PROTOCOL</strong>
                  <p className="text-xs text-gray-400">Most AIs "hallucinate". Lylo will not make up an answer. You will get 100% honest, tactical truth, or we will ask for more intel.</p>
                </div>
-
                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                  <strong className="text-white flex items-center gap-2 mb-1"><Lock className="w-4 h-4 text-blue-400" /> 3. IRONCLAD PRIVACY</strong>
                  <p className="text-xs text-gray-400">Your identity is cryptographically hashed. We never sell your data, and your private conversations are never used to train public AI models.</p>
                </div>
-
                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                  <strong className="text-white flex items-center gap-2 mb-1"><CameraIcon className="w-4 h-4 text-pink-400" /> 4. VISUAL SENSORS</strong>
                  <p className="text-xs text-gray-400">Upload photos. Have the Mechanic scan your engine. Have the Lawyer read a lease. We do not just describe the photo—we analyze the consequences.</p>
                </div>
              </div>
-
              <button onClick={() => setOnboardingStep(2)} className="w-full py-4 bg-blue-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-blue-500 transition-all">
                Acknowledge & Continue <ArrowRight className="w-5 h-5" />
              </button>
            </div>
          )}
-
          {onboardingStep === 2 && (
            <div className="animate-in fade-in slide-in-from-right-8 duration-300">
              <div className="flex items-center gap-4 mb-6">
@@ -566,7 +523,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                  <p className="text-purple-400 text-xs font-bold uppercase tracking-widest mt-1">Interface Setup</p>
                </div>
              </div>
-
              <div className="space-y-6 mb-8">
                <div>
                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Communication Style</p>
@@ -576,7 +532,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                    <option value="roast">Roast Mode (Brutally Straight)</option>
                  </select>
                </div>
-
                <div>
                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Text Display Size</p>
                  <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
@@ -587,7 +542,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                    <span className="text-xs font-black uppercase tracking-widest text-blue-400">Level {fontLevel}</span>
                  </button>
                </div>
-
                <div>
                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Voice Output</p>
                  <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
@@ -599,13 +553,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                  </button>
                </div>
              </div>
-
              <button onClick={() => setOnboardingStep(3)} className="w-full py-4 bg-purple-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-purple-500 transition-all">
                Confirm Settings <ArrowRight className="w-5 h-5" />
              </button>
            </div>
          )}
-
          {onboardingStep === 3 && (
            <div className="animate-in fade-in slide-in-from-right-8 duration-300">
              <div className="flex items-center gap-4 mb-6">
@@ -615,7 +567,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                  <p className="text-red-400 text-xs font-bold uppercase tracking-widest mt-1">Device Authorization</p>
                </div>
              </div>
-
              <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-2xl mb-8">
                <h3 className="text-red-500 font-black uppercase tracking-widest mb-2 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> DEVICE LIMIT DETECTED</h3>
                <p className="text-gray-300 text-sm leading-relaxed">
@@ -624,13 +575,11 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
                  Any unauthorized attempt to breach this limit from a third device will result in an immediate access denial. Do not share your clearance credentials.
                </p>
              </div>
-
              <button onClick={completeOnboarding} className="w-full py-4 bg-green-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-green-500 transition-all">
                Initialize System <CheckCircle className="w-5 h-5" />
              </button>
            </div>
          )}
-
        </div>
      </div>
    );
@@ -638,7 +587,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
  return (
   <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
-   
    <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
     <div className="flex items-center justify-between">
      <div className="relative flex gap-2 z-10">
@@ -677,15 +625,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
             </div>
             <span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'OFF'}</span>
           </button>
-
-          {showPersonaGrid && notifications.length > 0 && (
-            <button onClick={dismissAllIntel} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
-              <div className="flex items-center gap-3">
-                <Trash2 className="w-5 h-5 text-yellow-400" />
-                <span className="font-bold">Clear Intel</span>
-              </div>
-            </button>
-          )}
 
           <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(1); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
             <div className="flex items-center gap-3">
@@ -794,20 +733,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
    <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: '300px' }}>
     
-    {showPersonaGrid && notifications.length > 0 && (
-     <div className="space-y-3">
-      {notifications.map(id => (
-       <div key={id} className="bg-white/5 border border-white/10 p-5 rounded-3xl relative animate-in slide-in-from-right">
-        <button onClick={() => dismissIntel(id)} className="absolute top-3 right-3 p-1"><X className="w-4 h-4 text-gray-500" /></button>
-        <div className="flex gap-4">
-         <div className="p-2 bg-yellow-500/20 rounded-xl h-fit"><Zap className="w-4 h-4 text-yellow-400" /></div>
-         <p className={`${getDynamicFontSize()} text-gray-200 font-bold pr-4`}>{REAL_INTEL_DROPS[id]}</p>
-        </div>
-       </div>
-      ))}
-     </div>
-    )}
-
     {showPersonaGrid && (
      <div className="grid grid-cols-2 gap-3">
       {PERSONAS.map(p => (
@@ -821,7 +746,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
     {messages.map((msg, idx) => {
      const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-     // Disable transitions if we're dealing with an image upload response to stop looping
      const suggestion = isLatestBot && !msg.imageUrl ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
