@@ -176,6 +176,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [showOnboarding, setShowOnboarding] = useState(false);
  const [onboardingStep, setOnboardingStep] = useState(1);
  const [deviceId] = useState(() => getDeviceId());
+ const [emailConsent, setEmailConsent] = useState(false);
 
  const chatContainerRef = useRef<HTMLDivElement>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +215,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   }
  }, [userEmail]);
 
+ // UPGRADED HARDWARE BACK BUTTON LOCK & EXIT GUARD
  useEffect(() => {
    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
      e.preventDefault();
@@ -226,6 +228,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    };
 
    const handlePopState = (e: PopStateEvent) => {
+     // Re-push state immediately to trap the user
      window.history.pushState(null, "", window.location.href);
      
      if (showOnboarding) {
@@ -361,7 +364,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
   const userMsg: Message = { 
     id: Date.now().toString(), 
-    content: text, 
+    content: text || "Analyze this image.", 
     sender: 'user', 
     timestamp: new Date(),
     imageUrl: currentImagePreview 
@@ -377,6 +380,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    formData.append('vibe', communicationStyle);
    formData.append('use_long_term_memory', 'true');
    formData.append('device_id', deviceId);
+   formData.append('email_consent', emailConsent ? "true" : "false");
    
    if (selectedImage) {
      formData.append('file', selectedImage);
@@ -407,7 +411,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    if (audioToPlay) playAudioSafely(audioToPlay);
 
   } catch (e) { console.error(e); } 
-  finally { setLoading(false); setSelectedImage(null); }
+  finally { setLoading(false); setSelectedImage(null); setEmailConsent(false); }
  };
 
  const handlePersonaChange = async (persona: PersonaConfig) => {
@@ -817,6 +821,21 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
     <div className="max-w-md mx-auto space-y-4">
      
+     {previewUrl && (
+       <div className="flex items-center justify-between bg-indigo-900/40 border border-indigo-500/30 p-3 rounded-xl mb-2 animate-in slide-in-from-bottom-2">
+         <div className="flex items-center gap-2">
+           <Bell className="w-4 h-4 text-indigo-400" />
+           <span className="text-[10px] text-white font-black uppercase tracking-widest">Send Copy to Email?</span>
+         </div>
+         <button 
+           onClick={() => setEmailConsent(!emailConsent)}
+           className={`w-10 h-5 rounded-full transition-all relative ${emailConsent ? 'bg-green-500' : 'bg-gray-600'}`}
+         >
+           <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${emailConsent ? 'right-1' : 'left-1'}`} />
+         </button>
+       </div>
+     )}
+
      {previewUrl && (
        <div className="flex justify-center mb-2 animate-in slide-in-from-bottom-2">
          <div className="relative group">
