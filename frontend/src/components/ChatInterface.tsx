@@ -83,7 +83,7 @@ const PERSONAS: PersonaConfig[] = [
  { id: 'wealth', name: 'The Wealth Architect', serviceLabel: 'FINANCE CHIEF', description: 'Money Strategist', protectiveJob: 'Finance Lead', spokenHook: 'Let’s get your money working for you. ROI is the only metric that matters.', briefing: 'I provide financial planning.', color: 'green', requiredTier: 'elite', icon: CreditCard, capabilities: ['Budgeting', 'Debt destruction'], fixedVoice: 'onyx' },
  { id: 'career', name: 'The Career Strategist', serviceLabel: 'CAREER COACH', description: 'Professional Growth', protectiveJob: 'Career Lead', spokenHook: 'Let’s level up your career. Resume, salary, or office politics—I’m here to help you win.', briefing: 'I provide career growth strategy.', color: 'indigo', requiredTier: 'pro', icon: Briefcase, capabilities: ['Resume optimization', 'Salary negotiation'], fixedVoice: 'shimmer' },
  { id: 'therapist', name: 'The Therapist', serviceLabel: 'MENTAL WELLNESS', description: 'Emotional Anchor', protectiveJob: 'Clinical Lead', spokenHook: 'I’m here to listen. No judgment, just a safe space to process.', briefing: 'I provide CBT support.', color: 'indigo', requiredTier: 'pro', icon: Brain, capabilities: ['Anxiety relief', 'Mood tracking'], fixedVoice: 'alloy' },
- { id: 'mechanic', name: 'The Tech Specialist', serviceLabel: 'MASTER FIXER', description: 'Technical Lead', protectiveJob: 'Technical Lead', spokenHook: 'Technical manual loaded. Tell me the symptoms and I’ll walk you through the fix.', briefing: 'I provide step-by-step repair guides.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair', 'Tech troubleshooting'], fixedVoice: 'echo' },
+ { id: 'mechanic', name: 'The Tech Specialist', serviceLabel: 'MASTER FIXER', description: 'Technical Lead', protectiveJob: 'Technical Lead', spokenHook: 'Technical manual loaded. Tell me the issues and I’ll walk you through the fix.', briefing: 'I provide step-by-step repair guides.', color: 'gray', requiredTier: 'pro', icon: Wrench, capabilities: ['Car repair', 'Tech troubleshooting'], fixedVoice: 'echo' },
  { id: 'tutor', name: 'The Master Tutor', serviceLabel: 'KNOWLEDGE BRIDGE', description: 'Education Lead', protectiveJob: 'Education Lead', spokenHook: 'Class is in session. I can break down any subject until it clicks.', briefing: 'I provide academic tutoring.', color: 'purple', requiredTier: 'pro', icon: Zap, capabilities: ['Skill acquisition', 'Simplification'], fixedVoice: 'fable' },
  { id: 'pastor', name: 'The Pastor', serviceLabel: 'FAITH ANCHOR', description: 'Spiritual Lead', protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.', briefing: 'I provide spiritual counseling.', color: 'gold', requiredTier: 'pro', icon: BookOpen, capabilities: ['Prayer', 'Scripture guidance'], fixedVoice: 'onyx' },
  { id: 'vitality', name: 'The Vitality Coach', serviceLabel: 'HEALTH OPTIMIZER', description: 'Fitness & Food', protectiveJob: 'Wellness Lead', spokenHook: 'Let’s optimize your engine. Fuel and movement—what’s the goal today?', briefing: 'I provide workout and meal plans.', color: 'green', requiredTier: 'max', icon: Activity, capabilities: ['Meal planning', 'Habit building'], fixedVoice: 'nova' },
@@ -125,8 +125,11 @@ const canAccessPersona = (persona: PersonaConfig, tier: string) => {
  return (tiers[tier] || 0) >= tiers[persona.requiredTier];
 };
 
-const detectExpertSuggestion = (text: string, currentId: string, userTier: string): PersonaConfig | null => {
-  const lower = text.toLowerCase();
+const detectExpertSuggestion = (messages: Message[], currentId: string, userTier: string): PersonaConfig | null => {
+  const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
+  if (!lastUserMsg) return null;
+  
+  const lower = lastUserMsg.content.toLowerCase();
   for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
     if (id === currentId) continue;
     if (keywords.some(k => lower.includes(k))) {
@@ -211,17 +214,22 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
   }
  }, [userEmail]);
 
- // UPGRADED HARDWARE BACK BUTTON LOCK
  useEffect(() => {
-   // Push initial state so we have something to pop
-   window.history.pushState(null, '', window.location.pathname);
-   
+   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+     e.preventDefault();
+     e.returnValue = 'Are you sure you want to leave the LYLO OS? You will need to re-authenticate.';
+     return e.returnValue;
+   };
+
+   const lockHistory = () => {
+     window.history.pushState(null, "", window.location.href);
+   };
+
    const handlePopState = (e: PopStateEvent) => {
-     // Push another state immediately to trap the user
-     window.history.pushState(null, '', window.location.pathname);
+     window.history.pushState(null, "", window.location.href);
      
      if (showOnboarding) {
-       // Do nothing, force them to finish onboarding
+        return;
      } else if (showDropdown) {
        setShowDropdown(false);
      } else if (showCameraMenu) {
@@ -230,11 +238,20 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
        setShowCrisisShield(false);
      } else if (!showPersonaGrid) {
        handleInternalBack();
+     } else {
+       alert("Use the Logout button in the menu to exit securely.");
      }
    };
-   
+
+   window.addEventListener('beforeunload', handleBeforeUnload);
    window.addEventListener('popstate', handlePopState);
-   return () => window.removeEventListener('popstate', handlePopState);
+   
+   lockHistory();
+
+   return () => {
+     window.removeEventListener('beforeunload', handleBeforeUnload);
+     window.removeEventListener('popstate', handlePopState);
+   };
  }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
  useEffect(() => {
@@ -746,7 +763,7 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
 
     {messages.map((msg, idx) => {
      const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-     const suggestion = isLatestBot && !msg.imageUrl ? detectExpertSuggestion(messages.map(m=>m.content).join(' '), activePersona.id, userTier) : null;
+     const suggestion = isLatestBot && !msg.imageUrl ? detectExpertSuggestion(messages, activePersona.id, userTier) : null;
      return (
       <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
        
