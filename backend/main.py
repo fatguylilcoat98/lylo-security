@@ -6,6 +6,9 @@ import asyncio
 import base64
 import stripe
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from io import BytesIO
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,7 +43,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.32.0 - VISUAL LOCK"
+    version="19.33.0 - EMAIL DISPATCH LOCK"
 )
 
 # Configure CORS
@@ -63,6 +66,12 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 # STRIPE CONFIGURATION
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+# EMAIL CONFIGURATION (For Mission Reports)
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
 # --- THE PROFIT SHIELD: STRICT TIER LIMITS ---
 TIER_LIMITS = {
@@ -287,6 +296,51 @@ def analyze_scam_indicators(text: str) -> List[str]:
     return indicators
 
 # ---------------------------------------------------------
+# LOGIC: EMAIL MISSION REPORT DISPATCHER
+# ---------------------------------------------------------
+async def send_mission_report_email(to_email: str, content: str, persona_name: str):
+    """Sends a professional HTML Mission Report to the user."""
+    if not SMTP_USERNAME or not SMTP_PASSWORD:
+        logger.warning("⚠️ SMTP Credentials not set. Mission Report logged but not actually emailed.")
+        logger.info(f"📄 MOCK EMAIL DISPATCH TO {to_email}:\n{content[:200]}...")
+        return
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"LYLO OS <{SMTP_USERNAME}>"
+        msg['To'] = to_email
+        msg['Subject'] = f"🛡️ URGENT: Lylo Tactical Report - {persona_name.capitalize()}"
+
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; background-color: #000; color: #fff; padding: 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #111; border: 1px solid #333; padding: 20px; border-radius: 10px;">
+                <h2 style="color: #4F46E5; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">Lylo Incident Summary</h2>
+                <p style="color: #aaa; font-size: 12px; font-weight: bold; tracking: 2px;">SPECIALIST EXECUTING: {persona_name.upper()}</p>
+                <div style="background-color: #222; padding: 15px; border-radius: 5px; margin-top: 20px;">
+                    <p style="white-space: pre-wrap; font-size: 14px; line-height: 1.6;">{content}</p>
+                </div>
+                <p style="color: #666; font-size: 10px; margin-top: 20px; text-align: center;">LYLO OS SECURITY PROTOCOL ACTIVE - DO NOT REPLY</p>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html_content, 'html'))
+
+        def _send():
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
+
+        await asyncio.to_thread(_send)
+        logger.info(f"✅ Mission Report successfully emailed to {to_email}")
+
+    except Exception as e:
+        logger.error(f"❌ Email Dispatch Failed: {e}")
+
+# ---------------------------------------------------------
 # LOGIC: RECURSIVE MEMORY (PINECONE)
 # ---------------------------------------------------------
 async def store_intelligence_sync(user_id: str, content: str, role: str):
@@ -420,6 +474,7 @@ async def chat(
     vibe: str = Form("standard"),
     use_long_term_memory: str = Form("false"),
     device_id: str = Form("unknown"),  # INJECTED: Frontend device identifier
+    email_consent: str = Form("false"), # INJECTED: Email Mission Report Toggle
     file: UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -571,6 +626,10 @@ async def chat(
     asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
     asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
 
+    # --- EMAIL DISPATCHER PROTOCOL ---
+    if email_consent == "true":
+        asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
+
     return {
         "answer": winner["answer"],
         "confidence_score": winner.get("confidence_score", 95),
@@ -639,7 +698,7 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.32.0",
+        "version": "19.33.0",
         "experts_active": len(PERSONA_DEFINITIONS),
     }
 
