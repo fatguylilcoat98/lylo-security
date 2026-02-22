@@ -257,6 +257,12 @@ function ChatInterface({
   const accumulatedRef          = useRef<string>('');
   const inputTextRef            = useRef<string>('');
   const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const typewriterRef           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamingTextRef        = useRef<string>('');   // live text for synced render
+
+  // Streaming typewriter state — which message is currently being typed out
+  const [streamingMsgId, setStreamingMsgId]   = useState<string | null>(null);
+  const [streamingText, setStreamingText]     = useState<string>('');
 
   // ── PWA detection ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -408,6 +414,73 @@ function ChatInterface({
     audioElement.play();
   };
 
+  // ── SYNCED TYPEWRITER ────────────────────────────────────────────────────
+  // Core mechanic: wait for audio metadata → derive chars/sec → start both.
+  // If no audio (voice off / fetch failed), animate at a natural 28ms/char.
+  // The message is added to the list BEFORE animation starts so it appears
+  // in place; streaming state fills it in character by character.
+  const animateSynced = (
+    text: string,
+    msgId: string,
+    audioElement?: HTMLAudioElement | null
+  ) => {
+    // Kill any previous typewriter that might be running
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+    }
+    streamingTextRef.current = '';
+    setStreamingMsgId(msgId);
+    setStreamingText('');
+
+    const startTyping = (msPerChar: number) => {
+      let i = 0;
+      typewriterRef.current = setInterval(() => {
+        i++;
+        const slice = text.slice(0, i);
+        streamingTextRef.current = slice;
+        setStreamingText(slice);
+        if (i >= text.length) {
+          clearInterval(typewriterRef.current!);
+          typewriterRef.current = null;
+          setStreamingMsgId(null);   // Snap to final message content
+          setStreamingText('');
+        }
+      }, msPerChar);
+    };
+
+    if (audioElement && isVoiceEnabled) {
+      // Wait for audio duration metadata, then sync speed to audio length
+      const kick = () => {
+        const duration   = audioElement.duration;           // seconds
+        const totalChars = text.length;
+        // Cap minimum — very short audio + long text = too fast to read
+        const msPerChar  = Math.max(18, (duration * 1000) / totalChars);
+
+        // Start both simultaneously
+        playAudioSafely(audioElement);
+        startTyping(msPerChar);
+      };
+
+      if (audioElement.readyState >= 1) {
+        // Metadata already available (cached audio)
+        kick();
+      } else {
+        audioElement.addEventListener('loadedmetadata', kick, { once: true });
+        // Hard fallback: if metadata doesn't arrive in 800ms, animate anyway
+        setTimeout(() => {
+          if (streamingTextRef.current === '') {
+            startTyping(28);
+            audioElement.play().catch(() => {});
+          }
+        }, 800);
+      }
+    } else {
+      // Voice off — animate at natural reading pace (≈ 28ms/char ≈ 280wpm)
+      startTyping(28);
+    }
+  };
+
   // ── Speech recognition ────────────────────────────────────────────────────
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -495,24 +568,32 @@ function ChatInterface({
       if (!apiResponse.ok) throw new Error('API Network Error');
       const response = await apiResponse.json();
 
-      // ── SPEED FIX: Render text immediately — don't wait for audio ─────
+      const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
+      const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+
+      // ── Add message placeholder immediately (empty content — typewriter fills it in)
+      const botMsgId = Date.now().toString();
       const botMsg: Message = {
-        id: Date.now().toString(),
-        content: response.answer,
+        id: botMsgId,
+        content: response.answer,    // stored in message list for after animation
         sender: 'bot',
         timestamp: new Date(),
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
       };
       setMessages(prev => [...prev, botMsg]);
-      setLoading(false);  // ← unblock UI before audio starts fetching
+      setLoading(false);
 
-      // Audio fetches in background — user can type next message immediately
-      const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
-      if (!isLockout && isVoiceEnabled) {
-        const voiceToUse  = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+      if (isLockout) return;
+
+      // ── Fetch audio and animate together — both kick off from here ────────
+      if (isVoiceEnabled) {
+        // Fetch audio — this runs while user sees the dots → text starts
         const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
-        if (audioToPlay) playAudioSafely(audioToPlay);
+        animateSynced(response.answer, botMsgId, audioToPlay);
+      } else {
+        // Voice off — just do the typewriter at natural pace
+        animateSynced(response.answer, botMsgId, null);
       }
 
     } catch (e) {
@@ -525,22 +606,20 @@ function ChatInterface({
   };
 
   // ── PERSONALIZED HOOK FETCH ───────────────────────────────────────────────
-  // Calls /persona-hook — fast single-model call (target <1s).
-  // Falls back to static spokenHook if timeout or error.
   const fetchPersonaHook = async (personaId: string): Promise<string> => {
     try {
       const fd = new FormData();
       fd.append('persona',    personaId);
       fd.append('user_email', userEmail);
-      const res  = await Promise.race([
+      const res = await Promise.race([
         fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }),
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500)),
       ]) as Response;
       if (!res.ok) throw new Error('hook fetch failed');
       const data = await res.json();
       return data.hook || '';
     } catch {
-      return '';  // Let caller fall back to static
+      return '';
     }
   };
 
@@ -551,38 +630,41 @@ function ChatInterface({
       currentlyPlayingAudioRef.current.pause();
       currentlyPlayingAudioRef.current.currentTime = 0;
     }
+    // Kill any active typewriter from a previous message
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+      setStreamingMsgId(null);
+    }
+
     setActivePersona(persona);
     onPersonaChange(persona);
     setShowDropdown(false);
     setShowPersonaGrid(false);
     setLoading(true);
 
-    // ── SPEED FIX: Fetch personalized hook and prepare audio simultaneously.
-    // The hook API is fast — but we don't block text render on audio at all.
-    const voiceToUse  = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
+    const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
 
-    // Kick off both in parallel — personalized hook text + (pre-warm audio connection)
-    const [hookText] = await Promise.all([
-      fetchPersonaHook(persona.id).then(h =>
-        h || persona.spokenHook.replace('{userName}', userName)
-      ),
-    ]);
+    // Fetch personalized hook text AND audio in parallel — both kick off now
+    const hookTextPromise  = fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
+    const [hookText]       = await Promise.all([hookTextPromise]);
 
-    // ── Show text immediately — don't wait for audio ──────────────────────
+    // Pre-fetch audio while we set up the message (in parallel with setMessages)
+    const audioPromise = isVoiceEnabled ? fetchAudioSilently(hookText, voiceToUse) : Promise.resolve(null);
+
+    const hookMsgId = Date.now().toString();
     const hookMsg: Message = {
-      id: Date.now().toString(),
+      id: hookMsgId,
       content: hookText,
       sender: 'bot',
       timestamp: new Date(),
     };
     setMessages([hookMsg]);
-    setLoading(false);  // ← unblock UI the moment text is ready
+    setLoading(false);
 
-    // Audio fetches in background — user sees the greeting instantly
-    if (isVoiceEnabled) {
-      const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
-      if (audioToPlay) playAudioSafely(audioToPlay);
-    }
+    // Wait for audio — it may already be ready since it was fetched in parallel
+    const audioToPlay = await audioPromise;
+    animateSynced(hookText, hookMsgId, audioToPlay);
   };
 
   const handleBestieSetupComplete = (voiceId: string) => {
@@ -1078,8 +1160,17 @@ function ChatInterface({
                   ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none`
                   : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'
               }`}>
-                {msg.content}
-                {msg.sender === 'bot' && msg.confidenceScore && (
+                {/* Typewriter: show streaming text while this msg is animating, else full content */}
+                {msg.sender === 'bot' && msg.id === streamingMsgId
+                  ? (
+                    <span>
+                      {streamingText}
+                      <span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" />
+                    </span>
+                  )
+                  : msg.content
+                }
+                {msg.sender === 'bot' && msg.confidenceScore && msg.id !== streamingMsgId && (
                   <div className="mt-4 pt-4 border-t border-white/10">
                     <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1">
                       <span>System Confidence</span>
