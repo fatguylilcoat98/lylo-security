@@ -178,6 +178,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [deviceId] = useState(() => getDeviceId());
  const [emailConsent, setEmailConsent] = useState(false);
 
+ // PWA INSTALL LOGIC
+ const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+ const [showInstallBtn, setShowInstallBtn] = useState(false);
+
  const chatContainerRef = useRef<HTMLDivElement>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
  const photoInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +190,24 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const accumulatedRef = useRef<string>(''); 
  const inputTextRef = useRef<string>(''); 
  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
+
+ useEffect(() => {
+  const handleBeforeInstall = (e: any) => {
+    e.preventDefault();
+    setDeferredPrompt(e);
+    setShowInstallBtn(true);
+  };
+  window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+  return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+ }, []);
+
+ const handleInstallClick = async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === 'accepted') setShowInstallBtn(false);
+  setDeferredPrompt(null);
+ };
 
  useEffect(() => {
   const emailRaw = userEmail.toLowerCase();
@@ -228,7 +250,6 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
    };
 
    const handlePopState = (e: PopStateEvent) => {
-     // Re-push state immediately to trap the user
      window.history.pushState(null, "", window.location.href);
      
      if (showOnboarding) {
@@ -763,6 +784,29 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
        </button>
       ))}
      </div>
+    )}
+
+    {/* INSTALL BUTTON UI */}
+    {showInstallBtn && (
+      <div className="animate-in fade-in zoom-in-95 duration-500">
+        <button 
+          onClick={handleInstallClick}
+          className="w-full mb-6 p-5 bg-blue-600/20 border border-blue-500/50 rounded-3xl flex items-center justify-between shadow-[0_0_20px_rgba(59,130,246,0.15)] group hover:bg-blue-600/30 transition-all"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-500 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
+              <Shield className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="text-white font-black text-sm uppercase tracking-widest">Install LYLO OS</p>
+              <p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">Add to Home Screen</p>
+            </div>
+          </div>
+          <div className="p-2 bg-white/10 rounded-full">
+            <ArrowRight className="w-5 h-5 text-white" />
+          </div>
+        </button>
+      </div>
     )}
 
     {messages.map((msg, idx) => {
