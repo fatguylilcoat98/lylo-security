@@ -409,10 +409,11 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # ---------------------------------------------------------
 # LOGIC: THE ENGINE SWAP (DUAL-PASS AI CONSENSUS)
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.5-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-3-flash"):
     if not gemini_ready:
         return None
     try:
+        # SPEED OPTIMIZATION: Using 'gemini-3-flash' for lightning-fast multimodal reasoning.
         model = genai.GenerativeModel(model_name)
         content_parts = [prompt]
         if image_b64:
@@ -599,7 +600,8 @@ async def chat(
     """
 
     openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
-    gemini_engine = "gemini-3.1-pro-preview" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-2.5-flash"
+    # SPEED FIX: Defaulting to 'gemini-3-flash' for all users to ensure maximum response speed.
+    gemini_engine = "gemini-3-flash"
 
     results = await asyncio.gather(
         call_openai_bodyguard(full_prompt, image_b64, openai_engine),
