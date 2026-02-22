@@ -1,48 +1,63 @@
 import React, { useEffect, useState } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
-// --- THE GATEKEEPER (Upgraded with URL Handoff) ---
-const Gatekeeper = ({ children }: { children: React.ReactNode }) => {
+// --- THE GATEKEEPER (Bulletproof URL Handoff) ---
+const Gatekeeper = ({ children, requireRedirect = false }: { children: React.ReactNode, requireRedirect?: boolean }) => {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [shouldRedirectToDash, setShouldRedirectToDash] = useState<boolean>(false);
 
   useEffect(() => {
-    // 1. Check if the landing page is handing us credentials via the URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const emailFromUrl = urlParams.get('email');
-    const tierFromUrl = urlParams.get('tier');
-    const nameFromUrl = urlParams.get('name');
+    // 1. Force-scan the entire URL string, ignoring HashRouter confusion
+    const fullUrl = window.location.href;
+    
+    // Custom Regex function to pull the data safely
+    const getParam = (param: string) => {
+      const match = fullUrl.match(new RegExp(`[?&]${param}=([^&]*)`));
+      return match ? decodeURIComponent(match[1]) : null;
+    };
+
+    const emailFromUrl = getParam('email');
+    const tierFromUrl = getParam('tier');
+    const nameFromUrl = getParam('name');
 
     if (emailFromUrl) {
-      // Catch the handoff and save it to the APP's local storage
+      // 2. Catch the handoff and save it to the APP's local storage!
       localStorage.setItem('userEmail', emailFromUrl);
       if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
       if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
       
-      // Wipe the URL clean so it looks professional and secure
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+      // 3. Clean the URL so the user's email isn't visible
+      const cleanUrl = fullUrl.split('?')[0]; 
+      window.history.replaceState({}, document.title, cleanUrl);
       
       setIsAuthorized(true);
+      if (requireRedirect) setShouldRedirectToDash(true);
       return;
     }
 
-    // 2. If no URL handoff, check if they are already securely logged in
+    // 4. If no URL data, check if they are already logged in locally
     const userEmail = localStorage.getItem('userEmail');
-    
     if (!userEmail) {
-      // UNAUTHORIZED: Eject them immediately to the main website
+      // UNAUTHORIZED: Eject back to the landing page
       window.location.assign('https://mylylo.pro');
     } else {
       // AUTHORIZED: Let them pass
       setIsAuthorized(true);
+      if (requireRedirect) setShouldRedirectToDash(true);
     }
-  }, []);
+  }, [requireRedirect]);
 
   // Render a black screen while calculating to prevent UI flashing
   if (!isAuthorized) {
     return <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw' }} />;
+  }
+
+  // If they hit a login/root route with credentials, push them straight to the Dashboard
+  if (shouldRedirectToDash) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -55,7 +70,7 @@ export default function App() {
         <Route 
           path="/" 
           element={
-            <Gatekeeper>
+            <Gatekeeper requireRedirect={true}>
               <Assessment />
             </Gatekeeper>
           } 
@@ -64,7 +79,7 @@ export default function App() {
         <Route 
           path="/assessment" 
           element={
-            <Gatekeeper>
+            <Gatekeeper requireRedirect={true}>
               <Assessment />
             </Gatekeeper>
           } 
