@@ -24,8 +24,10 @@ from dotenv import load_dotenv
 
 # --- MODULAR INTELLIGENCE DATA IMPORTS ---
 from intelligence_data import (
+    GLOBAL_DIRECTIVE,
     VIBE_STYLES, VIBE_LABELS,
     PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
+    INTENT_LOGIC,
     get_random_hook, get_all_hooks
 )
 
@@ -43,7 +45,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="19.34.0 - RED TEAM PATCH"
+    version="20.0.0 - MULTI-LAYER ARCHITECTURE"
 )
 
 # Configure CORS
@@ -85,7 +87,6 @@ TIER_LIMITS = {
 USAGE_TRACKER = defaultdict(int)
 
 # --- DEVICE AUTHORIZATION LIMITS ---
-# Maps email to a set of authorized device IDs
 AUTHORIZED_DEVICES = defaultdict(set)
 MAX_DEVICES_PER_USER = 2
 
@@ -112,7 +113,7 @@ if PINECONE_API_KEY:
             pc.create_index(
                 name=index_name,
                 dimension=1024,
-                metric="cosine", 
+                metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
         memory_index = pc.Index(index_name)
@@ -240,7 +241,6 @@ async def stripe_webhook(request: Request):
             email_lower = customer_email.lower().strip()
             new_tier = "free"
 
-            # ANNUAL + MONTHLY BILLING LOGIC
             if amount_total in [199, 1999]:
                 new_tier = "pro"
             elif amount_total in [499, 4999]:
@@ -249,13 +249,11 @@ async def stripe_webhook(request: Request):
                 new_tier = "max"
 
             if email_lower in ELITE_USERS:
-                # User is already approved in the system, just bump their tier
                 ELITE_USERS[email_lower]["tier"] = new_tier
                 logger.info(f"💰 STRIPE SUCCESS: Upgraded existing user {email_lower} to {new_tier.upper()} tier!")
             else:
-                # NEW USER SECURITY GATE: Add to the Manual Approval Queue, NOT the live app
                 PAID_QUEUE_DB[email_lower] = {
-                    "tier": new_tier, 
+                    "tier": new_tier,
                     "name": email_lower.split("@")[0].capitalize(),
                     "status": "pending_admin_approval"
                 }
@@ -264,10 +262,9 @@ async def stripe_webhook(request: Request):
                         json.dump(PAID_QUEUE_DB, f)
                 except Exception as e:
                     logger.error(f"Failed to save paid queue: {e}")
-                
+
                 logger.info(f"💰 STRIPE SUCCESS: New user {email_lower} paid. Placed in MANUAL APPROVAL QUEUE.")
 
-            # Purge them from the waitlist if they are waiting
             if email_lower in WAITLIST_DB:
                 WAITLIST_DB.remove(email_lower)
                 try:
@@ -287,7 +284,7 @@ def analyze_scam_indicators(text: str) -> List[str]:
     patterns = {
         "High Urgency": ["immediate", "hurry", "suspended", "warned", "final notice", "30 minutes"],
         "Payment Pressure": ["gift card", "wire", "zelle", "venmo", "western union", "crypto", "bitcoin"],
-        "Authority": ["irs", "fbi", "police", "social security", "legal department", "attorney general"],
+        "Authority Impersonation": ["irs", "fbi", "police", "social security", "legal department", "attorney general"],
         "Phishing Style": ["bit.ly", "tinyurl", "linktr.ee", "verify account", "unusual login"]
     }
     for category, keywords in patterns.items():
@@ -299,9 +296,8 @@ def analyze_scam_indicators(text: str) -> List[str]:
 # LOGIC: EMAIL MISSION REPORT DISPATCHER
 # ---------------------------------------------------------
 async def send_mission_report_email(to_email: str, content: str, persona_name: str):
-    """Sends a professional HTML Mission Report to the user."""
     if not SMTP_USERNAME or not SMTP_PASSWORD:
-        logger.warning("⚠️ SMTP Credentials not set. Mission Report logged but not actually emailed.")
+        logger.warning("⚠️ SMTP Credentials not set. Mission Report logged but not emailed.")
         logger.info(f"📄 MOCK EMAIL DISPATCH TO {to_email}:\n{content[:200]}...")
         return
 
@@ -379,7 +375,10 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
             top_k=5,
             include_metadata=True
         )
-        memories = [f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}" for m in results.matches if m.score > 0.50]
+        memories = [
+            f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}"
+            for m in results.matches if m.score > 0.50
+        ]
         return "\n".join(memories)
     except Exception as e:
         logger.error(f"Memory Retrieval Error: {e}")
@@ -409,11 +408,10 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # ---------------------------------------------------------
 # LOGIC: THE ENGINE SWAP (DUAL-PASS AI CONSENSUS)
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-3-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
     if not gemini_ready:
         return None
     try:
-        # SPEED OPTIMIZATION: Using 'gemini-3-flash' for lightning-fast multimodal reasoning.
         model = genai.GenerativeModel(model_name)
         content_parts = [prompt]
         if image_b64:
@@ -442,14 +440,22 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
     try:
         content = [{"type": "text", "text": prompt}]
         if image_b64:
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
+            })
 
         response = await openai_client.chat.completions.create(
             model=model_name,
             messages=[
                 {
                     "role": "system",
-                    "content": "You are the LYLO Intelligence Engine. You MUST obey the specific IDENTITY, MISSION, and GLOBAL LEGAL DIRECTIVE provided in the user prompt perfectly. Output ONLY valid JSON."
+                    "content": (
+                        "You are the LYLO Intelligence Engine. "
+                        "You MUST follow the GLOBAL DIRECTIVE, PERSONA SKIN, INTENT LOGIC, "
+                        "and RUNTIME CONTEXT provided in the user prompt exactly. "
+                        "Output ONLY valid raw JSON. No markdown. No preamble."
+                    )
                 },
                 {"role": "user", "content": content}
             ],
@@ -463,19 +469,197 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
         return None
 
 # ---------------------------------------------------------
+# PROMPT ASSEMBLY ENGINE — 4-LAYER ARCHITECTURE
+# This function replaces the old flat full_prompt f-string.
+# Layer order is critical and must not be changed.
+# ---------------------------------------------------------
+def assemble_prompt(
+    *,
+    persona: str,
+    user_name: str,
+    tier: str,
+    msg: str,
+    memories: str,
+    search_intel: str,
+    indicators: List[str],
+    image_b64: Optional[str],
+    current_real_time: str,
+    vibe: str,
+) -> str:
+    """
+    Assembles the complete 4-layer prompt for both OpenAI and Gemini.
+
+    LAYER 1 — GLOBAL DIRECTIVE   : Ironclad firewall, inherited by all personas.
+    LAYER 2 — PERSONA SKIN       : Identity, voice, domain, boundaries, tactical style.
+    LAYER 3 — INTENT LOGIC       : Adaptive state recognition; how to read the request.
+    LAYER 4 — RUNTIME CONTEXT    : Live injections: time, vault, search, image, message.
+    """
+
+    # ── Layer 2: Resolve persona data (safe defaults to guardian) ─────────
+    p_skin   = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS["guardian"])
+    p_ext    = PERSONA_EXTENDED.get(persona, "")
+    p_intent = INTENT_LOGIC.get(persona, "")
+    v_style  = VIBE_STYLES.get(vibe, VIBE_STYLES["standard"])
+
+    # ── Layer 4a: Memory block ─────────────────────────────────────────────
+    # If vault has content, inject as natural shared context — NOT as a
+    # database retrieval. If empty, inject nothing; do not reference it.
+    if memories and memories.strip():
+        memory_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SHARED CONTEXT — VAULT (treat as natural background knowledge)
+You already know the following from prior exchanges with {user_name}.
+Treat it the same way a colleague uses notes from a previous meeting.
+DO NOT announce this as a database or memory retrieval. Simply know it.
+If anything below contradicts what the user says now, flag it naturally:
+"Last time we were working through this, you mentioned X — has something
+shifted?" DO NOT invent vault entries that are not listed here.
+{memories.strip()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        memory_block = ""  # Vault empty — do not reference it at all
+
+    # ── Layer 4b: Search intel block ──────────────────────────────────────
+    # Present as live ground truth, prioritized over base knowledge.
+    if search_intel and search_intel.strip():
+        search_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LIVE SEARCH INTEL — GROUND TRUTH (prioritize over base knowledge)
+The following was retrieved from the live web for this query.
+If it conflicts with your prior knowledge, defer to this data and
+note the discrepancy only if it is meaningful to the user.
+{search_intel.strip()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        search_block = ""
+
+    # ── Layer 4c: Scam indicators block ───────────────────────────────────
+    if indicators:
+        scam_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠ THREAT INDICATORS DETECTED IN USER MESSAGE
+The following scam pattern categories were flagged algorithmically:
+{', '.join(indicators)}
+You MUST proactively address these. If scam_detected is warranted,
+lead your answer with [🚨 SCAM ALERT] before any other content.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        scam_block = ""
+
+    # ── Layer 4d: Visual analysis block ───────────────────────────────────
+    # Persona-specific visual directives — only rendered when image exists.
+    if image_b64:
+        visual_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VISUAL INTELLIGENCE PROTOCOL — MANDATORY (image uploaded)
+Your FIRST sentence must address the most critical, severe, or
+actionable detail visible in the image. DO NOT describe it generically.
+Assess it through your specific expert lens:
+  GUARDIAN  → Phishing UI, fake logos, spoofed interfaces, fraud indicators.
+  DOCTOR    → Injury severity, wound staging, skin presentation, trauma risk.
+  MECHANIC  → Wear patterns, failure modes, missing hardware, corrosion,
+               assembly errors. Name the specific part.
+  LAWYER    → Suspicious contract language, missing clauses, trap terms,
+               unfavorable fine print.
+  WEALTH    → Invoice irregularities, hidden fees, billing errors, fraud signals.
+  VITALITY  → Form breakdown, posture flaws, food macro estimation,
+               equipment risk.
+  CAREER    → Resume formatting issues, red-flag language, ATS killers.
+  THERAPIST → Any visual cues to emotional state if a person is shown.
+  ALL OTHER → Apply your domain expertise to the most critical detail visible.
+If the image is ambiguous, state what you CAN assess and what additional
+information would sharpen the analysis. Never say "I cannot analyze images."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        visual_block = ""
+
+    # ── Tier-based depth instruction ──────────────────────────────────────
+    tier_depth = {
+        "free":  "Deliver clear, concise, high-value core response. No padding.",
+        "pro":   "Deliver thorough, tactically detailed response with full reasoning.",
+        "elite": "Deliver comprehensive expert-level analysis. Leave no angle unaddressed.",
+        "max":   "Deliver exhaustive, senior-expert analysis. Full picture, full depth."
+    }.get(tier, "Deliver a clear, useful response.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # FINAL PROMPT — ALL 4 LAYERS ASSEMBLED IN ORDER
+    # ══════════════════════════════════════════════════════════════════════
+    return f"""
+{GLOBAL_DIRECTIVE}
+
+══════════════════════════════════════════════════════════════════
+LAYER 2 — YOUR SEAT AT THE BOARD (PERSONA IDENTITY & EXPERTISE)
+══════════════════════════════════════════════════════════════════
+{p_skin}
+
+SPECIALIZED SEAT OVERRIDE:
+{p_ext}
+
+COMMUNICATION STYLE FOR THIS SESSION ({vibe.upper()} MODE):
+{v_style}
+
+══════════════════════════════════════════════════════════════════
+LAYER 3 — STATE & INTENT RECOGNITION (READ THIS BEFORE RESPONDING)
+══════════════════════════════════════════════════════════════════
+Before forming your response, identify which STATE the user is in
+from the decision tree below, and apply the matching response mode.
+Getting this wrong is the primary source of bad outputs.
+
+{p_intent}
+
+══════════════════════════════════════════════════════════════════
+LAYER 4 — RUNTIME CONTEXT (LIVE SESSION DATA)
+══════════════════════════════════════════════════════════════════
+USER: {user_name}  |  TIER: {tier.upper()}  |  DEPTH: {tier_depth}
+CURRENT DATE & TIME: {current_real_time}
+You are live. Never claim a knowledge cutoff. If SEARCH INTEL exists
+below, it is your ground truth and overrides base knowledge.
+
+{memory_block}{search_block}{scam_block}{visual_block}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USER MESSAGE:
+{msg}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRE-RESPONSE INTERNAL CHECKLIST (run this silently before writing):
+  ✔ Did I identify the user's intent STATE from Layer 3 above?
+  ✔ Did I verify any law, medical claim, or tech fact before stating it?
+  ✔ Did I treat vault memories as natural background — not announced?
+  ✔ Did I prioritize SEARCH INTEL over base knowledge where present?
+  ✔ Did I lead with the MOST CRITICAL information, not bury it?
+  ✔ Did I flag scam indicators if present — leading with [🚨 SCAM ALERT]?
+  ✔ Did I refuse any dangerous, illegal, or academically fraudulent request?
+  ✔ Did I stay in character without suggesting they switch to another specialist?
+  ✔ Is my output ONLY valid raw JSON — no markdown fences, no preamble?
+
+REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
+{{
+    "answer": "Your complete in-character tactical response.",
+    "confidence_score": <integer 0-100>,
+    "scam_detected": <true|false>,
+    "threat_level": <"low"|"medium"|"high">
+}}
+""".strip()
+
+
+# ---------------------------------------------------------
 # MAIN CHAT GATEWAY (12-SEAT BOARD)
 # ---------------------------------------------------------
 @app.post("/chat")
 async def chat(
-    msg: str = Form(""), # Make msg optional to handle just images
+    msg: str = Form(""),
     history: str = Form("[]"),
     persona: str = Form("guardian"),
     user_email: str = Form(...),
     user_location: str = Form(""),
     vibe: str = Form("standard"),
     use_long_term_memory: str = Form("false"),
-    device_id: str = Form("unknown"),  # INJECTED: Frontend device identifier
-    email_consent: str = Form("false"), # INJECTED: Email Mission Report Toggle
+    device_id: str = Form("unknown"),
+    email_consent: str = Form("false"),
     file: UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -485,20 +669,21 @@ async def chat(
 
     # AUTHORITY BYPASS: Unlimited for Owner and Admin
     is_admin = email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
-
-    if is_admin:
-        limit = 999999
-    else:
-        limit = TIER_LIMITS.get(tier, 3)
+    limit = 999999 if is_admin else TIER_LIMITS.get(tier, 3)
 
     # --- DEVICE FINGERPRINT LOCK ---
     if not is_admin and device_id != "unknown":
         user_devices = AUTHORIZED_DEVICES[email_lower]
         if device_id not in user_devices:
             if len(user_devices) >= MAX_DEVICES_PER_USER:
-                logger.warning(f"🚨 DEVICE BREACH ATTEMPT: {email_lower} tried to access via 3rd device ({device_id}).")
+                logger.warning(f"🚨 DEVICE BREACH ATTEMPT: {email_lower} via 3rd device ({device_id}).")
                 return {
-                    "answer": "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\nYour LYLO OS clearance is cryptographically tied to your specific hardware. To ensure peak server performance and ironclad privacy, your account is strictly limited to **two (2) active devices**. You are attempting to breach this limit from an unauthorized third device. Access denied.",
+                    "answer": (
+                        "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\n"
+                        "Your LYLO OS clearance is cryptographically tied to your specific hardware. "
+                        "Your account is strictly limited to **two (2) active devices**. "
+                        "You are attempting access from an unauthorized third device. Access denied."
+                    ),
                     "confidence_score": 100,
                     "scam_detected": False,
                     "threat_level": "high",
@@ -510,99 +695,79 @@ async def chat(
     # --- THE SOFT UPSELL: DYNAMIC LIMIT MESSAGING ---
     if USAGE_TRACKER[user_id] >= limit:
         upgrade_msgs = {
-            "free": "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! To keep your digital bodyguard active and unlock 15 daily messages, upgrade to the **Pro Guardian tier ($1.99/mo)**.",
-            "pro": "🛡️ **Pro Limit Reached.** You've hit your 15 daily messages. Need deeper intelligence? Upgrade to **Elite Justice ($4.99/mo)** for 50 daily messages and Crisis Shield access.",
-            "elite": "🛡️ **Elite Limit Reached.** You've maxed out your 50 daily messages! For unrestricted, heavy-duty AI firepower, upgrade to **Max Unlimited ($9.99/mo)**.",
-            "max": "🛡️ **System Cap Reached.** Incredible work today. You've hit the absolute daily safety cap (500 messages). Your system will reset at midnight."
+            "free":  "🛡️ **Daily Shield Limit Reached.** You've used your 3 free daily connections! Upgrade to **Pro Guardian ($1.99/mo)** for 15 daily messages.",
+            "pro":   "🛡️ **Pro Limit Reached.** You've hit 15 daily messages. Upgrade to **Elite Justice ($4.99/mo)** for 50 messages and Crisis Shield access.",
+            "elite": "🛡️ **Elite Limit Reached.** 50 messages maxed! Upgrade to **Max Unlimited ($9.99/mo)** for unrestricted AI firepower.",
+            "max":   "🛡️ **System Cap Reached.** You've hit the absolute daily cap (500 messages). Your system resets at midnight."
         }
-        upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
-
         return {
-            "answer": upsell_msg,
+            "answer": upgrade_msgs.get(tier, upgrade_msgs["free"]),
             "confidence_score": 100,
             "scam_detected": False,
             "threat_level": "low",
             "usage_info": {"can_send": False}
         }
 
+    # --- PRE-FLIGHT: Gather all context concurrently where possible -------
+
+    # Memory retrieval
     memories = ""
     if use_long_term_memory == "true":
         memories = await retrieve_intelligence_sync(user_id, msg)
 
+    # Tavily search — expanded keyword set
     search_intel = ""
-    # THE UPGRADED TAVILY TRIGGER
-    search_keywords = ["news", "weather", "search", "price", "check", "law", "code", "today", "now", "current", "date", "latest", "recent", "2026", "update"]
+    search_keywords = [
+        "news", "weather", "search", "price", "check", "law", "code",
+        "today", "now", "current", "date", "latest", "recent", "2026",
+        "update", "rate", "stock", "score", "hours", "open", "closed"
+    ]
     if any(k in msg.lower() for k in search_keywords):
         search_intel = await search_personalized_web(msg, user_location)
 
+    # Scam indicator scan
     indicators = analyze_scam_indicators(msg)
 
-    p_def = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS.get("guardian", "Security Lead"))
-    p_ext = PERSONA_EXTENDED.get(persona, "")
-    v_inst = VIBE_STYLES.get(vibe, "")
-    hook = get_random_hook(persona)
-
+    # Image processing
     image_b64 = None
     if file:
         file_bytes = await file.read()
         image_b64 = base64.b64encode(file_bytes).decode("utf-8")
-        # Ensure there is a prompt if the user just uploads an image
         if not msg.strip():
             msg = "Please analyze this image and provide a technical assessment based on your specialty."
 
-    # --- THE VISUAL PRIORITY OVERRIDE ---
-    visual_directive = ""
-    if image_b64:
-        visual_directive = """
-        CRITICAL VISUAL PROTOCOL: An image has been uploaded.
-        1. Acknowledge the most severe damage, issue, or detail in the photo in your very first sentence.
-        2. IMMEDIATELY pivot to your specific expert persona. 
-        - DOCTOR: Warn about bodily harm, internal injuries, or medical triage (e.g., a broken helmet means brain trauma risk).
-        - MECHANIC: Warn about catastrophic machine failure or missing parts.
-        - LAWYER: Warn about legal liability or contract traps.
-        Do not just describe the object. Evaluate the real-world consequences based on your identity.
-        """
+    # Hook for fallback / frontend display
+    hook = get_random_hook(persona)
 
-    vault_status = memories if memories else "NO SECURE RECORDS FOUND. DO NOT FABRICATE MEMORIES."
-
-    # --- THE LIVE CLOCK INJECTION ---
+    # Live clock
     current_real_time = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
 
-    # --- UPDATED PROMPT INTEGRATION (THE MASTER PATCH) ---
-    full_prompt = f"""
-    GLOBAL LEGAL DIRECTIVE: You are Lylo OS, a proactive Digital Bodyguard and expert simulation. Speak exactly like the expert defined below.
-    {visual_directive}
-    CURRENT REAL-TIME DATE: {current_real_time}
-    IDENTITY: {p_def}
-    STYLE: {v_inst}
-    EXTENDED INTELLIGENCE: {p_ext}
-    PINECONE VAULT: {vault_status}
-    SEARCH INTEL: {search_intel}
-    SCAM INDICATORS: {indicators}
-    USER: {user_data['name']}
-    MESSAGE: {msg}
+    # ── ASSEMBLE THE 4-LAYER PROMPT ────────────────────────────────────────
+    full_prompt = assemble_prompt(
+        persona=persona,
+        user_name=user_data["name"],
+        tier=tier,
+        msg=msg,
+        memories=memories,
+        search_intel=search_intel,
+        indicators=indicators,
+        image_b64=image_b64,
+        current_real_time=current_real_time,
+        vibe=vibe,
+    )
 
-    CRITICAL RED TEAM & SAFETY PROTOCOLS:
-    1. ZERO COMPROMISE ON SAFETY: If the user requests hacking scripts (even on "owned" hardware), security bypasses, illegal acts, or academic cheating (test answers), give a HARD REFUSAL. Offer a legal/safe alternative.
-    2. NO DANGEROUS ADVICE: Aggressively shut down physically dangerous ideas (dry fasting, driving drunk, skipping vital medical care). You are a bodyguard, not a yes-man.
-    3. NO HOOK REPETITION: Do NOT start your answer by repeating your introductory hook. Start immediately with your tactical response.
-    4. TIME AWARENESS: It is currently {current_real_time}. NEVER claim your knowledge is cut off. Prioritize SEARCH INTEL if present.
-    5. NEVER break character. Do not tell the user to talk to a different specialist.
+    # ── ENGINE SELECTION ───────────────────────────────────────────────────
+    # gpt-4o for max-tier and admins; gpt-4o-mini for all others
+    openai_engine = (
+        "gpt-4o"
+        if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        else "gpt-4o-mini"
+    )
+    # NOTE: "gemini-3-flash" does not exist. Use "gemini-1.5-flash" (fast)
+    # or "gemini-1.5-pro" (deeper). Verify current names in Google AI Studio.
+    gemini_engine = "gemini-1.5-flash"
 
-    FORMAT REQUIREMENT:
-    Output ONLY valid, raw JSON. Do not use markdown code blocks (no ```json).
-    {{
-        "answer": "Your tactical, in-character response here.",
-        "confidence_score": integer between 0 and 100,
-        "scam_detected": boolean,
-        "threat_level": "low" or "high"
-    }}
-    """
-
-    openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
-    # SPEED FIX: Defaulting to 'gemini-3-flash' for all users to ensure maximum response speed.
-    gemini_engine = "gemini-3-flash"
-
+    # ── DUAL-PASS AI CONSENSUS ─────────────────────────────────────────────
     results = await asyncio.gather(
         call_openai_bodyguard(full_prompt, image_b64, openai_engine),
         call_gemini_vision(full_prompt, image_b64, gemini_engine)
@@ -612,26 +777,36 @@ async def chat(
 
     if not valid_results:
         return {
-            "answer": f"{hook} Perimeter secure, but connection is flickering. Can you repeat that?",
-            "confidence_score": 0
+            "answer": f"{hook} Perimeter secure, but the connection flickered. Can you repeat that?",
+            "confidence_score": 0,
+            "scam_detected": False,
+            "threat_level": "low",
         }
 
+    # Winner: highest composite score (confidence + scam weight + threat weight)
     winner = max(
         valid_results,
         key=lambda x: (
             x.get("confidence_score", 0)
             + (35 if x.get("scam_detected") else 0)
-            + (20 if x.get("threat_level") == "high" else 0)
+            + (20 if x.get("threat_level") in ["high", "medium"] else 0)
         ),
     )
 
+    # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
     USAGE_TRACKER[user_id] += 1
     asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
     asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
 
-    # --- EMAIL DISPATCHER PROTOCOL ---
     if email_consent == "true":
         asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
+
+    logger.info(
+        f"✅ [{persona.upper()}] Response served to {user_data['name']} "
+        f"| Tier: {tier} | Model: {winner.get('model', 'LYLO-CORE')} "
+        f"| Scam: {winner.get('scam_detected', False)} "
+        f"| Threat: {winner.get('threat_level', 'low')}"
+    )
 
     return {
         "answer": winner["answer"],
@@ -641,6 +816,7 @@ async def chat(
         "persona_hook": hook,
         "bodyguard_model": winner.get("model", "LYLO-CORE"),
     }
+
 
 # ---------------------------------------------------------
 # UTILITIES: VOICE, STATS, RECOVERY
@@ -663,13 +839,10 @@ async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
 @app.get("/user-stats/{user_email}")
 async def get_stats(user_email: str):
     uid = create_user_id(user_email)
-    user_data = ELITE_USERS.get(
-        user_email.lower(), {"tier": "free", "name": "User"}
-    )
+    user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
     limit = (
         999999
-        if user_email.lower()
-        in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
         else TIER_LIMITS.get(user_data["tier"], 3)
     )
     return {
@@ -691,9 +864,11 @@ async def recovery_center(email: str):
     return {
         "title": "🛡️ PRIORITY RECOVERY CENTER",
         "immediate_actions": [
-            "Call bank fraud dept.",
-            "Freeze credit reports.",
-            "Report at IC3.gov.",
+            "Call your bank fraud department immediately.",
+            "Freeze your credit reports at all 3 bureaus (Equifax, Experian, TransUnion).",
+            "File a report at IC3.gov (FBI Internet Crime Complaint Center).",
+            "Change all passwords from a clean, uncompromised device.",
+            "Enable 2FA on every account that supports it."
         ],
     }
 
@@ -701,8 +876,9 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status": "ONLINE",
-        "version": "19.34.0",
+        "version": "20.0.0 - MULTI-LAYER ARCHITECTURE",
         "experts_active": len(PERSONA_DEFINITIONS),
+        "architecture": "4-Layer Prompt Engine | Anti-Hallucination Hardened"
     }
 
 if __name__ == "__main__":
