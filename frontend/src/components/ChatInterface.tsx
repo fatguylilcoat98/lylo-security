@@ -244,9 +244,10 @@ function ChatInterface({
   const [emailConsent, setEmailConsent]             = useState(false);
 
   // PWA install state
-  const [deferredPrompt, setDeferredPrompt]   = useState<any>(null);
-  const [showInstallBtn, setShowInstallBtn]   = useState(false);
-  const [installMethod, setInstallMethod]     = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
+  const [deferredPrompt, setDeferredPrompt]     = useState<any>(null);
+  const [installMethod, setInstallMethod]       = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
+  const [showInstallModal, setShowInstallModal] = useState(false);  // One-time first-seen modal
+  const [canInstall, setCanInstall]             = useState(false);  // Whether install is available (for dropdown btn)
 
   const chatContainerRef        = useRef<HTMLDivElement>(null);
   const fileInputRef            = useRef<HTMLInputElement>(null);
@@ -263,29 +264,39 @@ function ChatInterface({
       window.matchMedia('(display-mode: standalone)').matches ||
       ('standalone' in window.navigator && (window.navigator as any).standalone === true);
 
-    if (isStandalone) { setShowInstallBtn(false); return; }
+    if (isStandalone) return;  // Already installed — show nothing
 
-    setShowInstallBtn(true);
-
+    const alreadySeen = localStorage.getItem('lylo_install_modal_seen');
     const ua = window.navigator.userAgent.toLowerCase();
+
     if (/iphone|ipad|ipod/.test(ua)) {
       setInstallMethod('manual_ios');
+      setCanInstall(true);
+      if (!alreadySeen) setShowInstallModal(true);
     } else {
       const handleBeforeInstall = (e: any) => {
         e.preventDefault();
         setDeferredPrompt(e);
         setInstallMethod('prompt');
+        setCanInstall(true);
+        if (!alreadySeen) setShowInstallModal(true);
       };
       window.addEventListener('beforeinstallprompt', handleBeforeInstall);
       return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
     }
   }, []);
 
+  const dismissInstallModal = () => {
+    localStorage.setItem('lylo_install_modal_seen', 'true');
+    setShowInstallModal(false);
+  };
+
   const handleInstallClick = async () => {
+    dismissInstallModal();
     if (installMethod === 'prompt' && deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setShowInstallBtn(false);
+      if (outcome === 'accepted') setCanInstall(false);
       setDeferredPrompt(null);
     } else if (installMethod === 'manual_ios') {
       alert('APPLE SECURE INSTALL:\n\n1. Tap the "Share" icon at the bottom of Safari (the square with an up arrow).\n2. Scroll down and tap "Add to Home Screen".');
@@ -472,10 +483,7 @@ function ChatInterface({
       formData.append('history',              JSON.stringify(messages.slice(-6)));
       formData.append('persona',              activePersona.id);
       formData.append('user_email',           userEmail);
-      // user_location: warm-start registry supplies ZIP for known beta users.
-      // Frontend sends blank; future onboarding step will collect this.
       formData.append('user_location',        '');
-      // vibe keys now match VIBE_STYLES in intelligence_data.py exactly.
       formData.append('vibe',                 communicationStyle);
       formData.append('use_long_term_memory', 'true');
       formData.append('device_id',            deviceId);
@@ -487,10 +495,7 @@ function ChatInterface({
       if (!apiResponse.ok) throw new Error('API Network Error');
       const response = await apiResponse.json();
 
-      const isLockout   = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
-      const voiceToUse  = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
-      const audioToPlay = isLockout ? null : await fetchAudioSilently(response.answer, voiceToUse);
-
+      // ── SPEED FIX: Render text immediately — don't wait for audio ─────
       const botMsg: Message = {
         id: Date.now().toString(),
         content: response.answer,
@@ -499,20 +504,47 @@ function ChatInterface({
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
       };
-
       setMessages(prev => [...prev, botMsg]);
-      if (audioToPlay) playAudioSafely(audioToPlay);
+      setLoading(false);  // ← unblock UI before audio starts fetching
+
+      // Audio fetches in background — user can type next message immediately
+      const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
+      if (!isLockout && isVoiceEnabled) {
+        const voiceToUse  = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+        const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
+        if (audioToPlay) playAudioSafely(audioToPlay);
+      }
 
     } catch (e) {
       console.error(e);
-    } finally {
       setLoading(false);
+    } finally {
       setSelectedImage(null);
       setEmailConsent(false);
     }
   };
 
-  // ── Persona change ─────────────────────────────────────────────────────────
+  // ── PERSONALIZED HOOK FETCH ───────────────────────────────────────────────
+  // Calls /persona-hook — fast single-model call (target <1s).
+  // Falls back to static spokenHook if timeout or error.
+  const fetchPersonaHook = async (personaId: string): Promise<string> => {
+    try {
+      const fd = new FormData();
+      fd.append('persona',    personaId);
+      fd.append('user_email', userEmail);
+      const res  = await Promise.race([
+        fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+      ]) as Response;
+      if (!res.ok) throw new Error('hook fetch failed');
+      const data = await res.json();
+      return data.hook || '';
+    } catch {
+      return '';  // Let caller fall back to static
+    }
+  };
+
+  // ── PERSONA CHANGE ────────────────────────────────────────────────────────
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
     if (currentlyPlayingAudioRef.current) {
@@ -525,13 +557,32 @@ function ChatInterface({
     setShowPersonaGrid(false);
     setLoading(true);
 
-    const hookText    = persona.spokenHook.replace('{userName}', userName);
+    // ── SPEED FIX: Fetch personalized hook and prepare audio simultaneously.
+    // The hook API is fast — but we don't block text render on audio at all.
     const voiceToUse  = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
-    const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
-    const hookMsg: Message = { id: Date.now().toString(), content: hookText, sender: 'bot', timestamp: new Date() };
+
+    // Kick off both in parallel — personalized hook text + (pre-warm audio connection)
+    const [hookText] = await Promise.all([
+      fetchPersonaHook(persona.id).then(h =>
+        h || persona.spokenHook.replace('{userName}', userName)
+      ),
+    ]);
+
+    // ── Show text immediately — don't wait for audio ──────────────────────
+    const hookMsg: Message = {
+      id: Date.now().toString(),
+      content: hookText,
+      sender: 'bot',
+      timestamp: new Date(),
+    };
     setMessages([hookMsg]);
-    if (audioToPlay) playAudioSafely(audioToPlay);
-    setLoading(false);
+    setLoading(false);  // ← unblock UI the moment text is ready
+
+    // Audio fetches in background — user sees the greeting instantly
+    if (isVoiceEnabled) {
+      const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
+      if (audioToPlay) playAudioSafely(audioToPlay);
+    }
   };
 
   const handleBestieSetupComplete = (voiceId: string) => {
@@ -744,10 +795,52 @@ function ChatInterface({
   }
 
   // ===========================================================================
+  // INSTALL MODAL — one-time popup, shown once per device, dismissed to dropdown
+  // ===========================================================================
+  const InstallModal = () => (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[999998] flex items-end justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-[#111] border border-blue-500/40 rounded-3xl w-full max-w-sm p-6 mb-4 shadow-[0_0_60px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 duration-300">
+        <div className="flex items-center gap-4 mb-5">
+          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg">
+            <Shield className="w-7 h-7 text-white" />
+          </div>
+          <div>
+            <h2 className="text-white font-black text-lg uppercase tracking-widest leading-none">Install LYLO OS</h2>
+            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-1">Add to Home Screen for Full Access</p>
+          </div>
+        </div>
+        <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+          Install for instant access, offline mode, and the full bodyguard experience — no browser needed.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={handleInstallClick}
+            className="flex-1 py-4 bg-blue-600 text-white font-black uppercase rounded-xl tracking-widest text-sm hover:bg-blue-500 transition-all"
+          >
+            Install Now
+          </button>
+          <button
+            onClick={dismissInstallModal}
+            className="py-4 px-5 bg-white/5 text-gray-400 font-bold rounded-xl text-sm hover:bg-white/10 transition-all"
+          >
+            Later
+          </button>
+        </div>
+        <p className="text-center text-[10px] text-gray-600 mt-4 uppercase tracking-widest">
+          Find this again in the menu ☰
+        </p>
+      </div>
+    </div>
+  );
+
+  // ===========================================================================
   // MAIN OS SHELL
   // ===========================================================================
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
+
+      {/* One-time install modal — shown once after first login, then available in dropdown */}
+      {showInstallModal && <InstallModal />}
 
       {/* ── TOP BAR ─────────────────────────────────────────────────────────── */}
       <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
@@ -810,6 +903,19 @@ function ChatInterface({
                       <span className="font-bold">System Briefing</span>
                     </div>
                   </button>
+
+                  {canInstall && (
+                    <button
+                      onClick={() => { setShowDropdown(false); handleInstallClick(); }}
+                      className="w-full p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl text-white flex items-center justify-between hover:bg-blue-600/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <ArrowRight className="w-5 h-5 text-blue-400" />
+                        <span className="font-bold">Install LYLO OS</span>
+                      </div>
+                      <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest">Home Screen</span>
+                    </button>
+                  )}
                 </div>
 
                 <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl">
@@ -948,29 +1054,6 @@ function ChatInterface({
                 <span className="text-[10px] text-white font-black uppercase tracking-widest text-center">{p.name}</span>
               </button>
             ))}
-          </div>
-        )}
-
-        {/* PWA install banner */}
-        {showInstallBtn && (
-          <div className="animate-in fade-in zoom-in-95 duration-500">
-            <button
-              onClick={handleInstallClick}
-              className="w-full mb-6 p-5 bg-blue-600/20 border border-blue-500/50 rounded-3xl flex items-center justify-between shadow-[0_0_20px_rgba(59,130,246,0.15)] group hover:bg-blue-600/30 transition-all"
-            >
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-500 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="text-white font-black text-sm uppercase tracking-widest">Install LYLO OS</p>
-                  <p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">Add to Home Screen</p>
-                </div>
-              </div>
-              <div className="p-2 bg-white/10 rounded-full">
-                <ArrowRight className="w-5 h-5 text-white" />
-              </div>
-            </button>
           </div>
         )}
 
