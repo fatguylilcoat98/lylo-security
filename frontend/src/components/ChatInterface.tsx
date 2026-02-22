@@ -803,7 +803,8 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
     </div>
    )}
 
-   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '350px' : '220px' }}>
+   {/* THE PADDING FIX IS HERE: style={{ paddingBottom: previewUrl ? '420px' : '320px' }} */}
+   <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px' }}>
     
     {showPersonaGrid && (
      <div className="grid grid-cols-2 gap-3">
