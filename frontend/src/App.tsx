@@ -4,11 +4,11 @@ import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
-// --- THE GATEKEEPER (Upgraded with URL Handoff & Boot Delay Fix) ---
+// --- THE GATEKEEPER (Fixed URL Cleaner) ---
 const Gatekeeper = ({ children, requireRedirect = false }: { children: React.ReactNode, requireRedirect?: boolean }) => {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [shouldRedirectToDash, setShouldRedirectToDash] = useState<boolean>(false);
-  const [isBooting, setIsBooting] = useState<boolean>(true); // NEW: System loading state
+  const [isBooting, setIsBooting] = useState<boolean>(true);
 
   useEffect(() => {
     const initializeGatekeeper = () => {
@@ -24,13 +24,13 @@ const Gatekeeper = ({ children, requireRedirect = false }: { children: React.Rea
       const nameFromUrl = getParam('name');
 
       if (emailFromUrl) {
-        // Catch the handoff and save it to the APP's local storage
         localStorage.setItem('userEmail', emailFromUrl);
         if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
         if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
         
-        // Clear the URL params for a clean look
-        const cleanUrl = fullUrl.split('?')[0]; 
+        // THE FIX: We keep the HashRouter path, and only clear the parameters
+        const hash = window.location.hash;
+        const cleanUrl = window.location.origin + window.location.pathname + hash; 
         window.history.replaceState({}, document.title, cleanUrl);
         
         setIsAuthorized(true);
@@ -43,21 +43,18 @@ const Gatekeeper = ({ children, requireRedirect = false }: { children: React.Rea
       const storedEmail = localStorage.getItem('userEmail');
       if (storedEmail) {
         setIsAuthorized(true);
-        // Only redirect to dashboard if we are at the root or assessment
         if (requireRedirect) setShouldRedirectToDash(true);
       } else {
-        // No ID found - kick back to landing page
         window.location.assign('https://mylylo.pro');
       }
 
-      // Give the system 300ms to catch its breath from memory to prevent black screen hang
-      setTimeout(() => setIsBooting(false), 300);
+      setIsBooting(false);
     };
 
     initializeGatekeeper();
   }, [requireRedirect]);
 
-  // Show the black screen with a subtle loading spinner ONLY while booting
+  // Booting screen
   if (isBooting || !isAuthorized) {
     return (
       <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
