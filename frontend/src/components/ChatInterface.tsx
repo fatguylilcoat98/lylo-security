@@ -411,26 +411,24 @@ function ChatInterface({
     currentlyPlayingAudioRef.current = audioElement;
     setIsSpeaking(true);
     audioElement.onended = () => setIsSpeaking(false);
-    audioElement.play();
+    audioElement.play().catch(() => {});
   };
 
   // ── SYNCED TYPEWRITER ────────────────────────────────────────────────────
-  // Core mechanic: wait for audio metadata → derive chars/sec → start both.
-  // If no audio (voice off / fetch failed), animate at a natural 28ms/char.
-  // The message is added to the list BEFORE animation starts so it appears
-  // in place; streaming state fills it in character by character.
+  // THE FIX: streamingMsgId is claimed BEFORE the message is added to state.
+  // Message renders "" from frame 1 — no flash of full text ever.
+  // Base64 audio URIs have duration available immediately (fully buffered).
+  // Both audio.play() and startTyping() fire in the same synchronous tick.
   const animateSynced = (
     text: string,
     msgId: string,
-    audioElement?: HTMLAudioElement | null
+    audioElement: HTMLAudioElement | null
   ) => {
-    // Kill any previous typewriter that might be running
     if (typewriterRef.current) {
       clearInterval(typewriterRef.current);
       typewriterRef.current = null;
     }
     streamingTextRef.current = '';
-    setStreamingMsgId(msgId);
     setStreamingText('');
 
     const startTyping = (msPerChar: number) => {
@@ -443,40 +441,34 @@ function ChatInterface({
         if (i >= text.length) {
           clearInterval(typewriterRef.current!);
           typewriterRef.current = null;
-          setStreamingMsgId(null);   // Snap to final message content
+          setStreamingMsgId(null);
           setStreamingText('');
         }
       }, msPerChar);
     };
 
     if (audioElement && isVoiceEnabled) {
-      // Wait for audio duration metadata, then sync speed to audio length
       const kick = () => {
-        const duration   = audioElement.duration;           // seconds
-        const totalChars = text.length;
-        // Cap minimum — very short audio + long text = too fast to read
-        const msPerChar  = Math.max(18, (duration * 1000) / totalChars);
-
-        // Start both simultaneously
+        const msPerChar = Math.max(18, (audioElement.duration * 1000) / text.length);
+        // Simultaneously — same tick, no gap
         playAudioSafely(audioElement);
         startTyping(msPerChar);
       };
 
-      if (audioElement.readyState >= 1) {
-        // Metadata already available (cached audio)
+      // Base64 data URIs are fully buffered — duration is available immediately
+      if (isFinite(audioElement.duration) && audioElement.duration > 0) {
         kick();
       } else {
         audioElement.addEventListener('loadedmetadata', kick, { once: true });
-        // Hard fallback: if metadata doesn't arrive in 800ms, animate anyway
+        // Safety: if metadata never fires (rare), start at natural pace after 1.2s
         setTimeout(() => {
           if (streamingTextRef.current === '') {
             startTyping(28);
             audioElement.play().catch(() => {});
           }
-        }, 800);
+        }, 1200);
       }
     } else {
-      // Voice off — animate at natural reading pace (≈ 28ms/char ≈ 280wpm)
       startTyping(28);
     }
   };
@@ -533,6 +525,13 @@ function ChatInterface({
     const text = inputTextRef.current.trim() || input.trim();
     if (!text && !selectedImage) return;
 
+    // Stop any in-progress typewriter
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+      setStreamingMsgId(null);
+    }
+
     setLoading(true);
     setInput('');
     inputTextRef.current   = '';
@@ -540,10 +539,9 @@ function ChatInterface({
     setShowPersonaGrid(false);
 
     const currentImagePreview = previewUrl;
-
     const userMsg: Message = {
       id: Date.now().toString(),
-      content: text || 'Analyze this image.',
+      content: text || 'Analyzing image…',
       sender: 'user',
       timestamp: new Date(),
       imageUrl: currentImagePreview,
@@ -561,43 +559,47 @@ function ChatInterface({
       formData.append('use_long_term_memory', 'true');
       formData.append('device_id',            deviceId);
       formData.append('email_consent',        emailConsent ? 'true' : 'false');
-
       if (selectedImage) formData.append('file', selectedImage);
 
       const apiResponse = await fetch(`${API_URL}/chat`, { method: 'POST', body: formData });
-      if (!apiResponse.ok) throw new Error('API Network Error');
-      const response = await apiResponse.json();
+      if (!apiResponse.ok) throw new Error('API error');
+      const response    = await apiResponse.json();
 
       const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
       const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+      const botMsgId   = `bot-${Date.now()}`;
 
-      // ── Add message placeholder immediately (empty content — typewriter fills it in)
-      const botMsgId = Date.now().toString();
-      const botMsg: Message = {
+      // ── THE FIX ───────────────────────────────────────────────────────────
+      // Claim the streaming slot BEFORE adding the message to state.
+      // React will render the new message immediately. Because streamingMsgId
+      // already matches botMsgId, the render shows streamingText ("") — never
+      // the full msg.content. There is no flash.
+      setStreamingMsgId(botMsgId);
+      setStreamingText('');
+
+      setMessages(prev => [...prev, {
         id: botMsgId,
-        content: response.answer,    // stored in message list for after animation
-        sender: 'bot',
+        content: response.answer,
+        sender: 'bot' as const,
         timestamp: new Date(),
         confidenceScore: response.confidence_score,
         scamDetected: response.scam_detected,
-      };
-      setMessages(prev => [...prev, botMsg]);
+      }]);
       setLoading(false);
 
-      if (isLockout) return;
+      if (isLockout) { setStreamingMsgId(null); return; }
 
-      // ── Fetch audio and animate together — both kick off from here ────────
+      // Fetch audio, then fire typewriter + audio in the same tick
       if (isVoiceEnabled) {
-        // Fetch audio — this runs while user sees the dots → text starts
         const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
         animateSynced(response.answer, botMsgId, audioToPlay);
       } else {
-        // Voice off — just do the typewriter at natural pace
         animateSynced(response.answer, botMsgId, null);
       }
 
     } catch (e) {
       console.error(e);
+      setStreamingMsgId(null);
       setLoading(false);
     } finally {
       setSelectedImage(null);
@@ -645,26 +647,29 @@ function ChatInterface({
 
     const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
 
-    // Fetch personalized hook text AND audio in parallel — both kick off now
-    const hookTextPromise  = fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
-    const [hookText]       = await Promise.all([hookTextPromise]);
+    // Fetch hook text first
+    const hookText = await fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
+    const hookMsgId = `hook-${Date.now()}`;
 
-    // Pre-fetch audio while we set up the message (in parallel with setMessages)
-    const audioPromise = isVoiceEnabled ? fetchAudioSilently(hookText, voiceToUse) : Promise.resolve(null);
+    // ── Claim streaming slot BEFORE adding message — no flash ────────────
+    setStreamingMsgId(hookMsgId);
+    setStreamingText('');
 
-    const hookMsgId = Date.now().toString();
-    const hookMsg: Message = {
+    setMessages([{
       id: hookMsgId,
       content: hookText,
-      sender: 'bot',
+      sender: 'bot' as const,
       timestamp: new Date(),
-    };
-    setMessages([hookMsg]);
+    }]);
     setLoading(false);
 
-    // Wait for audio — it may already be ready since it was fetched in parallel
-    const audioToPlay = await audioPromise;
-    animateSynced(hookText, hookMsgId, audioToPlay);
+    // Fetch audio then fire both together
+    if (isVoiceEnabled) {
+      const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
+      animateSynced(hookText, hookMsgId, audioToPlay);
+    } else {
+      animateSynced(hookText, hookMsgId, null);
+    }
   };
 
   const handleBestieSetupComplete = (voiceId: string) => {
@@ -1241,28 +1246,56 @@ function ChatInterface({
           </div>
         )}
 
-        <div className="max-w-md mx-auto space-y-4">
+        <div className="max-w-md mx-auto space-y-3">
 
-          {/* Voice button */}
-          <div className="flex gap-2 mb-2">
+          {/* ── Row 1: VOICE (primary) + SPEAKER TOGGLE ──────────────────── */}
+          <div className="flex gap-2">
+            {/* Big voice button — primary input method */}
             <button
               onClick={handleWalkieTalkieMic}
               disabled={loading}
-              className={`w-full py-5 rounded-[32px] font-black text-xs sm:text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-2xl transition-all ${
-                isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white text-black'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${
+                isRecording
+                  ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]'
+                  : 'bg-white text-black hover:bg-gray-100'
+              } ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               {isRecording
-                ? <><MicOff className="w-5 h-5" /> STOP & SEND</>
-                : <><Mic className="w-5 h-5" /> ENGAGE VOICE</>
+                ? <><MicOff className="w-5 h-5" /> Tap to Send</>
+                : <><Mic className="w-5 h-5" /> Hold to Speak</>
+              }
+            </button>
+
+            {/* Speaker toggle — always visible, dead simple */}
+            <button
+              onClick={() => {
+                const next = !isVoiceEnabled;
+                setIsVoiceEnabled(next);
+                localStorage.setItem('lylo_voice_enabled', String(next));
+                if (!next && currentlyPlayingAudioRef.current) {
+                  currentlyPlayingAudioRef.current.pause();
+                  currentlyPlayingAudioRef.current.currentTime = 0;
+                  setIsSpeaking(false);
+                }
+              }}
+              className={`px-5 py-5 rounded-[28px] flex items-center gap-2 font-black text-xs uppercase tracking-widest transition-all active:scale-[0.97] ${
+                isVoiceEnabled
+                  ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                  : 'bg-white/10 text-gray-400 border border-white/10'
+              }`}
+              title={isVoiceEnabled ? 'Voice On — tap to mute' : 'Voice Off — tap to enable'}
+            >
+              {isVoiceEnabled
+                ? <><Volume2 className="w-5 h-5" /><span className="hidden sm:block">ON</span></>
+                : <><VolumeX className="w-5 h-5" /><span className="hidden sm:block">OFF</span></>
               }
             </button>
           </div>
 
-          {/* Text + camera row */}
+          {/* ── Row 2: Text input + camera + send ────────────────────────── */}
           <div className="flex gap-2">
 
-            {/* Camera menu */}
+            {/* Camera */}
             <div className="relative">
               <button
                 onClick={() => setShowCameraMenu(!showCameraMenu)}
@@ -1292,7 +1325,7 @@ function ChatInterface({
               onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }}
               disabled={loading}
               onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={`Command ${activePersona.name}...`}
+              placeholder={`Type to ${activePersona.name}…`}
               className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
             />
 
@@ -1303,6 +1336,7 @@ function ChatInterface({
             >
               <ArrowRight className="w-6 h-6" />
             </button>
+
           </div>
 
           {/* Footer disclaimer */}
