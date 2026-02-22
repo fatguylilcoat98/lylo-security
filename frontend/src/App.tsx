@@ -4,16 +4,14 @@ import Dashboard from './pages/Dashboard';
 import Assessment from './pages/Assessment';
 import BetaTesterAdmin from './components/BetaTesterAdmin';
 
-// --- THE GATEKEEPER (Bulletproof URL Handoff) ---
+// --- THE GATEKEEPER (Final Polish - 100% Intact) ---
 const Gatekeeper = ({ children, requireRedirect = false }: { children: React.ReactNode, requireRedirect?: boolean }) => {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [shouldRedirectToDash, setShouldRedirectToDash] = useState<boolean>(false);
 
   useEffect(() => {
-    // 1. Force-scan the entire URL string, ignoring HashRouter confusion
+    // 1. Force-scan URL for credentials (Handoff)
     const fullUrl = window.location.href;
-    
-    // Custom Regex function to pull the data safely
     const getParam = (param: string) => {
       const match = fullUrl.match(new RegExp(`[?&]${param}=([^&]*)`));
       return match ? decodeURIComponent(match[1]) : null;
@@ -24,12 +22,11 @@ const Gatekeeper = ({ children, requireRedirect = false }: { children: React.Rea
     const nameFromUrl = getParam('name');
 
     if (emailFromUrl) {
-      // 2. Catch the handoff and save it to the APP's local storage!
       localStorage.setItem('userEmail', emailFromUrl);
       if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
       if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
       
-      // 3. Clean the URL so the user's email isn't visible
+      // Clear URL params for a clean look
       const cleanUrl = fullUrl.split('?')[0]; 
       window.history.replaceState({}, document.title, cleanUrl);
       
@@ -38,24 +35,22 @@ const Gatekeeper = ({ children, requireRedirect = false }: { children: React.Rea
       return;
     }
 
-    // 4. If no URL data, check if they are already logged in locally
-    const userEmail = localStorage.getItem('userEmail');
-    if (!userEmail) {
-      // UNAUTHORIZED: Eject back to the landing page
-      window.location.assign('https://mylylo.pro');
-    } else {
-      // AUTHORIZED: Let them pass
+    // 2. CHECK STORAGE (Refresh fix)
+    const storedEmail = localStorage.getItem('userEmail');
+    if (storedEmail) {
       setIsAuthorized(true);
+      // Only redirect to dashboard if we are at the root or assessment
       if (requireRedirect) setShouldRedirectToDash(true);
+    } else {
+      // No ID found - kick back to landing page
+      window.location.assign('https://mylylo.pro');
     }
   }, [requireRedirect]);
 
-  // Render a black screen while calculating to prevent UI flashing
   if (!isAuthorized) {
     return <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw' }} />;
   }
 
-  // If they hit a login/root route with credentials, push them straight to the Dashboard
   if (shouldRedirectToDash) {
     return <Navigate to="/dashboard" replace />;
   }
