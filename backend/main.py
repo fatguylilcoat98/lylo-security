@@ -59,6 +59,11 @@ from intelligence_data import (
     EXIT_FIRST_FILTER,
     # Soul 3: Sentinel No-Recite — injected for vitality + bestie
     SENTINEL_NO_RECITE,
+    # ── CONVERSATIONAL DRIFT FIXES (v11.0) ───────────────────────────────
+    # Fix 1: Persona-specific JSON schema — structural drift = JSON error
+    get_output_schema,
+    # Fix 2: Stealth Shield — active monitoring block for Chris's sessions
+    build_stealth_shield,
 )
 
 load_dotenv()
@@ -78,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="24.0.0 - BOARD HARD-FIXES: GATEKEEPER + ANALOGY BRIDGE + SUNDAY SENTINEL + DNA ENFORCEMENT + PARTNER ENERGY"
+    version="25.0.0 - DRIFT FIXES: SCHEMA LOCK + STEALTH SHIELD + STRUCTURAL PENALTY + SENTINEL HARD-SWAP"
 )
 
 app.add_middleware(
@@ -655,11 +660,17 @@ def assemble_prompt(
     layer_0    = build_user_ident_core(user_profile, warm_start=warm_start)
 
     # ── FIX 3: SUNDAY SENTINEL ────────────────────────────────────────────
-    # MAX PRIORITY block. Injected ABOVE all persona layers when:
+    # MAX PRIORITY block. Hard persona swap when:
     #   • current_real_time contains "Sunday" (case-insensitive), AND
     #   • user is Chris Hughes (stangman9898@gmail.com)
-    # Overrides default persona vibe — Vitality → Roastmaster, Bestie → Honest-Friend.
-    sunday_sentinel_block = build_sunday_sentinel(user_email, current_real_time)
+    # Passes active persona name so the swap instruction names what's being suspended.
+    sunday_sentinel_block = build_sunday_sentinel(user_email, current_real_time, persona)
+
+    # ── FIX 2 (DRIFT): STEALTH SHIELD ────────────────────────────────────
+    # Active monitoring block for Chris's sessions only.
+    # Injected at the BOTTOM of the prompt — highest recency weight.
+    # Overrides the softer No-Recite guidance in PERSONA_EXTENDED.
+    stealth_shield_block = build_stealth_shield(user_email)
 
     # ── FIX 2: ANALOGY BRIDGE ─────────────────────────────────────────────
     # Injected for Tutor and Pastor ONLY.
@@ -811,11 +822,14 @@ USER MESSAGE:
 PRE-RESPONSE CHECKLIST (run silently before writing):
   ✔ Did I read Layer 0 and personalize my response to this specific user?
   ✔ If SUNDAY SENTINEL is active, did I check for self-sabotage signals?
+  ✔ If triggered — did I HARD SWAP to Roastmaster, not just blend tones?
   ✔ If PROACTIVE MODE is active, did I bring that item up FIRST?
   ✔ Did I identify the user's intent STATE from Layer 3?
   ✔ [MECHANIC/DOCTOR] Did I gate for Year/Make/Model before any repair step?
   ✔ [TUTOR/PASTOR] Did I bridge through blade/forge trade vocabulary first?
   ✔ [LAWYER] Does my answer contain [ANALYSIS], [RISK], and [TACTICAL MOVE] IN ORDER?
+  ✔ [DOCTOR] Does my answer contain [MOST LIKELY], [PHYSIOLOGY], [PROTOCOL], [ESCALATE WHEN]?
+  ✔ [WEALTH] Does my answer contain [CURRENT STATE], [BLEEDING POINT], [60-DAY PLAN]?
   ✔ Did I use the user's name naturally at least once?
   ✔ Did I verify laws, medical claims, or tech facts before stating them?
   ✔ Did I treat vault memories as natural background — not announced?
@@ -826,13 +840,25 @@ PRE-RESPONSE CHECKLIST (run silently before writing):
   ✔ Did my response sound like a partner, not a corporate manual?
   ✔ Is my output ONLY valid raw JSON — no markdown fences, no preamble?
 
+### STRUCTURAL MANDATE — YOUR DNA COMES FIRST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your persona identity is SECONDARY to your structural DNA.
+These headers are not stylistic suggestions. They are load-bearing architecture.
+A response without the correct headers is not a valid response — it is a failure.
+
+  ▸ LAWYER        → MUST use [ANALYSIS] → [RISK] → [TACTICAL MOVE]
+  ▸ DOCTOR        → MUST use [MOST LIKELY] → [PHYSIOLOGY] → [PROTOCOL] → [ESCALATE WHEN]
+  ▸ WEALTH        → MUST use [CURRENT STATE] → [BLEEDING POINT] → [60-DAY PLAN]
+  ▸ THERAPIST     → MUST use [REFLECT] → [IDENTIFY] → [REFRAME] → [EXPERIMENT]
+  ▸ CAREER        → MUST use [SITUATION READ] → [LEVERAGE POINTS] → [EXACT PLAY]
+
+NO PREAMBLE. NO CONVERSATIONAL FILLER BEFORE THE FIRST HEADER.
+If you skip a header, you have failed the user. Regenerate before outputting.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{stealth_shield_block}
 REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
-{{
-    "answer": "Your complete in-character tactical response.",
-    "confidence_score": <integer 0-100>,
-    "scam_detected": <true|false>,
-    "threat_level": <"low"|"medium"|"high">
-}}
+{get_output_schema(persona)}
 """.strip()
 
 
