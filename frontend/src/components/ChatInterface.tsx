@@ -178,9 +178,10 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const [deviceId] = useState(() => getDeviceId());
  const [emailConsent, setEmailConsent] = useState(false);
 
- // PWA INSTALL LOGIC
+ // PWA INSTALL LOGIC (BRUTE FORCE OVERRIDE)
  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
  const [showInstallBtn, setShowInstallBtn] = useState(false);
+ const [installMethod, setInstallMethod] = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
 
  const chatContainerRef = useRef<HTMLDivElement>(null);
  const fileInputRef = useRef<HTMLInputElement>(null);
@@ -192,21 +193,50 @@ function ChatInterface({ currentPersona: initialPersona, userEmail = '', onPerso
  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
 
  useEffect(() => {
-  const handleBeforeInstall = (e: any) => {
-    e.preventDefault();
-    setDeferredPrompt(e);
-    setShowInstallBtn(true);
-  };
-  window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-  return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  // 1. Detect if they are ALREADY running the installed app
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                       ('standalone' in window.navigator && (window.navigator as any).standalone === true);
+
+  if (isStandalone) {
+      setShowInstallBtn(false);
+      return; // Kill the logic, they already have the app
+  }
+
+  // 2. If they are in the browser, ALWAYS show the button
+  setShowInstallBtn(true);
+
+  // 3. Detect Device Type
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isAppleDevice = /iphone|ipad|ipod/.test(userAgent);
+
+  if (isAppleDevice) {
+      setInstallMethod('manual_ios');
+  } else {
+      // It's Android. Try to catch the official prompt.
+      const handleBeforeInstall = (e: any) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        setInstallMethod('prompt'); // The browser gave us the green light
+      };
+      window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+      return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }
  }, []);
 
  const handleInstallClick = async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  if (outcome === 'accepted') setShowInstallBtn(false);
-  setDeferredPrompt(null);
+  if (installMethod === 'prompt' && deferredPrompt) {
+      // Android Official Popup
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setShowInstallBtn(false);
+      setDeferredPrompt(null);
+  } else if (installMethod === 'manual_ios') {
+      // Apple Instructions
+      alert('APPLE SECURE INSTALL:\n\n1. Tap the "Share" icon at the bottom of Safari (the square with an up arrow).\n2. Scroll down and tap "Add to Home Screen".');
+  } else {
+      // Android Manual Fallback (If Chrome blocks the popup)
+      alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots (Menu) in the top right corner of Chrome.\n2. Tap "Install app" or "Add to Home screen".');
+  }
  };
 
  useEffect(() => {
