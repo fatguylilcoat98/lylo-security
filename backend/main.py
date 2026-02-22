@@ -409,7 +409,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # ---------------------------------------------------------
 # LOGIC: THE ENGINE SWAP (DUAL-PASS AI CONSENSUS)
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.5-flash"):
     if not gemini_ready:
         return None
     try:
@@ -599,7 +599,7 @@ async def chat(
     """
 
     openai_engine = "gpt-4o" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gpt-4o-mini"
-    gemini_engine = "gemini-1.5-pro" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-1.5-flash"
+    gemini_engine = "gemini-3.1-pro-preview" if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"] else "gemini-2.5-flash"
 
     results = await asyncio.gather(
         call_openai_bodyguard(full_prompt, image_b64, openai_engine),
