@@ -1,54 +1,61 @@
-import React, { useEffect, useState } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import Assessment from './pages/Assessment';
-import BetaTesterAdmin from './components/BetaTesterAdmin';
-
-// --- THE GATEKEEPER (Final Polish - 100% Intact) ---
+// --- THE GATEKEEPER (With Boot-Delay Fix) ---
 const Gatekeeper = ({ children, requireRedirect = false }: { children: React.ReactNode, requireRedirect?: boolean }) => {
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [shouldRedirectToDash, setShouldRedirectToDash] = useState<boolean>(false);
+  const [isBooting, setIsBooting] = useState<boolean>(true); // NEW: System loading state
 
   useEffect(() => {
-    // 1. Force-scan URL for credentials (Handoff)
-    const fullUrl = window.location.href;
-    const getParam = (param: string) => {
-      const match = fullUrl.match(new RegExp(`[?&]${param}=([^&]*)`));
-      return match ? decodeURIComponent(match[1]) : null;
+    const initializeGatekeeper = async () => {
+      // 1. Force-scan URL for credentials
+      const fullUrl = window.location.href;
+      const getParam = (param: string) => {
+        const match = fullUrl.match(new RegExp(`[?&]${param}=([^&]*)`));
+        return match ? decodeURIComponent(match[1]) : null;
+      };
+
+      const emailFromUrl = getParam('email');
+      const tierFromUrl = getParam('tier');
+      const nameFromUrl = getParam('name');
+
+      if (emailFromUrl) {
+        localStorage.setItem('userEmail', emailFromUrl);
+        if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
+        if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
+        
+        const cleanUrl = fullUrl.split('?')[0]; 
+        window.history.replaceState({}, document.title, cleanUrl);
+        
+        setIsAuthorized(true);
+        if (requireRedirect) setShouldRedirectToDash(true);
+        setIsBooting(false);
+        return;
+      }
+
+      // 2. CHECK STORAGE
+      const storedEmail = localStorage.getItem('userEmail');
+      if (storedEmail) {
+        setIsAuthorized(true);
+        if (requireRedirect) setShouldRedirectToDash(true);
+      } else {
+        // Only eject if we are SURE there is no data after booting
+        window.location.assign('https://mylylo.pro');
+      }
+      
+      // Give the system 300ms to catch its breath
+      setTimeout(() => setIsBooting(false), 300);
     };
 
-    const emailFromUrl = getParam('email');
-    const tierFromUrl = getParam('tier');
-    const nameFromUrl = getParam('name');
-
-    if (emailFromUrl) {
-      localStorage.setItem('userEmail', emailFromUrl);
-      if (tierFromUrl) localStorage.setItem('userTier', tierFromUrl);
-      if (nameFromUrl) localStorage.setItem('userName', nameFromUrl);
-      
-      // Clear URL params for a clean look
-      const cleanUrl = fullUrl.split('?')[0]; 
-      window.history.replaceState({}, document.title, cleanUrl);
-      
-      setIsAuthorized(true);
-      if (requireRedirect) setShouldRedirectToDash(true);
-      return;
-    }
-
-    // 2. CHECK STORAGE (Refresh fix)
-    const storedEmail = localStorage.getItem('userEmail');
-    if (storedEmail) {
-      setIsAuthorized(true);
-      // Only redirect to dashboard if we are at the root or assessment
-      if (requireRedirect) setShouldRedirectToDash(true);
-    } else {
-      // No ID found - kick back to landing page
-      window.location.assign('https://mylylo.pro');
-    }
+    initializeGatekeeper();
   }, [requireRedirect]);
 
-  if (!isAuthorized) {
-    return <div style={{ backgroundColor: '#000', height: '100vh', width: '100vw' }} />;
+  // Show the black screen ONLY while booting. 
+  // If authorized, it will transition smoothly.
+  if (isBooting || !isAuthorized) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   if (shouldRedirectToDash) {
@@ -57,47 +64,3 @@ const Gatekeeper = ({ children, requireRedirect = false }: { children: React.Rea
 
   return <>{children}</>;
 };
-
-export default function App() {
-  return (
-    <HashRouter>
-      <Routes>
-        <Route 
-          path="/" 
-          element={
-            <Gatekeeper requireRedirect={true}>
-              <Assessment />
-            </Gatekeeper>
-          } 
-        />
-        
-        <Route 
-          path="/assessment" 
-          element={
-            <Gatekeeper requireRedirect={true}>
-              <Assessment />
-            </Gatekeeper>
-          } 
-        />
-        
-        <Route 
-          path="/dashboard" 
-          element={
-            <Gatekeeper>
-              <Dashboard />
-            </Gatekeeper>
-          } 
-        />
-        
-        <Route 
-          path="/admin/beta-testers" 
-          element={
-            <Gatekeeper>
-              <BetaTesterAdmin />
-            </Gatekeeper>
-          } 
-        /> 
-      </Routes>
-    </HashRouter>
-  );
-}
