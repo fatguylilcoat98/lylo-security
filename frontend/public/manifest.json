@@ -1,12 +1,18 @@
 {
-  "short_name": "LYLO",
+  "short_name": "LYLO OS",
   "name": "LYLO Digital Bodyguard",
   "icons": [
     {
       "src": "logo.png",
-      "sizes": "192x192 512x512",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "start_url": ".",
