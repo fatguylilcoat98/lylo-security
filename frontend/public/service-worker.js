@@ -1,15 +1,17 @@
-// public/sw.js - THE BACKGROUND BRAIN
-self.addEventListener('push', (e) => {
-  const data = e.data.json();
-  self.registration.showNotification(data.title, {
-    body: data.body,
-    icon: '/logo192.png',
-    vibrate: [200, 100, 200],
-    data: { url: data.url || '/' }
-  });
+// LYLO OS Service Worker Engine
+const CACHE_NAME = 'lylo-v1';
+
+// Install event: Pre-caches the basic app shell
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
 });
 
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  e.waitUntil(clients.openWindow(e.notification.data.url));
+// Activate event: Takes control of the page immediately
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
+// Fetch event: Required for PWA status (even if empty)
+self.addEventListener('fetch', (event) => {
+  // Logic can be added here for offline mode later
 });
