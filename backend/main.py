@@ -45,7 +45,20 @@ from intelligence_data import (
     VIBE_STYLES, VIBE_LABELS,
     PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
     INTENT_LOGIC,
-    get_random_hook, get_all_hooks
+    get_random_hook, get_all_hooks,
+    # ── BOARD STRESS-TEST HARD-FIXES (v9.0) ───────────────────────────────
+    # FIX 2: Analogy Bridge — injected for tutor + pastor
+    ANALOGY_BRIDGE_TRADE_CONTEXT,
+    # FIX 3: Sunday Sentinel — injected when current_real_time is Sunday + Chris
+    SUNDAY_SENTINEL_OVERRIDE,
+    build_sunday_sentinel,
+    # FIX 5: Partner Energy — injected for all 12 seats
+    PARTNER_ENERGY_DIRECTIVE,
+    # ── SOUL RULES (v10.0) ───────────────────────────────────────────────
+    # Soul 2: Exit-First Filter — injected for lawyer + wealth
+    EXIT_FIRST_FILTER,
+    # Soul 3: Sentinel No-Recite — injected for vitality + bestie
+    SENTINEL_NO_RECITE,
 )
 
 load_dotenv()
@@ -65,7 +78,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="23.0.0 - STEALTH DIRECTIVE + NATURALISM MANDATE"
+    version="24.0.0 - BOARD HARD-FIXES: GATEKEEPER + ANALOGY BRIDGE + SUNDAY SENTINEL + DNA ENFORCEMENT + PARTNER ENERGY"
 )
 
 app.add_middleware(
@@ -641,6 +654,20 @@ def assemble_prompt(
     warm_start = get_warm_start_profile(user_email) if user_email else {}
     layer_0    = build_user_ident_core(user_profile, warm_start=warm_start)
 
+    # ── FIX 3: SUNDAY SENTINEL ────────────────────────────────────────────
+    # MAX PRIORITY block. Injected ABOVE all persona layers when:
+    #   • current_real_time contains "Sunday" (case-insensitive), AND
+    #   • user is Chris Hughes (stangman9898@gmail.com)
+    # Overrides default persona vibe — Vitality → Roastmaster, Bestie → Honest-Friend.
+    sunday_sentinel_block = build_sunday_sentinel(user_email, current_real_time)
+
+    # ── FIX 2: ANALOGY BRIDGE ─────────────────────────────────────────────
+    # Injected for Tutor and Pastor ONLY.
+    # Mandates trade-context (knife/blade/forge) as primary analogy vocabulary.
+    analogy_bridge_block = ""
+    if persona in ("tutor", "pastor"):
+        analogy_bridge_block = ANALOGY_BRIDGE_TRADE_CONTEXT
+
     # ── LAYER 4a: Episodic Memory block ───────────────────────────────────
     # Empty vault = inject nothing. Never announce an empty vault.
     if memories and memories.strip():
@@ -728,10 +755,19 @@ If ambiguous, state what you CAN assess + what would sharpen analysis.
     }.get(tier, "Clear, useful response.")
 
     # ══════════════════════════════════════════════════════════════════════
-    # FINAL ASSEMBLED PROMPT — 5 LAYERS IN ORDER
-    # Layer 0 is pinned first so the specialist knows the HUMAN before the RULES.
+    # FINAL ASSEMBLED PROMPT — 5 LAYERS + HARD-FIX INJECTIONS
+    # Injection order:
+    #   [SENTINEL] MAX PRIORITY — overrides persona vibe on Sundays for Chris
+    #   [LAYER 0]  User identity — specialist knows the human before the rules
+    #   [LAYER 1]  Global directive — ironclad laws all 12 seats inherit
+    #   [LAYER 2]  Persona skin + Seat override + Vibe
+    #   [FIX 2]    Analogy Bridge (tutor/pastor only)
+    #   [FIX 5]    Partner Energy — all 12 seats
+    #   [LAYER 3]  Intent recognition
+    #   [LAYER 4]  Runtime context (memory, search, scam, visual)
     # ══════════════════════════════════════════════════════════════════════
     return f"""
+{sunday_sentinel_block}
 {layer_0}
 
 {GLOBAL_DIRECTIVE}
@@ -746,6 +782,9 @@ SPECIALIZED SEAT OVERRIDE:
 
 COMMUNICATION STYLE FOR THIS SESSION ({vibe.upper()} MODE):
 {v_style}
+
+{analogy_bridge_block}
+{PARTNER_ENERGY_DIRECTIVE}
 
 ══════════════════════════════════════════════════════════════════
 LAYER 3 — STATE & INTENT RECOGNITION (READ BEFORE RESPONDING)
@@ -771,14 +810,20 @@ USER MESSAGE:
 
 PRE-RESPONSE CHECKLIST (run silently before writing):
   ✔ Did I read Layer 0 and personalize my response to this specific user?
+  ✔ If SUNDAY SENTINEL is active, did I check for self-sabotage signals?
   ✔ If PROACTIVE MODE is active, did I bring that item up FIRST?
   ✔ Did I identify the user's intent STATE from Layer 3?
+  ✔ [MECHANIC/DOCTOR] Did I gate for Year/Make/Model before any repair step?
+  ✔ [TUTOR/PASTOR] Did I bridge through blade/forge trade vocabulary first?
+  ✔ [LAWYER] Does my answer contain [ANALYSIS], [RISK], and [TACTICAL MOVE] IN ORDER?
+  ✔ Did I use the user's name naturally at least once?
   ✔ Did I verify laws, medical claims, or tech facts before stating them?
   ✔ Did I treat vault memories as natural background — not announced?
   ✔ Did I prioritize SEARCH INTEL over base knowledge where present?
   ✔ Did I lead with the MOST CRITICAL information?
   ✔ Did I flag scam indicators with [🚨 SCAM ALERT] if warranted?
   ✔ Did I stay in character without suggesting another specialist?
+  ✔ Did my response sound like a partner, not a corporate manual?
   ✔ Is my output ONLY valid raw JSON — no markdown fences, no preamble?
 
 REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
@@ -852,16 +897,18 @@ async def chat(
             "usage_info": {"can_send": False}
         }
 
-    # --- PRE-FLIGHT DATA GATHERING ---
+    # --- PRE-FLIGHT DATA GATHERING (parallelized) ---
+    # Memory retrieval and profile fetch run simultaneously — not sequentially.
+    # This alone shaves ~300-600ms off every response.
+    async def _get_memories():
+        if use_long_term_memory == "true":
+            return await retrieve_intelligence_sync(user_id, msg)
+        return ""
 
-    # Episodic memory retrieval
-    memories = ""
-    if use_long_term_memory == "true":
-        memories = await retrieve_intelligence_sync(user_id, msg)
-
-    # Synthesized identity profile (Layer 0 data)
-    # Always fetched — lightweight direct Pinecone fetch(), not a vector query
-    user_profile = await retrieve_user_profile(user_id)
+    memories, user_profile = await asyncio.gather(
+        _get_memories(),
+        retrieve_user_profile(user_id),
+    )
 
     # Tavily search — enriched with ZIP-level location for warm-start users
     search_intel = ""
@@ -986,6 +1033,150 @@ async def chat(
 # ---------------------------------------------------------
 # UTILITIES
 # ---------------------------------------------------------
+
+
+# ---------------------------------------------------------
+# PERSONA HOOK — PERSONALIZED GREETING GENERATOR
+# Single-model, no dual-pass. Target: <1s response.
+# Frontend calls this immediately on persona select.
+# Falls back to static spokenHook if it times out.
+# ---------------------------------------------------------
+
+# Per-process in-memory cache: (user_id, persona) → hook text
+# Survives the session, resets on Render restart. Fast enough for beta.
+_hook_cache: dict = {}
+
+@app.post("/persona-hook")
+async def persona_hook(
+    persona:    str = Form(...),
+    user_email: str = Form(...),
+):
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    cache_key   = f"{user_id}:{persona}"
+
+    # Return cached hook immediately if available — instant for repeat visits
+    if cache_key in _hook_cache:
+        return {"hook": _hook_cache[cache_key], "cached": True}
+
+    # Pull warm-start profile (registry first, synthesized as fallback)
+    warm_start   = get_warm_start_profile(email_lower)
+    user_profile = await retrieve_user_profile(user_id)
+
+    # Build a compact context string from what we know
+    name = (
+        warm_start.get("name")
+        or user_profile.get("name")
+        or "there"
+    )
+    projects = warm_start.get("projects") or user_profile.get("active_projects") or []
+    anchors  = warm_start.get("anchors") or []
+    goals    = warm_start.get("goals") or []
+    health   = warm_start.get("health") or ""
+    protocol = warm_start.get("protocol") or ""
+
+    # Build context summary — keep it tight for speed
+    context_parts = []
+    if projects:
+        context_parts.append(f"Active projects: {', '.join(str(p) for p in projects[:3])}")
+    if goals:
+        context_parts.append(f"Current goals: {', '.join(str(g) for g in goals[:2])}")
+    if anchors:
+        context_parts.append(f"Daily anchors: {', '.join(str(a) for a in anchors[:3])}")
+    if health:
+        context_parts.append(f"Health context: {health}")
+
+    context_str = "\n".join(context_parts) if context_parts else "New user — no profile yet."
+
+    # Persona voice map for tone guidance
+    persona_voice_notes = {
+        "guardian":  "Military precision. Protective. Zero filler.",
+        "lawyer":    "Sharp, skeptical. Speaks in leverage and paper trails.",
+        "doctor":    "Clinical, calm. Treats user as an intelligent adult.",
+        "wealth":    "Direct, numbers-forward. Net worth = freedom.",
+        "career":    "Professional, ambitious. Every move is a chess problem.",
+        "therapist": "Warm, grounded. Asks the question beneath the question.",
+        "mechanic":  "Gritty, practical. No corporate speak.",
+        "tutor":     "Encouraging, brilliant. Shame has no place here.",
+        "pastor":    "Grounded, wise, warm, unhurried.",
+        "vitality":  "High-energy, science-dense. Speaks in physiology.",
+        "hype":      "Fast, confident, internet-native.",
+        "bestie":    "Unfiltered, fiercely loyal. Warmth and sharp truth.",
+    }
+    voice_note = persona_voice_notes.get(persona, "Direct and helpful.")
+
+    # Current day — inject Sunday Sentinel awareness
+    current_day = datetime.now().strftime("%A")
+
+    hook_prompt = f"""You are the LYLO {persona.upper()} persona. Generate ONE personalized opening greeting for this specific user.
+
+USER CONTEXT:
+Name: {name}
+{context_str}
+Engagement Protocol: {protocol[:300] if protocol else 'Standard'}
+Current day: {current_day}
+
+PERSONA VOICE: {voice_note}
+
+RULES:
+- 1-3 sentences MAX. Under 50 words total.
+- Use the user's name naturally (once).
+- Reference ONE specific detail from their context — not generically.
+- Sound like a real expert who already knows this person, not a first meeting.
+- If it's Sunday and there are health/accountability anchors, subtly acknowledge the day.
+- DO NOT mention LYLO, AI, or that you're a bot.
+- DO NOT use the generic spokenHook text — make it feel genuinely specific.
+- Output ONLY the greeting text. No JSON. No preamble. No quotes.
+
+EXAMPLE (guardian persona, user building an app):
+"Chris, perimeter active. LYLO's security layer is locked in — and your user data architecture is exactly the kind of thing we need to bulletproof before you hit scale. What are we looking at today?"
+
+Generate the personalized greeting now:"""
+
+    try:
+        result = await asyncio.wait_for(
+            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash"),
+            timeout=4.0  # Hard cap — fall back to static if slow
+        )
+        hook_text = ""
+        if result and "answer" in result:
+            raw = result["answer"].strip()
+            # Strip any JSON wrapping the model might produce
+            if raw.startswith("{"):
+                import re
+                match = re.search(r'"answer"\s*:\s*"([^"]+)"', raw)
+                hook_text = match.group(1) if match else raw
+            else:
+                hook_text = raw
+
+        if hook_text and len(hook_text) > 10:
+            _hook_cache[cache_key] = hook_text
+            logger.info(f"🎯 PersonaHook generated: [{persona}] → {name}")
+            return {"hook": hook_text, "cached": False}
+
+    except asyncio.TimeoutError:
+        logger.warning(f"⏱️ PersonaHook timeout for [{persona}] → {name}. Using static fallback.")
+    except Exception as e:
+        logger.error(f"PersonaHook error: {e}")
+
+    # Static fallback — always returns something
+    static_hooks = {
+        "guardian":  f"Security protocols active, {name}. Let's make sure your perimeter is locked.",
+        "lawyer":    f"Legal shield up, {name}. Before you sign anything — talk to me first.",
+        "doctor":    f"Medical intelligence online, {name}. Walk me through what's happening.",
+        "wealth":    f"ROI is the only metric that matters, {name}. What are the numbers?",
+        "career":    f"Corporate is a chessboard, {name}. Let's map your position.",
+        "therapist": f"I'm here, {name}. No judgment — what's actually going on?",
+        "mechanic":  f"Wrench ready, {name}. What are we diagnosing today?",
+        "tutor":     f"Class in session, {name}. Where does it stop making sense?",
+        "pastor":    f"Peace be with you, {name}. What's heavy on your heart today?",
+        "vitality":  f"Engine check, {name}. What are we optimizing today?",
+        "hype":      f"Let's build something viral, {name}. Drop the concept.",
+        "bestie":    f"I got you, {name}. Spill — what's going on?",
+    }
+    return {"hook": static_hooks.get(persona, f"Ready, {name}. What's the mission?"), "cached": False}
+
+
 @app.post("/generate-audio")
 async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
     if not openai_client:
