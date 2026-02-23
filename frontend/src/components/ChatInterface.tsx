@@ -632,6 +632,10 @@ function ChatInterface({
       const formData = new FormData();
       formData.append('msg',                  text);
       formData.append('history',              JSON.stringify(messages.slice(-6)));
+      // Claim botMsgId and voiceToUse before formData is built
+      const botMsgId   = `bot-${Date.now()}`;
+      const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
+
       formData.append('persona',              activePersona.id);
       formData.append('user_email',           userEmail);
       formData.append('user_location',        '');
@@ -641,10 +645,6 @@ function ChatInterface({
       formData.append('email_consent',        emailConsent ? 'true' : 'false');
       formData.append('voice',                voiceToUse || 'onyx');  // v29.7: backend generates TTS inline
       if (selectedImage) formData.append('file', selectedImage);
-
-      // Claim botMsgId and voiceToUse before API call
-      const botMsgId   = `bot-${Date.now()}`;
-      const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
 
       const apiResponse = await fetch(`${API_URL}/chat`, { method: 'POST', body: formData });
       if (!apiResponse.ok) throw new Error('API error');
