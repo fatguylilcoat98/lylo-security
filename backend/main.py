@@ -1,4 +1,5 @@
 import os
+import time
 import uvicorn
 import json
 import hashlib
@@ -1197,32 +1198,14 @@ async def chat(
             "action_trigger":   None,
         }
 
-    # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
+    # ── v29.7 POST-RESPONSE: Usage tracking + Audio Handshake ──────────────
     USAGE_TRACKER[user_id] += 1
     current_count = USAGE_TRACKER[user_id]
 
-    # Store episodic memories
-    asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
-    asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
-
-    # PROACTIVE LEARNING ENGINE: Trigger profile synthesis every N interactions
-    if current_count % SYNTHESIS_INTERVAL == 0:
-        logger.info(f"🧠 Synthesis scheduled at interaction {current_count} for {user_data['name']}")
-        asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
-
-    # ── v28.0: ACTION TRIGGER ENGINE ─────────────────────────────────────
-    # Parse the action_trigger field from the AI response.
-    # "email_dispatch" → fire mission report email automatically
-    # "set_reminder"   → surface the reminder CTA on the frontend
-    # null             → no action required
     action_trigger = winner.get("action_trigger", None)
 
-    # ── v29.7 AUDIO HANDSHAKE: TTS runs concurrently with post-processing ──
-    # generate_audio_inline() and _post_storage() fire simultaneously via gather.
-    # Frontend receives answer + audio_b64 in ONE round trip — zero second call.
-    # JSON schema unchanged. action_trigger still fires action buttons correctly.
-    # TTS failure returns audio_b64="" — frontend falls back to /generate-audio.
-
+    # TTS runs concurrently with memory storage and email dispatch.
+    # Both complete before the response is returned — one round trip for everything.
     async def _post_storage():
         asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
         asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
@@ -1230,7 +1213,7 @@ async def chat(
             asyncio.create_task(
                 send_mission_report_email(user_email, winner["answer"], persona)
             )
-            logger.info(f"\U0001f4e7 Action dispatch: email_dispatch fired for {persona.upper()} \u2192 {user_email}")
+            logger.info(f"📧 Action dispatch: email_dispatch fired for {persona.upper()} → {user_email}")
         elif email_consent == "true":
             asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
 
@@ -1240,15 +1223,14 @@ async def chat(
     )
 
     if current_count % SYNTHESIS_INTERVAL == 0:
-        logger.info(f"\U0001f9e0 Synthesis scheduled at interaction {current_count} for {user_data['name']}")
+        logger.info(f"🧠 Synthesis at interaction {current_count} for {user_data['name']}")
         asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
 
     logger.info(
-        f"\u2705 [{persona.upper()}] \u2192 {user_data['name']} | Tier: {tier} | "
-        f"Model: {winner.get('model', 'LYLO-CORE')} | "
+        f"✅ [{persona.upper()}] → {user_data['name']} | Tier: {tier} | "
         f"Interaction #{current_count} | "
-        f"Audio: {'\u2713 inline' if audio_b64 else '\u2717 fallback'} | "
-        f"Action: {action_trigger or '\u2014'}"
+        f"Audio: {'✓ inline' if audio_b64 else '✗ fallback'} | "
+        f"Action: {action_trigger or '—'}"
     )
 
     return {
@@ -1257,7 +1239,7 @@ async def chat(
         "scam_detected":    winner.get("scam_detected", False),
         "threat_level":     winner.get("threat_level", "low"),
         "action_trigger":   action_trigger,
-        "audio_b64":        audio_b64,   # v29.7: inline audio — empty string on TTS failure
+        "audio_b64":        audio_b64,
     }
 
 
