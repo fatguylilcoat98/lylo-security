@@ -472,10 +472,14 @@ function ChatInterface({
     requestAnimationFrame(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; });
   }, [messages, streamingMsgId]);
 
-  // [FIX 3] Auto-scroll during live SSE stream
+  // [FIX 3] Auto-scroll during live SSE stream (Smooth-Sync)
   useEffect(() => {
     if (!streamingText || !chatContainerRef.current) return;
-    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    requestAnimationFrame(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    });
   }, [streamingText]);
 
   useEffect(() => {
@@ -1011,7 +1015,7 @@ function ChatInterface({
       )}
 
       {/* CHAT AREA */}
-      <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px' }}>
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px', overflowAnchor: 'auto' }}>
 
         {showPersonaGrid && (
           <div className="grid grid-cols-2 gap-3">
