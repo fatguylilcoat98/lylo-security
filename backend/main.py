@@ -129,7 +129,7 @@ MAX_DEVICES_PER_USER = 2
 # TTL: 5 minutes — profile is stable enough between interactions.
 # Structure: { user_id: (profile_dict, timestamp) }
 _PROFILE_CACHE: dict = {}
-_PROFILE_CACHE_TTL  = 300  # seconds
+_PROFILE_CACHE_TTL  = 600  # seconds (10 min — reduces Pinecone hits on follow-up messages)
 
 # ---------------------------------------------------------
 # CLIENT INITIALIZATION
@@ -1094,7 +1094,7 @@ async def chat(
     winner = None
     pending = {openai_task, gemini_task}
     elapsed = 0.0
-    RACE_TIMEOUT = 4.0   # Hard ceiling — System Busy after this
+    RACE_TIMEOUT = 7.0   # Hard ceiling — System Busy after this (7s gives complex JSON prompts room to breathe)
 
     while pending and elapsed < RACE_TIMEOUT:
         try:
