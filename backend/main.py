@@ -566,7 +566,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # ---------------------------------------------------------
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash-latest"):
     if not gemini_ready:
         return None
     try:
@@ -991,7 +991,7 @@ async def chat(
         if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
         else "gpt-4o-mini"
     )
-    gemini_engine = "gemini-1.5-flash"
+    gemini_engine = "gemini-1.5-flash-latest"
 
     # ── DUAL-PASS AI CONSENSUS ─────────────────────────────────────────────
     results = await asyncio.gather(
@@ -1161,8 +1161,8 @@ Generate the personalized greeting now:"""
 
     try:
         result = await asyncio.wait_for(
-            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash"),
-            timeout=4.0  # Hard cap — fall back to static if slow
+            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash-latest"),
+            timeout=4.0 # Hard cap — fall back to static if slow
         )
         hook_text = ""
         if result and "answer" in result:
