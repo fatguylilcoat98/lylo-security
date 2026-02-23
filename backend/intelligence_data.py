@@ -1237,12 +1237,37 @@ PERSONA_OUTPUT_SCHEMAS = {
 
 def get_output_schema(persona: str) -> str:
     """
-    Returns the persona-specific JSON output schema.
-    Structural personas (doctor, lawyer, wealth, therapist, career) get schemas
-    with their required headers baked into the value strings — making header
-    omission a JSON structure violation, not just a style failure.
-    All others get the standard schema.
+    v28.0 KERNEL: Returns the persona-specific JSON schema with hard-coded
+    action_trigger values enforced by intent category.
+
+    INTENT → ACTION_TRIGGER MAP (overrides all model discretion):
+      Legal / Emergency / Wealth / Documentation  → "email_dispatch"  (SET — not described)
+      Health / Discipline / Self-Sabotage / Timer → "set_reminder"    (SET — not described)
+      Informational / low-stakes                  → null
+
+    Dispatch and reminder personas get their trigger locked BEFORE the schema
+    reaches the model — making incorrect output structurally impossible.
     """
+    # ── DISPATCH TRIGGER LOCK (email_dispatch — no model discretion) ──────────
+    DISPATCH_PERSONAS = {"lawyer", "wealth", "mechanic", "guardian"}
+    if persona in DISPATCH_PERSONAS:
+        base = PERSONA_OUTPUT_SCHEMAS.get(persona, PERSONA_OUTPUT_SCHEMAS["_default"])
+        # Replace any conditional description with the literal value
+        for placeholder in [
+            '<"email_dispatch" if scam, fraud, identity theft, or active threat is detected — otherwise null>',
+            '<"email_dispatch" if the situation involves documentation, contracts, or evidence — otherwise null>',
+            '<"email_dispatch" if this is a medical emergency, triage situation, or the user needs to document symptoms — otherwise null>',
+        ]:
+            base = base.replace(placeholder, '"email_dispatch"')
+        return base
+
+    # ── REMINDER TRIGGER LOCK (set_reminder — no model discretion) ───────────
+    REMINDER_PERSONAS = {"vitality", "therapist"}
+    if persona in REMINDER_PERSONAS:
+        base = PERSONA_OUTPUT_SCHEMAS.get(persona, PERSONA_OUTPUT_SCHEMAS["_default"])
+        return base  # Already hardcoded "set_reminder" in schema definition
+
+    # ── DEFAULT: model makes a constrained binary choice ─────────────────────
     return PERSONA_OUTPUT_SCHEMAS.get(persona, PERSONA_OUTPUT_SCHEMAS["_default"])
 
 
@@ -1382,14 +1407,35 @@ Current date and time are injected into every prompt.
 NEVER claim a knowledge cutoff. Prioritize SEARCH INTEL
 as live ground truth when it is provided.
 
-RULE 7 — RESPONSE FORMAT DISCIPLINE
+RULE 7 — RESPONSE FORMAT DISCIPLINE / EXECUTION KERNEL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Output ONLY valid, raw JSON. No markdown fences. No preamble.
+YOU ARE A LOGIC ENGINE, NOT A CHATBOT.
+
+Every single response MUST be a valid JSON object and nothing else.
+If you output prose, preamble, apologies, or explanation outside the JSON,
+the OS will crash. There is no fallback. There is no retry. Output JSON or fail.
+
+YOUR PRIMARY DIRECTIVE is to populate the "action_trigger" key
+based on user intent. This key is what turns advice into action.
+Talking ABOUT a trigger instead of SETTING it is a logic error — a silent crash.
+
+INTENT → ACTION_TRIGGER MAP (hard-coded, no exceptions):
+  Legal / Emergency / Wealth Strategy / Documentation needed
+    → "action_trigger": "email_dispatch"   ← SET THIS. Do not describe it.
+
+  Health / Discipline / Self-Sabotage / Timed commitment
+    → "action_trigger": "set_reminder"     ← SET THIS. Do not describe it.
+
+  Low-stakes informational exchange
+    → "action_trigger": null
+
+THE RULE: Set the value. Do not discuss the value. The frontend handles the rest.
 {
-  "answer": "Your complete in-character response.",
+  "answer": "...",
   "confidence_score": <integer 0-100>,
   "scam_detected": <true|false>,
-  "threat_level": <"low"|"medium"|"high">
+  "threat_level": <"low"|"medium"|"high">,
+  "action_trigger": <"email_dispatch"|"set_reminder"|null>
 }
 """
 
