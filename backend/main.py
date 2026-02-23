@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="28.2.0 - SPEED PATCH: First-wins race | Parallel pre-flight | Profile cache | max_tokens=700 | Search timeout"
+    version="28.3.0 - CLEAN HUD: Expert Transition retired | Force trigger | 500ms/800ms timeouts"
 )
 
 app.add_middleware(
@@ -1004,7 +1004,7 @@ async def chat(
             try:
                 return await asyncio.wait_for(
                     retrieve_intelligence_sync(user_id, msg),
-                    timeout=0.8   # ← hard cap: skip slow memory, don't block response
+                    timeout=0.5   # ← 500ms hard cap — speed over exhaustive recall
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"⚡ Memory timeout — skipping for speed [{user_id[:8]}]")
@@ -1027,7 +1027,7 @@ async def chat(
             try:
                 return await asyncio.wait_for(
                     search_personalized_web(msg, search_location),
-                    timeout=1.5   # ← hard cap: skip slow search results
+                    timeout=0.8   # ← 800ms hard cap — speed over exhaustive search
                 )
             except asyncio.TimeoutError:
                 logger.warning("⚡ Search timeout — skipping for speed")
