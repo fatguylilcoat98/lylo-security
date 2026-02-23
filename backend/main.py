@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="29.6.0 - LIGHTSPEED SYNC: temp=0.2 | payload trimmed | race deadline fix"
+    version="29.7.0 - AUDIO HANDSHAKE: Inline TTS in chat response | Zero second round-trip | Concurrent storage+TTS"
 )
 
 app.add_middleware(
@@ -959,6 +959,33 @@ REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
 # ---------------------------------------------------------
 # MAIN CHAT GATEWAY — 12-SEAT BOARD
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# v29.7 INLINE TTS — generate audio concurrently with post-processing
+# Returns base64 mp3 string, or empty string on failure.
+# Called inside /chat so the frontend gets text + audio in ONE round trip.
+# ---------------------------------------------------------
+async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
+    """
+    Generates TTS audio for the given text and returns it as a base64 string.
+    Strips markdown formatting before sending to OpenAI.
+    Hard-capped at 3500 chars to keep latency tight.
+    Returns "" on any failure so the caller degrades gracefully.
+    """
+    if not openai_client or not text.strip():
+        return ""
+    try:
+        clean = text.replace("**", "").replace("##", "").replace("#", "").replace("[", "").replace("]", "").strip()
+        response = await openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=clean[:3500],
+        )
+        return base64.b64encode(response.content).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"⚡ Inline TTS failed ({voice}): {e}")
+        return ""
+
+
 @app.post("/chat")
 async def chat(
     msg:                str        = Form(""),
@@ -970,6 +997,7 @@ async def chat(
     use_long_term_memory: str      = Form("false"),
     device_id:          str        = Form("unknown"),
     email_consent:      str        = Form("false"),
+    voice:              str        = Form("onyx"),      # v29.7: inline TTS — persona voice passed from frontend
     file:               UploadFile = File(None)
 ):
     email_lower = user_email.lower().strip()
@@ -1189,39 +1217,47 @@ async def chat(
     # null             → no action required
     action_trigger = winner.get("action_trigger", None)
 
-    # Auto-dispatch email for email_dispatch trigger.
-    # This fires in addition to manual email_consent — covers high-stakes situations
-    # (legal, medical, scam, wreck) even when the user hasn't pre-consented.
-    if action_trigger == "email_dispatch":
-        asyncio.create_task(
-            send_mission_report_email(user_email, winner["answer"], persona)
-        )
-        logger.info(f"📧 Action dispatch: email_dispatch fired for {persona.upper()} → {user_email}")
-    elif email_consent == "true":
-        # Standard manual email consent path (unchanged)
-        asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
+    # ── v29.7 AUDIO HANDSHAKE: TTS runs concurrently with post-processing ──
+    # generate_audio_inline() and _post_storage() fire simultaneously via gather.
+    # Frontend receives answer + audio_b64 in ONE round trip — zero second call.
+    # JSON schema unchanged. action_trigger still fires action buttons correctly.
+    # TTS failure returns audio_b64="" — frontend falls back to /generate-audio.
+
+    async def _post_storage():
+        asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
+        asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
+        if action_trigger == "email_dispatch":
+            asyncio.create_task(
+                send_mission_report_email(user_email, winner["answer"], persona)
+            )
+            logger.info(f"\U0001f4e7 Action dispatch: email_dispatch fired for {persona.upper()} \u2192 {user_email}")
+        elif email_consent == "true":
+            asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
+
+    audio_b64, _ = await asyncio.gather(
+        generate_audio_inline(winner["answer"], voice),
+        _post_storage(),
+    )
+
+    if current_count % SYNTHESIS_INTERVAL == 0:
+        logger.info(f"\U0001f9e0 Synthesis scheduled at interaction {current_count} for {user_data['name']}")
+        asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
 
     logger.info(
-        f"✅ [{persona.upper()}] → {user_data['name']} | Tier: {tier} | "
+        f"\u2705 [{persona.upper()}] \u2192 {user_data['name']} | Tier: {tier} | "
         f"Model: {winner.get('model', 'LYLO-CORE')} | "
         f"Interaction #{current_count} | "
-        f"Warm-Start: {'✓' if email_lower in BETA_USER_PROFILES else '—'} | "
-        f"Profile: {'loaded' if user_profile else 'sparse'} | "
-        f"Proactive: {'active' if memories else 'off'} | "
-        f"Scam: {winner.get('scam_detected', False)} | "
-        f"Threat: {winner.get('threat_level', 'low')} | "
-        f"Action: {action_trigger or '—'}"
+        f"Audio: {'\u2713 inline' if audio_b64 else '\u2717 fallback'} | "
+        f"Action: {action_trigger or '\u2014'}"
     )
 
     return {
-        # ── v29.6: Payload trimmed to only fields the frontend reads ──────
-        # Removed: persona_hook, bodyguard_model — unused by ChatInterface.tsx
-        # Smaller payload = faster JSON parse + lower network transfer
         "answer":           winner["answer"],
         "confidence_score": winner.get("confidence_score", 95),
         "scam_detected":    winner.get("scam_detected", False),
         "threat_level":     winner.get("threat_level", "low"),
         "action_trigger":   action_trigger,
+        "audio_b64":        audio_b64,   # v29.7: inline audio — empty string on TTS failure
     }
 
 
