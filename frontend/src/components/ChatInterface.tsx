@@ -119,19 +119,6 @@ const PERSONAS: PersonaConfig[] = [
 // =============================================================================
 // EXPERT TRIGGERS
 // =============================================================================
-const EXPERT_TRIGGERS: { [key: string]: string[] } = {
-  'mechanic':  ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech'],
-  'lawyer':    ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'evicted', 'notice'],
-  'doctor':    ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor'],
-  'wealth':    ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$'],
-  'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental'],
-  'vitality':  ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise'],
-  'tutor':     ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school'],
-  'pastor':    ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith', 'spiritual'],
-  'hype':      ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content', 'social media'],
-  'career':    ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired', 'employer'],
-};
-
 // =============================================================================
 // VIBE OPTIONS — keys MUST match VIBE_STYLES in intelligence_data.py exactly
 // Legacy values ('roast', 'business') are migrated automatically on load.
@@ -175,24 +162,6 @@ const getPersonaColorClass = (
 const canAccessPersona = (persona: PersonaConfig, tier: string) => {
   const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
   return (tiers[tier] || 0) >= tiers[persona.requiredTier];
-};
-
-const detectExpertSuggestion = (
-  messages: Message[],
-  currentId: string,
-  userTier: string
-): PersonaConfig | null => {
-  const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
-  if (!lastUserMsg) return null;
-  const lower = lastUserMsg.content.toLowerCase();
-  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-    if (id === currentId) continue;
-    if (keywords.some(k => lower.includes(k))) {
-      const expert = PERSONAS.find(p => p.id === id);
-      if (expert && canAccessPersona(expert, userTier)) return expert;
-    }
-  }
-  return null;
 };
 
 const getDeviceId = () => {
@@ -1289,11 +1258,6 @@ function ChatInterface({
 
         {/* Messages */}
         {messages.map((msg, idx) => {
-          const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-          const suggestion  = isLatestBot && !msg.imageUrl
-            ? detectExpertSuggestion(messages, activePersona.id, userTier)
-            : null;
-
           return (
             <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
 
@@ -1331,28 +1295,16 @@ function ChatInterface({
                 )}
               </div>
 
-              {suggestion && (
-                <div className="mt-4 w-full max-w-[85%] p-5 bg-indigo-600 border border-indigo-400 rounded-[32px] shadow-2xl animate-in zoom-in-95">
-                  <div className="flex items-center gap-3 mb-4 text-white">
-                    <Zap className="w-4 h-4 fill-current" />
-                    <p className="text-[11px] font-black uppercase tracking-widest">Expert Transition Found</p>
-                  </div>
-                  <button onClick={() => handlePersonaChange(suggestion)} className="w-full py-4 bg-white text-indigo-700 text-xs font-black uppercase rounded-2xl flex items-center justify-center gap-3">
-                    Transfer to {suggestion.name} <ArrowRight className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-
-              {/* ── v28.0: ACTION BUTTONS — rendered the moment JSON arrives ─── */}
+              {/* ── v28.3: ACTION BUTTONS — only secondary element below bot messages ── */}
               {msg.sender === 'bot' && (msg as any).actionTrigger && (
-                <div className="mt-3 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="mt-3 mb-2 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
                   {(msg as any).actionTrigger === 'email_dispatch' && (
                     <button
                       onClick={() => handleEmailDispatch(msg.content)}
-                      className="w-full py-4 px-5 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:shadow-[0_0_35px_rgba(99,102,241,0.55)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]"
+                      className="w-full py-4 px-6 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:shadow-[0_0_35px_rgba(99,102,241,0.55)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]"
                     >
-                      <Shield className="w-4 h-4 fill-current" />
+                      <Shield className="w-4 h-4 fill-current flex-shrink-0" />
                       Dispatch Tactical Report to Email
                     </button>
                   )}
@@ -1362,9 +1314,9 @@ function ChatInterface({
                       onClick={() => scheduleMobileReminder(
                         msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content
                       )}
-                      className="w-full py-4 px-5 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:shadow-[0_0_35px_rgba(139,92,246,0.55)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]"
+                      className="w-full py-4 px-6 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:shadow-[0_0_35px_rgba(139,92,246,0.55)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]"
                     >
-                      <Bell className="w-4 h-4" />
+                      <Bell className="w-4 h-4 flex-shrink-0" />
                       Set Mobile Reminder — 30 Min
                     </button>
                   )}
