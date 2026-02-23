@@ -631,6 +631,13 @@ function ChatInterface({
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
+            // ── INSTANT AUDIO: fire TTS the moment each sentence arrives ──
+            if (isVoiceEnabled && parsed.audio_b64) {
+              const sentenceAudio = new Audio(`data:audio/mp3;base64,${parsed.audio_b64}`);
+              sentenceAudio.preload = 'auto';
+              // Push directly into AQM as a pre-fetched ready entry
+              aqm.enqueue(parsed.content, voiceToUse, parsed.audio_b64);
+            }
           } else if (parsed.type === 'meta') {
             metaData = parsed;
             if (parsed.full_answer) fullAnswer = parsed.full_answer;
@@ -650,17 +657,10 @@ function ChatInterface({
 
       if (isLockout) return;
 
-      if (isVoiceEnabled) {
-        if (readingMode === 'instant') {
-          await aqm.enqueue(finalText, voiceToUse, metaData?.audio_b64 ?? undefined);
-        } else {
-          let audioEl: HTMLAudioElement | null = null;
-          if (metaData?.audio_b64) { audioEl = new Audio(`data:audio/mp3;base64,${metaData.audio_b64}`); audioEl.preload = 'auto'; }
-          pendingAudioRef.current = Promise.resolve(audioEl);
-          const audioToPlay = await pendingAudioRef.current;
-          pendingAudioRef.current = null;
-          animateSynced(finalText, botMsgId, audioToPlay);
-        }
+      // Audio already dispatched per-sentence during SSE stream above.
+      // animateSynced still runs for sync-mode typewriter effect (no audio needed).
+      if (isVoiceEnabled && readingMode === 'sync') {
+        animateSynced(finalText, botMsgId, null);
       }
     } catch (e) {
       console.error('[SEND] Error:', e);
