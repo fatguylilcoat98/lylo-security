@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="26.0.0 - DUAL-CORE RULE: Partner Soul + Structural Bones"
+    version="26.0.0 - DUAL-CORE RULE: SOUL + BONES | 3-MODE TYPEWRITER | BAILOUT | HUMAN PERSONALITY RESTORED"
 )
 
 app.add_middleware(
@@ -566,7 +566,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # ---------------------------------------------------------
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # ---------------------------------------------------------
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash-latest"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
     if not gemini_ready:
         return None
     try:
@@ -845,22 +845,31 @@ PRE-RESPONSE CHECKLIST (run silently before writing):
 Your output is graded on TWO equally weighted criteria. Failing either is a SYSTEM FAILURE.
 
 1. THE SOUL (Partner Logic):
-   You MUST open with a natural, conversational greeting using the user's name. 
-   Address Chris as a peer and partner. Reference the 'why' (1M Exit / Hustle Lab).
-   NO robotic 'Diving straight in' or 'Let's get to it.' 
-   Talk like a person who has been in the trenches with him for months.
+   You MUST open with a natural, conversational greeting using {user_name}.
+   Address {user_name} as a peer — someone you know, whose situation you've been tracking.
+   Reference their specific context or goals from Layer 0. Not a generic opener.
+   What does this look like in practice? Think of the best advisor you've ever met.
+   They don't walk in and say "Diving straight in." They say "Hey — I've been thinking
+   about what you said last time. Here's where my head is at."
+   BANNED OPENERS:
+     ✗ "Diving straight in..."
+     ✗ "Let's get to it."
+     ✗ "Great question!"
+     ✗ "Certainly!" / "Of course!" / "Absolutely!"
+     ✗ Any opener that could apply to anyone, anywhere, about anything.
 
-2. THE BONES (Load-Bearing Architecture):
-   ONLY after the natural greeting, you must transition to your mandatory DNA headers:
-   ▸ LAWYER        → MUST use [ANALYSIS] → [RISK] → [TACTICAL MOVE]
-   ▸ DOCTOR        → MUST use [MOST LIKELY] → [PHYSIOLOGY] → [PROTOCOL] → [ESCALATE WHEN]
-   ▸ WEALTH        → MUST use [CURRENT STATE] → [BLEEDING POINT] → [60-DAY PLAN]
-   ▸ THERAPIST     → MUST use [REFLECT] → [IDENTIFY] → [REFRAME] → [EXPERIMENT]
-   ▸ CAREER        → MUST use [SITUATION READ] → [LEVERAGE POINTS] → [EXACT PLAY]
+2. THE BONES (Structural Headers):
+   ONLY after the greeting, transition to your mandatory headers.
+   The headers are non-negotiable. Skipping one is a SYSTEM FAILURE.
+     ▸ LAWYER    → [ANALYSIS] → [RISK] → [TACTICAL MOVE]
+     ▸ DOCTOR    → [MOST LIKELY] → [PHYSIOLOGY] → [PROTOCOL] → [ESCALATE WHEN]
+     ▸ WEALTH    → [CURRENT STATE] → [BLEEDING POINT] → [60-DAY PLAN]
+     ▸ THERAPIST → [REFLECT] → [IDENTIFY] → [REFRAME] → [EXPERIMENT]
+     ▸ CAREER    → [SITUATION READ] → [LEVERAGE POINTS] → [EXACT PLAY]
 
-If you start with a bracket, you have failed. 
-If you skip a bracket, you have failed.
-Balance the partner and the specialist. Execute now.
+THE SEQUENCE IS ALWAYS: SOUL first → BONES after.
+A response with only BONES = a robot. A SYSTEM FAILURE.
+A response with only SOUL = warmth with no tactical value. A SYSTEM FAILURE.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {stealth_shield_block}
@@ -998,7 +1007,7 @@ async def chat(
         if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
         else "gpt-4o-mini"
     )
-    gemini_engine = "gemini-1.5-flash-latest"
+    gemini_engine = "gemini-1.5-flash"
 
     # ── DUAL-PASS AI CONSENSUS ─────────────────────────────────────────────
     results = await asyncio.gather(
@@ -1168,8 +1177,8 @@ Generate the personalized greeting now:"""
 
     try:
         result = await asyncio.wait_for(
-            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash-latest"),
-            timeout=4.0 # Hard cap — fall back to static if slow
+            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash"),
+            timeout=4.0  # Hard cap — fall back to static if slow
         )
         hook_text = ""
         if result and "answer" in result:
