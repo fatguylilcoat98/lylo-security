@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.0.0 — ZERO-LATENCY ARCHITECTURE
+// Version: 30.0.1 — ZERO-LATENCY ARCHITECTURE (STREAMING PARSER FIXED)
 // ─────────────────────────────────────────────────────────────────────────────
 // V30 Systems:
 //
@@ -767,23 +767,37 @@ function ChatInterface({
     }
   };
 
-  // ── HANDLE SEND ───────────────────────────────────────────────────────────
+  // ── HANDLE SEND (V30 STREAMING PARSER) ────────────────────────────────────
   const handleSend = async () => {
     const text = (inputTextRef.current.trim() || input.trim());
     if (!text && !selectedImage) return;
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
+    
+    if (typewriterRef.current) { 
+      clearInterval(typewriterRef.current); 
+      typewriterRef.current = null; 
+      setStreamingMsgId(null); 
+    }
 
-    setLoading(true); setInput(''); inputTextRef.current = ''; accumulatedRef.current = '';
+    setLoading(true); 
+    setInput(''); 
+    inputTextRef.current = ''; 
+    accumulatedRef.current = '';
     setShowPersonaGrid(false);
 
-    const imgPreview  = previewUrl;
-    const userMsg: Message = { id: Date.now().toString(), content: text || 'Analyzing image…', sender: 'user', timestamp: new Date(), imageUrl: imgPreview };
+    const imgPreview = previewUrl;
+    const userMsg: Message = { 
+      id: Date.now().toString(), 
+      content: text || 'Analyzing image…', 
+      sender: 'user', 
+      timestamp: new Date(), 
+      imageUrl: imgPreview 
+    };
     setMessages(prev => [...prev, userMsg]);
 
-    try {
-      const botMsgId   = `bot-${Date.now()}`;
-      const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : activePersona.fixedVoice;
+    const botMsgId = `bot-${Date.now()}`;
+    const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : activePersona.fixedVoice;
 
+    try {
       const fd = new FormData();
       fd.append('msg',                  text);
       fd.append('history',              JSON.stringify(messages.slice(-6)));
@@ -797,46 +811,91 @@ function ChatInterface({
       fd.append('voice',                voiceToUse);
       if (selectedImage) fd.append('file', selectedImage);
 
-      const apiRes  = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
+      // 1. Create the empty bot message instantly on screen
+      setMessages(prev => [...prev, {
+        id: botMsgId, content: '', sender: 'bot' as const, timestamp: new Date()
+      }]);
+
+      setStreamingMsgId(botMsgId);
+      setStreamingText('');
+
+      // 2. Fetch the stream
+      const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
-      const response = await apiRes.json();
+      if (!apiRes.body) throw new Error('No readable stream');
 
-      const isLockout = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
+      setLoading(false); // Stop the loading dots, stream is starting
 
-      if (readingMode === 'sync' && isVoiceEnabled && !isLockout) {
-        setStreamingMsgId(botMsgId);
-        setStreamingText('');
+      // 3. Setup the Stream Reader
+      const reader = apiRes.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let done = false;
+      let fullAnswer = '';
+      let metaData: any = null;
+
+      // 4. Read the firehose chunk by chunk
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === 'text') {
+                  // Accumulate text and type it on screen instantly
+                  fullAnswer += (fullAnswer ? ' ' : '') + data.content;
+                  setStreamingText(fullAnswer);
+                } else if (data.type === 'meta') {
+                  // Catch the final metadata (buttons, audio, confidence)
+                  metaData = data;
+                }
+              } catch (err) {
+                // Safely ignore incomplete JSON chunks from buffer splits
+              }
+            }
+          }
+        }
       }
 
-      setMessages(prev => [...prev, {
-        id: botMsgId, content: response.answer, sender: 'bot' as const,
-        timestamp: new Date(), confidenceScore: response.confidence_score,
-        scamDetected: response.scam_detected, actionTrigger: response.action_trigger ?? null,
-      }]);
-      setLoading(false);
-      if (isLockout) { setStreamingMsgId(null); return; }
+      // 5. Stream Complete - Finalize UI
+      setStreamingMsgId(null);
+      setStreamingText('');
 
+      const isLockout = metaData?.threat_level === 'high' && fullAnswer.includes('DEVICE LIMIT EXCEEDED');
+
+      // Lock in the final message with action buttons and confidence score
+      setMessages(prev => prev.map(m => m.id === botMsgId ? {
+        ...m,
+        content: fullAnswer,
+        confidenceScore: metaData?.confidence_score,
+        scamDetected: metaData?.scam_detected,
+        actionTrigger: metaData?.action_trigger ?? null,
+      } : m));
+
+      if (isLockout) return;
+
+      // 6. Trigger Audio
       if (isVoiceEnabled) {
         if (readingMode === 'instant') {
-          setStreamingMsgId(null);
-          // V30: AQM fires sentence[0] immediately — queues rest in background
-          await aqm.enqueue(response.answer, voiceToUse, response.audio_b64 ?? undefined);
+           // Fire the Audio Queue Manager using the inline audio generated by backend
+           await aqm.enqueue(fullAnswer, voiceToUse, metaData?.audio_b64 ?? undefined);
         } else {
-          // Sync mode: drive typewriter with full-response audio (v29.7 inline path)
-          let audioEl: HTMLAudioElement | null = null;
-          if (response.audio_b64) {
-            audioEl = new Audio(`data:audio/mp3;base64,${response.audio_b64}`);
-            audioEl.preload = 'auto';
-          }
-          pendingAudioRef.current = Promise.resolve(audioEl);
-          const audioToPlay = await pendingAudioRef.current;
-          pendingAudioRef.current = null;
-          animateSynced(response.answer, botMsgId, audioToPlay);
+           let audioEl: HTMLAudioElement | null = null;
+           if (metaData?.audio_b64) {
+             audioEl = new Audio(`data:audio/mp3;base64,${metaData.audio_b64}`);
+             audioEl.preload = 'auto';
+           }
+           animateSynced(fullAnswer, botMsgId, audioEl);
         }
       }
 
     } catch (e) {
-      console.error(e);
+      console.error('Stream failed:', e);
       setStreamingMsgId(null);
       setLoading(false);
     } finally {
@@ -1106,7 +1165,7 @@ function ChatInterface({
                         <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
                       </button>
                     );
-                  })}
+                  })()}
                 </div>
 
                 <div className="flex gap-3">
