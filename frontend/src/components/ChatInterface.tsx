@@ -1,1411 +1,1367 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-import { 
- Shield, Wrench, Gavel, Monitor, BookOpen, Laugh, ChefHat, Activity, Camera, 
- Mic, MicOff, Volume2, VolumeX, RotateCcw, AlertTriangle, Phone, CreditCard, 
- FileText, Zap, Brain, Settings, LogOut, X, Crown, ArrowRight, PlayCircle, 
- StopCircle, Briefcase, Bell, User, Globe, Music, Sliders, CheckCircle, Trash2,
- Filter, Sparkles, ChevronRight, ChevronLeft, MessageSquare, Heart, Info, ExternalLink,
- Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock
-} from 'lucide-react';
+import os
+import uvicorn
+import json
+import hashlib
+import asyncio
+import base64
+import stripe
+import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from io import BytesIO
+from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from collections import defaultdict
+from tavily import TavilyClient
+from pinecone import Pinecone, ServerlessSpec
+import google.generativeai as genai
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
-const API_URL = 'https://lylo-backend.onrender.com';
+# --- MODULAR INTELLIGENCE DATA IMPORTS ---
+from intelligence_data import (
+    # Layer 0 — User Identity Core
+    GLOBAL_DIRECTIVE,
+    build_user_ident_core,
+    # Warm Start Registry
+    BETA_USER_PROFILES,
+    get_warm_start_profile,
+    get_user_location_data,
+    # Profile Synthesis System
+    PROFILE_VECTOR_ID_SUFFIX,
+    PROFILE_EMBEDDING_ANCHOR,
+    SYNTHESIS_INTERVAL,
+    SYNTHESIS_MEMORY_WINDOW,
+    PROFILE_SYNTHESIS_SYSTEM_PROMPT,
+    PROFILE_SYNTHESIS_USER_TEMPLATE,
+    # Proactive Trigger System
+    detect_proactive_triggers,
+    build_proactive_directive,
+    # Persona & Vibe Data
+    VIBE_STYLES, VIBE_LABELS,
+    PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
+    INTENT_LOGIC,
+    get_random_hook, get_all_hooks,
+    # ── BOARD STRESS-TEST HARD-FIXES (v9.0) ───────────────────────────────
+    # FIX 2: Analogy Bridge — injected for tutor + pastor
+    ANALOGY_BRIDGE_TRADE_CONTEXT,
+    # FIX 3 → v27.0: Accountability Sentinel — 24/7/365, all users, no date gate
+    ACCOUNTABILITY_SENTINEL_OVERRIDE,
+    build_accountability_sentinel,
+    # FIX 5: Partner Energy — injected for all 12 seats (universalized v27.0)
+    PARTNER_ENERGY_DIRECTIVE,
+    # ── SOUL RULES (v10.0) ───────────────────────────────────────────────
+    # Soul 2: Exit-First Filter — injected for lawyer + wealth
+    EXIT_FIRST_FILTER,
+    # Soul 3: Sentinel No-Recite — injected for vitality + bestie
+    SENTINEL_NO_RECITE,
+    # ── CONVERSATIONAL DRIFT FIXES (v11.0) ───────────────────────────────
+    # Fix 1: Persona-specific JSON schema — structural drift = JSON error
+    get_output_schema,
+    # Fix 2: Stealth Shield — active monitoring block for Chris's sessions
+    build_stealth_shield,
+)
 
-// =============================================================================
-// CRISIS LINKS
-// =============================================================================
-const CRISIS_LINKS: { [key: string]: { label: string, url: string, description: string }[] } = {
-  'guardian': [
-    { label: "FBI IC3 Fraud Reporting", url: "https://www.ic3.gov/", description: "Report stolen funds or digital extortion immediately." },
-    { label: "IdentityTheft.gov", url: "https://www.identitytheft.gov/", description: "Federal hub to lock down compromised SSNs." }
-  ],
-  'lawyer': [
-    { label: "Legal Services Corporation", url: "https://www.lsc.gov/", description: "Find immediate, free legal aid in your area." },
-    { label: "Consumer Financial Protection Bureau", url: "https://www.consumerfinance.gov/complaint/", description: "File a complaint against a predatory lender or bank." }
-  ],
-  'doctor': [
-    { label: "Call 911", url: "tel:911", description: "For immediate, life-threatening medical emergencies." },
-    { label: "WebMD Symptom Checker", url: "https://symptoms.webmd.com/", description: "Verify non-emergency symptoms." }
-  ],
-  'therapist': [
-    { label: "988 Suicide & Crisis Lifeline", url: "tel:988", description: "Call or text 988 for immediate mental health support." },
-    { label: "Crisis Text Line", url: "sms:741741", description: "Text HOME to 741741 to connect with a crisis counselor." }
-  ],
-  'wealth': [
-    { label: "AnnualCreditReport.com", url: "https://www.annualcreditreport.com/", description: "The only federally authorized free credit report site." },
-    { label: "National Foundation for Credit Counseling", url: "https://www.nfcc.org/", description: "Find legitimate, non-profit debt relief." }
-  ],
-  'career': [
-    { label: "Department of Labor (Worker Rights)", url: "https://www.dol.gov/agencies/whd", description: "Report wage theft or unsafe working conditions." },
-    { label: "Glassdoor Salaries", url: "https://www.glassdoor.com/Salaries/index.htm", description: "Benchmark your salary before negotiations." }
-  ],
-  'mechanic': [
-    { label: "RepairPal Estimates", url: "https://repairpal.com/", description: "Get a verified, fair-price estimate before going to a shop." },
-    { label: "NHTSA Recalls", url: "https://www.nhtsa.gov/recalls", description: "Check if your vehicle has an active safety recall." }
-  ],
-  'tutor': [
-    { label: "Khan Academy", url: "https://www.khanacademy.org/", description: "Free, world-class education for anyone, anywhere." },
-    { label: "Coursera", url: "https://www.coursera.org/", description: "Professional certificates and degrees." }
-  ],
-  'pastor': [
-    { label: "Bible Gateway", url: "https://www.biblegateway.com/", description: "Searchable online Bible in over 200 versions." },
-    { label: "Focus on the Family Counseling", url: "https://www.focusonthefamily.com/get-help/", description: "Christian counseling consultations." }
-  ],
-  'vitality': [
-    { label: "Examine.com", url: "https://examine.com/", description: "Independent clinical research on supplements and nutrition." },
-    { label: "CDC Physical Activity Guidelines", url: "https://www.cdc.gov/physicalactivity/basics/index.htm", description: "Federal guidelines for health and fitness." }
-  ],
-  'hype': [
-    { label: "Google Trends", url: "https://trends.google.com/trends/", description: "See what the world is searching for right now." },
-    { label: "Answer The Public", url: "https://answerthepublic.com/", description: "Discover what questions people are asking." }
-  ],
-  'bestie': [
-    { label: "Meetup.com", url: "https://www.meetup.com/", description: "Find local groups and communities based on your interests." }
-  ]
-};
+load_dotenv()
 
-// =============================================================================
-// TYPES
-// =============================================================================
-export interface PersonaConfig {
-  id: string;
-  name: string;
-  serviceLabel: string;
-  description: string;
-  protectiveJob: string;
-  spokenHook: string;
-  briefing: string;
-  color: string;
-  requiredTier: 'free' | 'pro' | 'elite' | 'max';
-  capabilities: string[];
-  icon: React.ComponentType<any>;
-  fixedVoice: string;
+# ---------------------------------------------------------
+# PRODUCTION LOGGING
+# ---------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("LYLO-CORE-INTEGRATION")
+
+# ---------------------------------------------------------
+# FASTAPI APP
+# ---------------------------------------------------------
+app = FastAPI(
+    title="LYLO Total Integration Backend",
+    description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
+    version="28.0.0 - ACTION & DISPATCH PATCH | email_dispatch | set_reminder | Action Buttons | 24/7 Sentinel"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------
+# API KEY CONFIGURATION
+# ---------------------------------------------------------
+TAVILY_API_KEY    = os.getenv("TAVILY_API_KEY", "").strip()
+PINECONE_API_KEY  = os.getenv("PINECONE_API_KEY", "").strip()
+GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "").strip()
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "").strip()
+
+stripe.api_key          = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET   = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+SMTP_SERVER   = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", 587))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+
+# ---------------------------------------------------------
+# TIER LIMITS & TRACKERS
+# ---------------------------------------------------------
+TIER_LIMITS = {
+    "free":  3,
+    "pro":   15,
+    "elite": 50,
+    "max":   500
 }
 
-interface BestieConfig {
-  gender: 'male' | 'female';
-  voiceId: string;
-  vibeLabel: string;
+USAGE_TRACKER      = defaultdict(int)
+AUTHORIZED_DEVICES = defaultdict(set)
+MAX_DEVICES_PER_USER = 2
+
+# ---------------------------------------------------------
+# CLIENT INITIALIZATION
+# ---------------------------------------------------------
+tavily_client = None
+if TAVILY_API_KEY:
+    try:
+        tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+        logger.info("✅ Personalized Search Engine Ready")
+    except Exception as e:
+        logger.error(f"❌ Search Engine Failed: {e}")
+
+pc = None
+memory_index = None
+if PINECONE_API_KEY:
+    try:
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        index_name = "lylo-intelligence-sync"
+        existing_indexes = [idx.name for idx in pc.list_indexes()]
+        if index_name not in existing_indexes:
+            pc.create_index(
+                name=index_name,
+                dimension=1024,
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
+        memory_index = pc.Index(index_name)
+        logger.info("✅ Intelligence Sync Ready")
+    except Exception as e:
+        logger.error(f"❌ Sync Index Failed: {e}")
+
+gemini_ready = False
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_ready = True
+        logger.info("✅ Gemini Vision Analysis Ready")
+    except Exception as e:
+        logger.error(f"❌ Gemini Setup Failed: {e}")
+
+openai_client = None
+if OPENAI_API_KEY:
+    try:
+        openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        logger.info("✅ OpenAI Digital Bodyguard Ready")
+    except Exception as e:
+        logger.error(f"❌ OpenAI Setup Failed: {e}")
+
+# ---------------------------------------------------------
+# BETA USER DATABASE
+# ---------------------------------------------------------
+ELITE_USERS = {
+    "stangman9898@gmail.com":       {"tier": "max", "name": "Christopher"},
+    "mylylo.ai@gmail.com":          {"tier": "max", "name": "LYLO Admin"},
+    "paintonmynails80@gmail.com":   {"tier": "max", "name": "Aubrey"},
+    "tiffani.hughes@yahoo.com":     {"tier": "max", "name": "Tiffani"},
+    "jcdabearman@gmail.com":        {"tier": "max", "name": "Jeff"},
+    "birdznbloomz2b@gmail.com":     {"tier": "max", "name": "Sandy"},
+    "chris.betatester6@gmail.com":  {"tier": "max", "name": "Ron"},
+    "chris.betatester7@gmail.com":  {"tier": "max", "name": "Marilyn"},
+    "plabane916@gmail.com":         {"tier": "max", "name": "Paul"},
+    "nemeses1298@gmail.com":        {"tier": "max", "name": "Eric"},
+    "bearjcameron@icloud.com":      {"tier": "max", "name": "Bear"},
+    "jcgcbear@gmail.com":           {"tier": "max", "name": "Gloria"},
+    "laura@startupsac.org":         {"tier": "max", "name": "Laura"},
+    "cmlabane@gmail.com":           {"tier": "max", "name": "Corie"}
 }
 
-interface ChatInterfaceProps {
-  currentPersona?: PersonaConfig;
-  userEmail: string;
-  zoomLevel: number;
-  onZoomChange: (zoom: number) => void;
-  onPersonaChange: (persona: PersonaConfig) => void;
-  onLogout: () => void;
-  onUsageUpdate?: () => void;
-}
-
-// =============================================================================
-// PERSONAS
-// =============================================================================
-const PERSONAS: PersonaConfig[] = [
-  { id: 'guardian',  name: 'The Guardian',          serviceLabel: 'SECURITY LEAD',     description: 'Digital Bodyguard',    protectiveJob: 'Security Lead',  spokenHook: 'Security protocols active. I am monitoring your digital perimeter.',                         briefing: 'I provide frontline cybersecurity.',       color: 'blue',   requiredTier: 'free',  icon: Shield,   capabilities: ['Scam detection', 'Identity protection'],     fixedVoice: 'onyx'    },
-  { id: 'lawyer',    name: 'The Lawyer',             serviceLabel: 'LEGAL SHIELD',      description: 'Justice Partner',      protectiveJob: 'Legal Lead',     spokenHook: 'Legal shield activated. Before you sign anything, let me review the fine print.',           briefing: 'I provide contract review.',               color: 'yellow', requiredTier: 'elite', icon: Gavel,    capabilities: ['Contract review', 'Tenant rights'],          fixedVoice: 'fable'   },
-  { id: 'doctor',    name: 'The Doctor',             serviceLabel: 'MEDICAL GUIDE',     description: 'Symptom Analyst',      protectiveJob: 'Medical Lead',   spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms.',                   briefing: 'I provide medical explanation.',           color: 'red',    requiredTier: 'pro',   icon: Activity, capabilities: ['Symptom check', 'Triage'],                 fixedVoice: 'nova'    },
-  { id: 'wealth',    name: 'The Wealth Architect',   serviceLabel: 'FINANCE CHIEF',     description: 'Money Strategist',     protectiveJob: 'Finance Lead',   spokenHook: "Let's get your money working for you. ROI is the only metric that matters.",              briefing: 'I provide financial planning.',            color: 'green',  requiredTier: 'elite', icon: CreditCard, capabilities: ['Budgeting', 'Debt destruction'],            fixedVoice: 'onyx'    },
-  { id: 'career',    name: 'The Career Strategist',  serviceLabel: 'CAREER COACH',      description: 'Professional Growth',  protectiveJob: 'Career Lead',    spokenHook: "Let's level up your career. Resume, salary, or office politics—I'm here to help you win.", briefing: 'I provide career growth strategy.',        color: 'indigo', requiredTier: 'pro',   icon: Briefcase, capabilities: ['Resume optimization', 'Salary negotiation'], fixedVoice: 'shimmer' },
-  { id: 'therapist', name: 'The Therapist',          serviceLabel: 'MENTAL WELLNESS',   description: 'Emotional Anchor',     protectiveJob: 'Clinical Lead',  spokenHook: "I'm here to listen. No judgment, just a safe space to process.",                         briefing: 'I provide CBT support.',                  color: 'indigo', requiredTier: 'pro',   icon: Brain,    capabilities: ['Anxiety relief', 'Mood tracking'],           fixedVoice: 'alloy'   },
-  { id: 'mechanic',  name: 'The Tech Specialist',    serviceLabel: 'MASTER FIXER',      description: 'Technical Lead',       protectiveJob: 'Technical Lead', spokenHook: "Technical manual loaded. Tell me the issues and I'll walk you through the fix.",           briefing: 'I provide step-by-step repair guides.',   color: 'gray',   requiredTier: 'pro',   icon: Wrench,   capabilities: ['Car repair', 'Tech troubleshooting'],         fixedVoice: 'echo'    },
-  { id: 'tutor',     name: 'The Master Tutor',       serviceLabel: 'KNOWLEDGE BRIDGE',  description: 'Education Lead',       protectiveJob: 'Education Lead', spokenHook: 'Class is in session. I can break down any subject until it clicks.',                      briefing: 'I provide academic tutoring.',             color: 'purple', requiredTier: 'pro',   icon: Zap,      capabilities: ['Skill acquisition', 'Simplification'],       fixedVoice: 'fable'   },
-  { id: 'pastor',    name: 'The Pastor',             serviceLabel: 'FAITH ANCHOR',      description: 'Spiritual Lead',       protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.',                  briefing: 'I provide spiritual counseling.',          color: 'gold',   requiredTier: 'pro',   icon: BookOpen, capabilities: ['Prayer', 'Scripture guidance'],               fixedVoice: 'onyx'    },
-  { id: 'vitality',  name: 'The Vitality Coach',     serviceLabel: 'HEALTH OPTIMIZER',  description: 'Fitness & Food',       protectiveJob: 'Wellness Lead',  spokenHook: "Let's optimize your engine. Fuel and movement—what's the goal today?",                  briefing: 'I provide workout and meal plans.',        color: 'green',  requiredTier: 'max',   icon: Activity, capabilities: ['Meal planning', 'Habit building'],           fixedVoice: 'nova'    },
-  { id: 'hype',      name: 'The Hype Strategist',    serviceLabel: 'CREATIVE DIRECTOR', description: 'Viral Specialist',     protectiveJob: 'Creative Lead',  spokenHook: "Let's make some noise! I'm here for hooks, jokes, and viral strategy.",                 briefing: 'I provide viral content strategy.',        color: 'orange', requiredTier: 'pro',   icon: Laugh,    capabilities: ['Viral hooks', 'Humor'],                       fixedVoice: 'shimmer' },
-  { id: 'bestie',    name: 'The Bestie',             serviceLabel: 'RIDE OR DIE',       description: 'Inner Circle',         protectiveJob: 'Loyalty Lead',   spokenHook: "I've got your back, 100%. No filters, no judgment. What's actually going on?",           briefing: 'I provide blunt life advice.',             color: 'pink',   requiredTier: 'pro',   icon: Heart,    capabilities: ['Venting space', 'Secret keeping'],           fixedVoice: 'nova'    },
-];
-
-// =============================================================================
-// EXPERT TRIGGERS
-// =============================================================================
-const EXPERT_TRIGGERS: { [key: string]: string[] } = {
-  'mechanic':  ['car', 'engine', 'repair', 'broken', 'fix', 'leak', 'computer', 'wifi', 'glitch', 'tech'],
-  'lawyer':    ['legal', 'sue', 'court', 'contract', 'rights', 'lease', 'divorce', 'ticket', 'sued', 'lawyer', 'lawsuit', 'evicted', 'notice'],
-  'doctor':    ['sick', 'pain', 'symptom', 'hurt', 'fever', 'medicine', 'rash', 'swollen', 'health', 'doctor'],
-  'wealth':    ['money', 'budget', 'invest', 'stock', 'debt', 'credit', 'bank', 'crypto', 'tax', 'paycheck', 'short-changed', 'dollars', '$'],
-  'therapist': ['sad', 'anxious', 'depressed', 'stress', 'panic', 'cry', 'feeling', 'overwhelmed', 'mental'],
-  'vitality':  ['diet', 'food', 'workout', 'gym', 'weight', 'muscle', 'meal', 'protein', 'run', 'exercise'],
-  'tutor':     ['learn', 'study', 'homework', 'history', 'math', 'code', 'explain', 'teach', 'school'],
-  'pastor':    ['god', 'pray', 'bible', 'church', 'spirit', 'verse', 'jesus', 'faith', 'spiritual'],
-  'hype':      ['joke', 'funny', 'viral', 'tiktok', 'video', 'prank', 'laugh', 'content', 'social media'],
-  'career':    ['job', 'work', 'boss', 'resume', 'interview', 'salary', 'promotion', 'fired', 'hired', 'employer'],
-};
-
-// =============================================================================
-// VIBE OPTIONS — keys MUST match VIBE_STYLES in intelligence_data.py exactly
-// Legacy values ('roast', 'business') are migrated automatically on load.
-// =============================================================================
-const VIBE_OPTIONS = [
-  { value: 'standard',  label: 'Standard',  sublabel: 'Direct & Helpful'        },
-  { value: 'chill',     label: 'Chill',     sublabel: 'Conversational & Easy'   },
-  { value: 'intense',   label: 'Intense',   sublabel: 'Maximum Urgency'         },
-  { value: 'nurturing', label: 'Nurturing', sublabel: 'Warm & Supportive'       },
-  { value: 'blunt',     label: 'Blunt',     sublabel: 'Zero Filter, No Padding' },
-  { value: 'academic',  label: 'Academic',  sublabel: 'Structured & Cited'      },
-];
-
-const LEGACY_VIBE_MAP: Record<string, string> = {
-  roast:    'blunt',
-  business: 'academic',
-};
-
-// =============================================================================
-// HELPERS
-// =============================================================================
-const getPersonaColorClass = (
-  persona: PersonaConfig,
-  type: 'border' | 'glow' | 'bg' | 'text' = 'border'
-) => {
-  const colorMap: any = {
-    blue:   { border: 'border-blue-400',   glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]',  bg: 'bg-blue-500',   text: 'text-blue-400'   },
-    orange: { border: 'border-orange-400', glow: 'shadow-[0_0_20px_rgba(249,115,22,0.3)]',  bg: 'bg-orange-500', text: 'text-orange-400' },
-    gold:   { border: 'border-yellow-400', glow: 'shadow-[0_0_20px_rgba(234,179,8,0.3)]',   bg: 'bg-yellow-500', text: 'text-yellow-400' },
-    gray:   { border: 'border-gray-400',   glow: 'shadow-[0_0_20px_rgba(107,114,128,0.3)]', bg: 'bg-gray-500',   text: 'text-gray-400'   },
-    yellow: { border: 'border-yellow-300', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.3)]',  bg: 'bg-yellow-400', text: 'text-yellow-300' },
-    purple: { border: 'border-purple-400', glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]',  bg: 'bg-purple-500', text: 'text-purple-400' },
-    indigo: { border: 'border-indigo-400', glow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]',  bg: 'bg-indigo-500', text: 'text-indigo-400' },
-    pink:   { border: 'border-pink-400',   glow: 'shadow-[0_0_20px_rgba(236,72,153,0.3)]',  bg: 'bg-pink-500',   text: 'text-pink-400'   },
-    red:    { border: 'border-red-400',    glow: 'shadow-[0_0_20px_rgba(239,68,68,0.3)]',   bg: 'bg-red-500',    text: 'text-red-400'    },
-    green:  { border: 'border-green-400',  glow: 'shadow-[0_0_20px_rgba(34,197,94,0.3)]',   bg: 'bg-green-500',  text: 'text-green-400'  },
-  };
-  return colorMap[persona.color]?.[type] || colorMap.blue[type];
-};
-
-const canAccessPersona = (persona: PersonaConfig, tier: string) => {
-  const tiers: any = { free: 0, pro: 1, elite: 2, max: 3 };
-  return (tiers[tier] || 0) >= tiers[persona.requiredTier];
-};
-
-const detectExpertSuggestion = (
-  messages: Message[],
-  currentId: string,
-  userTier: string
-): PersonaConfig | null => {
-  const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
-  if (!lastUserMsg) return null;
-  const lower = lastUserMsg.content.toLowerCase();
-  for (const [id, keywords] of Object.entries(EXPERT_TRIGGERS)) {
-    if (id === currentId) continue;
-    if (keywords.some(k => lower.includes(k))) {
-      const expert = PERSONAS.find(p => p.id === id);
-      if (expert && canAccessPersona(expert, userTier)) return expert;
-    }
-  }
-  return null;
-};
-
-const getDeviceId = () => {
-  let deviceId = localStorage.getItem('lylo_device_id');
-  if (!deviceId) {
-    deviceId = crypto.randomUUID
-      ? crypto.randomUUID()
-      : 'dev_' + Date.now() + Math.random().toString(36).substring(2);
-    localStorage.setItem('lylo_device_id', deviceId);
-  }
-  return deviceId;
-};
-
-// =============================================================================
-// COMPONENT
-// =============================================================================
-function ChatInterface({
-  currentPersona: initialPersona,
-  userEmail = '',
-  onPersonaChange = () => {},
-  onLogout = () => {},
-  onUsageUpdate = () => {},
-}: ChatInterfaceProps) {
-
-  const [activePersona, setActivePersona]           = useState<PersonaConfig>(() => initialPersona || PERSONAS[0]);
-  const [messages, setMessages]                     = useState<Message[]>([]);
-  const [input, setInput]                           = useState('');
-  const [loading, setLoading]                       = useState(false);
-  const [userName, setUserName]                     = useState<string>('User');
-  const [bestieConfig, setBestieConfig]             = useState<BestieConfig | null>(null);
-  const [showBestieSetup, setShowBestieSetup]       = useState(false);
-  const [setupStep, setSetupStep]                   = useState<'gender' | 'voice'>('gender');
-  const [tempGender, setTempGender]                 = useState<'male' | 'female'>('female');
-  const [isRecording, setIsRecording]               = useState(false);
-  const [isSpeaking, setIsSpeaking]                 = useState(false);
-  const [showDropdown, setShowDropdown]             = useState(false);
-  const [showCameraMenu, setShowCameraMenu]         = useState(false);
-  const [userTier, setUserTier]                     = useState<'free' | 'pro' | 'elite' | 'max'>('max');
-  const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
-  const [fontLevel, setFontLevel]                   = useState<number>(1);
-  const [isVoiceEnabled, setIsVoiceEnabled]         = useState<boolean>(true);
-  // 'sync' = words type out as voice reads | 'instant' = all words appear, then voice reads
-  const [readingMode, setReadingMode]               = useState<'sync' | 'instant'>('sync');
-  const [selectedImage, setSelectedImage]           = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl]                 = useState<string | null>(null);
-  const [showCrisisShield, setShowCrisisShield]     = useState(false);
-  const [showPersonaGrid, setShowPersonaGrid]       = useState(true);
-  const [showOnboarding, setShowOnboarding]         = useState(false);
-  const [onboardingStep, setOnboardingStep]         = useState(1);
-  const [deviceId]                                  = useState(() => getDeviceId());
-  const [emailConsent, setEmailConsent]             = useState(false);
-
-  // PWA install state
-  const [deferredPrompt, setDeferredPrompt]     = useState<any>(null);
-  const [installMethod, setInstallMethod]       = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
-  const [showInstallModal, setShowInstallModal] = useState(false);  // One-time first-seen modal
-  const [canInstall, setCanInstall]             = useState(false);  // Whether install is available (for dropdown btn)
-
-  const chatContainerRef        = useRef<HTMLDivElement>(null);
-  const fileInputRef            = useRef<HTMLInputElement>(null);
-  const photoInputRef           = useRef<HTMLInputElement>(null);
-  const recognitionRef          = useRef<any>(null);
-  const isRecordingRef          = useRef(false);
-  const accumulatedRef          = useRef<string>('');
-  const inputTextRef            = useRef<string>('');
-  const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
-  const typewriterRef           = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamingTextRef        = useRef<string>('');   // live text for synced render
-
-  // Streaming typewriter state — which message is currently being typed out
-  const [streamingMsgId, setStreamingMsgId]   = useState<string | null>(null);
-  const [streamingText, setStreamingText]     = useState<string>('');
-
-  // ── PWA detection ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      ('standalone' in window.navigator && (window.navigator as any).standalone === true);
-
-    if (isStandalone) return;  // Already installed — show nothing
-
-    const alreadySeen = localStorage.getItem('lylo_install_modal_seen');
-    const ua = window.navigator.userAgent.toLowerCase();
-
-    if (/iphone|ipad|ipod/.test(ua)) {
-      setInstallMethod('manual_ios');
-      setCanInstall(true);
-      if (!alreadySeen) setShowInstallModal(true);
-    } else {
-      const handleBeforeInstall = (e: any) => {
-        e.preventDefault();
-        setDeferredPrompt(e);
-        setInstallMethod('prompt');
-        setCanInstall(true);
-        if (!alreadySeen) setShowInstallModal(true);
-      };
-      window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-      return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    }
-  }, []);
-
-  const dismissInstallModal = () => {
-    localStorage.setItem('lylo_install_modal_seen', 'true');
-    setShowInstallModal(false);
-  };
-
-  const handleInstallClick = async () => {
-    dismissInstallModal();
-    if (installMethod === 'prompt' && deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setCanInstall(false);
-      setDeferredPrompt(null);
-    } else if (installMethod === 'manual_ios') {
-      alert('APPLE SECURE INSTALL:\n\n1. Tap the "Share" icon at the bottom of Safari (the square with an up arrow).\n2. Scroll down and tap "Add to Home Screen".');
-    } else {
-      alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots (Menu) in the top right corner of Chrome.\n2. Tap "Install app" or "Add to Home screen".');
-    }
-  };
-
-  // ── Hydrate preferences from localStorage ────────────────────────────────
-  useEffect(() => {
-    const emailRaw   = userEmail.toLowerCase();
-    const storedName = localStorage.getItem('userName');
-    const storedTier = localStorage.getItem('userTier') as any;
-
-    if (storedName)                       setUserName(storedName);
-    else if (emailRaw.includes('stangman')) setUserName('Christopher');
-
-    if (storedTier) setUserTier(storedTier);
-
-    const savedBestie = localStorage.getItem('lylo_bestie_config');
-    if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
-
-    // ── Vibe: migrate legacy keys ('roast' → 'blunt', 'business' → 'academic')
-    const rawStyle = localStorage.getItem('lylo_communication_style');
-    if (rawStyle) {
-      const migrated = LEGACY_VIBE_MAP[rawStyle] ?? rawStyle;
-      if (migrated !== rawStyle) localStorage.setItem('lylo_communication_style', migrated);
-      setCommunicationStyle(migrated);
-    }
-
-    const savedFont = localStorage.getItem('lylo_font_level');
-    if (savedFont) setFontLevel(parseInt(savedFont, 10));
-
-    const savedVoiceToggle = localStorage.getItem('lylo_voice_enabled');
-    if (savedVoiceToggle !== null) setIsVoiceEnabled(savedVoiceToggle === 'true');
-
-    const savedReadingMode = localStorage.getItem('lylo_reading_mode');
-    if (savedReadingMode === 'sync' || savedReadingMode === 'instant') setReadingMode(savedReadingMode);
-
-    const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
-    if (!hasOnboarded) setShowOnboarding(true);
-  }, [userEmail]);
-
-  // ── Hardware back-button lock ─────────────────────────────────────────────
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = 'Are you sure you want to leave the LYLO OS? You will need to re-authenticate.';
-      return e.returnValue;
-    };
-
-    const lockHistory = () => window.history.pushState(null, '', window.location.href);
-
-    const handlePopState = () => {
-      window.history.pushState(null, '', window.location.href);
-      if (showOnboarding)        return;
-      else if (showDropdown)     setShowDropdown(false);
-      else if (showCameraMenu)   setShowCameraMenu(false);
-      else if (showCrisisShield) setShowCrisisShield(false);
-      else if (!showPersonaGrid) handleInternalBack();
-      else alert('Use the Logout button in the menu to exit securely.');
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState);
-    lockHistory();
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
-
-  useEffect(() => {
-    if (chatContainerRef.current)
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [messages, previewUrl]);
-
-  useEffect(() => {
-    if (!selectedImage) { setPreviewUrl(null); return; }
-    const objectUrl = URL.createObjectURL(selectedImage);
-    setPreviewUrl(objectUrl);
-  }, [selectedImage]);
-
-  // ── Audio ─────────────────────────────────────────────────────────────────
-  const fetchAudioSilently = async (text: string, voice?: string): Promise<HTMLAudioElement | null> => {
-    if (!isVoiceEnabled) return null;
-    try {
-      const fd = new FormData();
-      fd.append('text', text);
-      fd.append('voice', voice || 'onyx');
-      const res  = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.audio_b64) return new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-    } catch (e) { console.error('Audio fetch failed', e); }
-    return null;
-  };
-
-  const playAudioSafely = (audioElement: HTMLAudioElement) => {
-    if (currentlyPlayingAudioRef.current) {
-      currentlyPlayingAudioRef.current.pause();
-      currentlyPlayingAudioRef.current.currentTime = 0;
-    }
-    if (isRecordingRef.current) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      recognitionRef.current?.stop();
-    }
-    currentlyPlayingAudioRef.current = audioElement;
-    setIsSpeaking(true);
-    audioElement.onended = () => setIsSpeaking(false);
-    audioElement.play().catch(() => {});
-  };
-
-  // ── SYNCED / INSTANT TYPEWRITER ──────────────────────────────────────────
-  // readingMode === 'sync'    → words type out at exactly the pace of the voice
-  // readingMode === 'instant' → full text renders immediately, voice reads after
-  //
-  // SYNC:    streamingMsgId claimed before message added → starts empty, fills as voice speaks
-  // INSTANT: streamingMsgId released immediately → msg.content snaps visible, voice starts ~80ms later
-  const animateSynced = (
-    text: string,
-    msgId: string,
-    audioElement: HTMLAudioElement | null
-  ) => {
-    if (typewriterRef.current) {
-      clearInterval(typewriterRef.current);
-      typewriterRef.current = null;
-    }
-    streamingTextRef.current = '';
-    setStreamingText('');
-
-    // ── INSTANT MODE ───────────────────────────────────────────────────────
-    if (readingMode === 'instant') {
-      // Drop the streaming slot — full text renders from msg.content right now
-      setStreamingMsgId(null);
-      if (audioElement && isVoiceEnabled) {
-        const playAfterPaint = () => {
-          requestAnimationFrame(() => setTimeout(() => playAudioSafely(audioElement), 80));
-        };
-        if (isFinite(audioElement.duration) && audioElement.duration > 0) {
-          playAfterPaint();
-        } else {
-          audioElement.addEventListener('loadedmetadata', playAfterPaint, { once: true });
-          setTimeout(() => { if (!isSpeaking) audioElement.play().catch(() => {}); }, 1200);
-        }
-      }
-      return;
-    }
-
-    // ── SYNC MODE (default) ────────────────────────────────────────────────
-    const startTyping = (msPerChar: number) => {
-      let i = 0;
-      typewriterRef.current = setInterval(() => {
-        i++;
-        const slice = text.slice(0, i);
-        streamingTextRef.current = slice;
-        setStreamingText(slice);
-        if (i >= text.length) {
-          clearInterval(typewriterRef.current!);
-          typewriterRef.current = null;
-          setStreamingMsgId(null);
-          setStreamingText('');
-        }
-      }, msPerChar);
-    };
-
-    if (audioElement && isVoiceEnabled) {
-      const kick = () => {
-        const msPerChar = Math.max(18, (audioElement.duration * 1000) / text.length);
-        playAudioSafely(audioElement);
-        startTyping(msPerChar);
-      };
-      if (isFinite(audioElement.duration) && audioElement.duration > 0) {
-        kick();
-      } else {
-        audioElement.addEventListener('loadedmetadata', kick, { once: true });
-        setTimeout(() => {
-          if (streamingTextRef.current === '') { startTyping(28); audioElement.play().catch(() => {}); }
-        }, 1200);
-      }
-    } else {
-      startTyping(28);
-    }
-  };
-
-  // ── Speech recognition ────────────────────────────────────────────────────
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SR = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      const recognition = new SR();
-      recognition.continuous     = false;
-      recognition.interimResults = true;
-      recognition.lang           = 'en-US';
-
-      recognition.onresult = (event: any) => {
-        if (isSpeaking) return;
-        let interim = '', final = '';
-        for (let i = 0; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) final   += event.results[i][0].transcript;
-          else                          interim += event.results[i][0].transcript;
-        }
-        if (final) accumulatedRef.current += final + ' ';
-        const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
-        setInput(fullText);
-        inputTextRef.current = fullText;
-      };
-
-      recognition.onend = () => {
-        if (isRecordingRef.current && !isSpeaking) recognition.start();
-      };
-
-      recognitionRef.current = recognition;
-    }
-  }, [isSpeaking]);
-
-  const handleWalkieTalkieMic = () => {
-    if (isRecording) {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      recognitionRef.current?.stop();
-      setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
-    } else {
-      if (isSpeaking) return;
-      setIsRecording(true);
-      isRecordingRef.current  = true;
-      setInput('');
-      accumulatedRef.current  = '';
-      inputTextRef.current    = '';
-      recognitionRef.current?.start();
-    }
-  };
-
-  // ── SEND ──────────────────────────────────────────────────────────────────
-  const handleSend = async () => {
-    const text = inputTextRef.current.trim() || input.trim();
-    if (!text && !selectedImage) return;
-
-    // Stop any in-progress typewriter
-    if (typewriterRef.current) {
-      clearInterval(typewriterRef.current);
-      typewriterRef.current = null;
-      setStreamingMsgId(null);
-    }
-
-    setLoading(true);
-    setInput('');
-    inputTextRef.current   = '';
-    accumulatedRef.current = '';
-    setShowPersonaGrid(false);
-
-    const currentImagePreview = previewUrl;
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      content: text || 'Analyzing image…',
-      sender: 'user',
-      timestamp: new Date(),
-      imageUrl: currentImagePreview,
-    };
-    setMessages(prev => [...prev, userMsg]);
-
-    try {
-      const formData = new FormData();
-      formData.append('msg',                  text);
-      formData.append('history',              JSON.stringify(messages.slice(-6)));
-      formData.append('persona',              activePersona.id);
-      formData.append('user_email',           userEmail);
-      formData.append('user_location',        '');
-      formData.append('vibe',                 communicationStyle);
-      formData.append('use_long_term_memory', 'true');
-      formData.append('device_id',            deviceId);
-      formData.append('email_consent',        emailConsent ? 'true' : 'false');
-      if (selectedImage) formData.append('file', selectedImage);
-
-      const apiResponse = await fetch(`${API_URL}/chat`, { method: 'POST', body: formData });
-      if (!apiResponse.ok) throw new Error('API error');
-      const response    = await apiResponse.json();
-
-      const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
-      const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
-      const botMsgId   = `bot-${Date.now()}`;
-
-      // ── THREE MODE BRANCH ─────────────────────────────────────────────────
-      // MODE 1 — Sync & Speak:    claim slot → empty box → typewriter + audio together
-      // MODE 2 — Instant & Speak: no claim → full text now → audio starts after paint
-      // MODE 3 — Instant & Silent: no claim → full text now → no audio fetch at all
-      if (readingMode === 'sync' && isVoiceEnabled) {
-        setStreamingMsgId(botMsgId);
-        setStreamingText('');
-      }
-      // Modes 2 & 3: streamingMsgId stays null → msg.content renders immediately
-
-      setMessages(prev => [...prev, {
-        id: botMsgId,
-        content: response.answer,
-        sender: 'bot' as const,
-        timestamp: new Date(),
-        confidenceScore: response.confidence_score,
-        scamDetected: response.scam_detected,
-      }]);
-      setLoading(false);
-
-      if (isLockout) { setStreamingMsgId(null); return; }
-
-      if (isVoiceEnabled) {
-        // Modes 1 & 2 — fetch audio then animate
-        const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
-        animateSynced(response.answer, botMsgId, audioToPlay);
-      }
-      // Mode 3 (voice off): nothing — text is already visible, done.
-
-    } catch (e) {
-      console.error(e);
-      setStreamingMsgId(null);
-      setLoading(false);
-    } finally {
-      setSelectedImage(null);
-      setEmailConsent(false);
-    }
-  };
-
-  // ── PERSONALIZED HOOK FETCH ───────────────────────────────────────────────
-  const fetchPersonaHook = async (personaId: string): Promise<string> => {
-    try {
-      const fd = new FormData();
-      fd.append('persona',    personaId);
-      fd.append('user_email', userEmail);
-      const res = await Promise.race([
-        fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500)),
-      ]) as Response;
-      if (!res.ok) throw new Error('hook fetch failed');
-      const data = await res.json();
-      return data.hook || '';
-    } catch {
-      return '';
-    }
-  };
-
-  // ── PERSONA CHANGE ────────────────────────────────────────────────────────
-  const handlePersonaChange = async (persona: PersonaConfig) => {
-    if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
-    if (currentlyPlayingAudioRef.current) {
-      currentlyPlayingAudioRef.current.pause();
-      currentlyPlayingAudioRef.current.currentTime = 0;
-    }
-    // Kill any active typewriter from a previous message
-    if (typewriterRef.current) {
-      clearInterval(typewriterRef.current);
-      typewriterRef.current = null;
-      setStreamingMsgId(null);
-    }
-
-    setActivePersona(persona);
-    onPersonaChange(persona);
-    setShowDropdown(false);
-    setShowPersonaGrid(false);
-    setLoading(true);
-
-    const voiceToUse = persona.id === 'bestie' ? bestieConfig?.voiceId : persona.fixedVoice;
-
-    // Fetch hook text first
-    const hookText = await fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
-    const hookMsgId = `hook-${Date.now()}`;
-
-    // THREE MODE BRANCH — same logic as handleSend
-    if (readingMode === 'sync' && isVoiceEnabled) {
-      setStreamingMsgId(hookMsgId);
-      setStreamingText('');
-    }
-
-    setMessages([{
-      id: hookMsgId,
-      content: hookText,
-      sender: 'bot' as const,
-      timestamp: new Date(),
-    }]);
-    setLoading(false);
-
-    if (isVoiceEnabled) {
-      const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
-      animateSynced(hookText, hookMsgId, audioToPlay);
-    }
-    // Voice off: text is already visible — nothing more to do
-  };
-
-  const handleBestieSetupComplete = (voiceId: string) => {
-    const config: BestieConfig = {
-      gender: tempGender,
-      voiceId,
-      vibeLabel: tempGender === 'male' ? 'The Bro' : 'The Bestie',
-    };
-    setBestieConfig(config);
-    localStorage.setItem('lylo_bestie_config', JSON.stringify(config));
-    setShowBestieSetup(false);
-    const bestiePersona = PERSONAS.find(p => p.id === 'bestie');
-    if (bestiePersona) handlePersonaChange(bestiePersona);
-  };
-
-  const handleInternalBack = () => {
-    setMessages([]);
-    setShowPersonaGrid(true);
-    if (currentlyPlayingAudioRef.current) {
-      currentlyPlayingAudioRef.current.pause();
-      currentlyPlayingAudioRef.current.currentTime = 0;
-    }
-    setIsSpeaking(false);
-  };
-
-  // ── Settings helpers ───────────────────────────────────────────────────────
-  const cycleFontSize = () => {
-    const next = fontLevel >= 4 ? 1 : fontLevel + 1;
-    setFontLevel(next);
-    localStorage.setItem('lylo_font_level', next.toString());
-  };
-
-  // ── BAILOUT — mid-stream abort ────────────────────────────────────────────
-  // Called whenever user taps a mode/voice toggle while text is streaming.
-  // Kills the typewriter instantly and snaps to full msg.content.
-  const bailoutTypewriter = () => {
-    if (typewriterRef.current) {
-      clearInterval(typewriterRef.current);
-      typewriterRef.current = null;
-    }
-    setStreamingMsgId(null);
-    setStreamingText('');
-  };
-
-  const toggleVoice = () => {
-    const next = !isVoiceEnabled;
-    setIsVoiceEnabled(next);
-    localStorage.setItem('lylo_voice_enabled', next.toString());
-    if (!next && currentlyPlayingAudioRef.current) {
-      currentlyPlayingAudioRef.current.pause();
-      currentlyPlayingAudioRef.current.currentTime = 0;
-      setIsSpeaking(false);
-    }
-  };
-
-  const handleVibeChange = (value: string) => {
-    setCommunicationStyle(value);
-    localStorage.setItem('lylo_communication_style', value);
-  };
-
-  const completeOnboarding = () => {
-    localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
-    setShowOnboarding(false);
-  };
-
-  const getDynamicFontSize = () => {
-    switch (fontLevel) {
-      case 1: return 'text-sm leading-normal';
-      case 2: return 'text-lg leading-relaxed';
-      case 3: return 'text-2xl leading-relaxed tracking-wide';
-      case 4: return 'text-4xl leading-loose tracking-wide font-black';
-      default: return 'text-sm leading-normal';
-    }
-  };
-
-  const getInputFontSize = () => {
-    switch (fontLevel) {
-      case 1: return 'text-sm';
-      case 2: return 'text-lg';
-      case 3: return 'text-xl';
-      case 4: return 'text-2xl';
-      default: return 'text-sm';
-    }
-  };
-
-  // ===========================================================================
-  // ONBOARDING
-  // ===========================================================================
-  if (showOnboarding) {
-    return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
-        <div className="bg-[#111] border border-blue-500/30 rounded-3xl w-full max-w-lg p-6 shadow-[0_0_50px_rgba(59,130,246,0.15)] relative overflow-hidden">
-
-          {/* Progress bar */}
-          <div className="absolute top-0 left-0 w-full h-1 bg-white/10">
-            <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${(onboardingStep / 3) * 100}%` }} />
-          </div>
-
-          {/* ── Step 1: System Briefing */}
-          {onboardingStep === 1 && (
-            <div className="animate-in fade-in zoom-in-95 duration-300">
-              <div className="flex items-center gap-4 mb-6">
-                <Shield className="w-10 h-10 text-blue-500 fill-current" />
-                <div>
-                  <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">System Briefing</h2>
-                  <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mt-1">Security Clearance Granted</p>
-                </div>
-              </div>
-              <div className="space-y-4 mb-8 text-gray-300 text-sm leading-relaxed max-h-[50vh] overflow-y-auto pr-2">
-                <p><strong className="text-white">Read this entirely.</strong> You are no longer just searching the web. You are now backed by a proactive Digital Task Force. Here is the telemetry under the hood:</p>
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <strong className="text-white flex items-center gap-2 mb-1"><Brain className="w-4 h-4 text-purple-400" /> 1. THE WAR ROOM (Dual-Brain)</strong>
-                  <p className="text-xs text-gray-400">Your prompt is injected into both GPT-4o and Gemini 1.5 Flash. They battle it out, verify the data, and deliver the highest-confidence consensus.</p>
-                </div>
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <strong className="text-white flex items-center gap-2 mb-1"><CheckCircle className="w-4 h-4 text-green-400" /> 2. THE TRUTH PROTOCOL</strong>
-                  <p className="text-xs text-gray-400">Most AIs hallucinate. LYLO will not make up an answer. You get 100% honest, tactical truth — or we ask for more intel.</p>
-                </div>
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <strong className="text-white flex items-center gap-2 mb-1"><Lock className="w-4 h-4 text-blue-400" /> 3. IRONCLAD PRIVACY</strong>
-                  <p className="text-xs text-gray-400">Your identity is cryptographically hashed. We never sell your data, and your private conversations are never used to train public AI models.</p>
-                </div>
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <strong className="text-white flex items-center gap-2 mb-1"><CameraIcon className="w-4 h-4 text-pink-400" /> 4. VISUAL SENSORS</strong>
-                  <p className="text-xs text-gray-400">Upload photos. Have the Mechanic scan your engine. Have the Lawyer read a lease. We analyze consequences — not just descriptions.</p>
-                </div>
-              </div>
-              <button onClick={() => setOnboardingStep(2)} className="w-full py-4 bg-blue-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-blue-500 transition-all">
-                Acknowledge & Continue <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 2: Calibrate HUD */}
-          {onboardingStep === 2 && (
-            <div className="animate-in fade-in slide-in-from-right-8 duration-300">
-              <div className="flex items-center gap-4 mb-6">
-                <Sliders className="w-10 h-10 text-purple-500" />
-                <div>
-                  <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">Calibrate HUD</h2>
-                  <p className="text-purple-400 text-xs font-bold uppercase tracking-widest mt-1">Interface Setup</p>
-                </div>
-              </div>
-              <div className="space-y-6 mb-8">
-
-                {/* Vibe select — keys aligned with backend VIBE_STYLES */}
-                <div>
-                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Communication Style</p>
-                  <select
-                    value={communicationStyle}
-                    onChange={(e) => handleVibeChange(e.target.value)}
-                    className="w-full bg-white/10 text-white p-4 rounded-xl font-bold border border-white/10"
-                  >
-                    {VIBE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label} — {opt.sublabel}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Font size */}
-                <div>
-                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Text Display Size</p>
-                  <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Type className="w-5 h-5 text-blue-400" />
-                      <span className="font-bold">Text Size</span>
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-widest text-blue-400">Level {fontLevel}</span>
-                  </button>
-                </div>
-
-                {/* Voice toggle */}
-                <div>
-                  <p className="text-xs text-gray-400 uppercase font-black tracking-widest mb-3">Voice Output</p>
-                  <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
-                    <div className="flex items-center gap-3">
-                      {isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}
-                      <span className="font-bold">Voice System</span>
-                    </div>
-                    <span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                      {isVoiceEnabled ? 'ON' : 'MUTED'}
-                    </span>
-                  </button>
-                </div>
-              </div>
-              <button onClick={() => setOnboardingStep(3)} className="w-full py-4 bg-purple-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-purple-500 transition-all">
-                Confirm Settings <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 3: Security Lock */}
-          {onboardingStep === 3 && (
-            <div className="animate-in fade-in slide-in-from-right-8 duration-300">
-              <div className="flex items-center gap-4 mb-6">
-                <Lock className="w-10 h-10 text-red-500" />
-                <div>
-                  <h2 className="text-white font-black text-2xl uppercase tracking-widest leading-none">Security Lock</h2>
-                  <p className="text-red-400 text-xs font-bold uppercase tracking-widest mt-1">Device Authorization</p>
-                </div>
-              </div>
-              <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-2xl mb-8">
-                <h3 className="text-red-500 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" /> DEVICE LIMIT DETECTED
-                </h3>
-                <p className="text-gray-300 text-sm leading-relaxed">
-                  Your LYLO OS clearance is cryptographically tied to your specific hardware. To ensure peak server performance and ironclad privacy, your account is strictly limited to <strong>two (2) active devices</strong>.
-                  <br /><br />
-                  Any unauthorized attempt to breach this limit from a third device will result in an immediate access denial. Do not share your clearance credentials.
-                </p>
-              </div>
-              <button onClick={completeOnboarding} className="w-full py-4 bg-green-600 text-white font-black uppercase rounded-xl tracking-widest flex justify-center items-center gap-2 hover:bg-green-500 transition-all">
-                Initialize System <CheckCircle className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ===========================================================================
-  // INSTALL MODAL — one-time popup, shown once per device, dismissed to dropdown
-  // ===========================================================================
-  const InstallModal = () => (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[999998] flex items-end justify-center p-4 animate-in fade-in duration-300">
-      <div className="bg-[#111] border border-blue-500/40 rounded-3xl w-full max-w-sm p-6 mb-4 shadow-[0_0_60px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 duration-300">
-        <div className="flex items-center gap-4 mb-5">
-          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg">
-            <Shield className="w-7 h-7 text-white" />
-          </div>
-          <div>
-            <h2 className="text-white font-black text-lg uppercase tracking-widest leading-none">Install LYLO OS</h2>
-            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-1">Add to Home Screen for Full Access</p>
-          </div>
-        </div>
-        <p className="text-gray-300 text-sm mb-6 leading-relaxed">
-          Install for instant access, offline mode, and the full bodyguard experience — no browser needed.
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={handleInstallClick}
-            className="flex-1 py-4 bg-blue-600 text-white font-black uppercase rounded-xl tracking-widest text-sm hover:bg-blue-500 transition-all"
-          >
-            Install Now
-          </button>
-          <button
-            onClick={dismissInstallModal}
-            className="py-4 px-5 bg-white/5 text-gray-400 font-bold rounded-xl text-sm hover:bg-white/10 transition-all"
-          >
-            Later
-          </button>
-        </div>
-        <p className="text-center text-[10px] text-gray-600 mt-4 uppercase tracking-widest">
-          Find this again in the menu ☰
-        </p>
-      </div>
-    </div>
-  );
-
-  // ===========================================================================
-  // MAIN OS SHELL
-  // ===========================================================================
-  return (
-    <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
-
-      {/* One-time install modal — shown once after first login, then available in dropdown */}
-      {showInstallModal && <InstallModal />}
-
-      {/* ── TOP BAR ─────────────────────────────────────────────────────────── */}
-      <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
-        <div className="flex items-center justify-between">
-
-          {/* Left: back + hamburger */}
-          <div className="relative flex gap-2 z-10">
-            {!showPersonaGrid && (
-              <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            )}
-            <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
-              <Menu className="w-5 h-5" />
-            </button>
-
-            {/* Dropdown */}
-            {showDropdown && (
-              <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
-
-                {/* Vibe select — keys aligned with backend VIBE_STYLES */}
-                <div className="mb-6">
-                  <p className="text-[10px] text-gray-500 uppercase font-black mb-3">Communication Style</p>
-                  <select
-                    value={communicationStyle}
-                    onChange={(e) => handleVibeChange(e.target.value)}
-                    className="w-full bg-white/10 text-white p-3 rounded-xl font-bold mb-4"
-                  >
-                    {VIBE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mb-6 space-y-3">
-                  <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Type className="w-5 h-5 text-blue-400" />
-                      <span className="font-bold">Text Size</span>
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Level {fontLevel}</span>
-                  </button>
-
-                  <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors">
-                    <div className="flex items-center gap-3">
-                      {isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}
-                      <span className="font-bold">Voice Output</span>
-                    </div>
-                    <span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                      {isVoiceEnabled ? 'ON' : 'OFF'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(1); }}
-                    className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Info className="w-5 h-5 text-blue-400" />
-                      <span className="font-bold">System Briefing</span>
-                    </div>
-                  </button>
-
-                  {canInstall && (
-                    <button
-                      onClick={() => { setShowDropdown(false); handleInstallClick(); }}
-                      className="w-full p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl text-white flex items-center justify-between hover:bg-blue-600/20 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <ArrowRight className="w-5 h-5 text-blue-400" />
-                        <span className="font-bold">Install LYLO OS</span>
-                      </div>
-                      <span className="text-[9px] text-blue-400 font-black uppercase tracking-widest">Home Screen</span>
-                    </button>
-                  )}
-                </div>
-
-                <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl">
-                  <LogOut className="w-4 h-4" /> Terminate Session
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Center: Logo */}
-          <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
-            <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">
-              L<span className={getPersonaColorClass(activePersona, 'text')}>Y</span>LO
-            </h1>
-            <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
-          </div>
-
-          {/* Right: user chip + crisis button */}
-          <div className="flex items-center gap-2 z-10">
-            <div className="flex flex-col items-end justify-center mr-1">
-              <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
-              <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
-            </div>
-            <button
-              onClick={() => setShowCrisisShield(true)}
-              className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"
-            >
-              <Shield className="w-5 h-5 fill-current" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── CRISIS SHIELD MODAL ──────────────────────────────────────────────── */}
-      {showCrisisShield && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100002] flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-red-500/50 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3">
-                <Shield className="w-8 h-8 text-red-500 fill-current" />
-                <div>
-                  <h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2>
-                  <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mt-1">Direct Federal & Professional Links</p>
-                </div>
-              </div>
-              <button onClick={() => setShowCrisisShield(false)} className="p-2 bg-white/5 rounded-full text-white">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="space-y-4 mb-6">
-              <p className="text-sm text-gray-300">Direct resources for <strong>{activePersona.name}</strong>:</p>
-              <div className="space-y-3">
-                {(CRISIS_LINKS[activePersona.id] || []).map((link, idx) => (
-                  <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="block p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-white font-bold">{link.label}</span>
-                      <ExternalLink className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <p className="text-xs text-gray-400">{link.description}</p>
-                  </a>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setShowCrisisShield(false)} className="w-full py-4 bg-red-600 text-white font-black uppercase rounded-xl tracking-widest">
-              Return to OS
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── BESTIE SETUP MODAL ───────────────────────────────────────────────── */}
-      {showBestieSetup && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100005] flex items-center justify-center p-4">
-          <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(236,72,153,0.15)] text-center">
-            <Heart className="w-12 h-12 text-pink-400 mx-auto mb-4 fill-current" />
-            <h2 className="text-white font-black text-2xl uppercase tracking-widest mb-2">Build Your Bestie</h2>
-            <p className="text-gray-400 text-sm mb-6">Who do you want in your corner?</p>
-
-            {setupStep === 'gender' && (
-              <div className="space-y-4">
-                <button onClick={() => { setTempGender('female'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-pink-400 rounded-2xl text-white font-bold transition-all">
-                  The Girls (Female)
-                </button>
-                <button onClick={() => { setTempGender('male'); setSetupStep('voice'); }} className="w-full p-5 bg-white/5 border border-white/10 hover:border-blue-400 rounded-2xl text-white font-bold transition-all">
-                  The Bros (Male)
-                </button>
-              </div>
-            )}
-
-            {setupStep === 'voice' && tempGender === 'female' && (
-              <div className="space-y-3">
-                <p className="text-xs text-pink-300 uppercase tracking-widest font-bold mb-2">Select Her Voice</p>
-                <button onClick={() => handleBestieSetupComplete('nova')}    className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Nova (Warm & Upbeat)</button>
-                <button onClick={() => handleBestieSetupComplete('shimmer')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Shimmer (Clear & Direct)</button>
-                <button onClick={() => handleBestieSetupComplete('alloy')}   className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Alloy (Neutral & Calm)</button>
-              </div>
-            )}
-
-            {setupStep === 'voice' && tempGender === 'male' && (
-              <div className="space-y-3">
-                <p className="text-xs text-blue-300 uppercase tracking-widest font-bold mb-2">Select His Voice</p>
-                <button onClick={() => handleBestieSetupComplete('onyx')}  className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Onyx (Deep & Serious)</button>
-                <button onClick={() => handleBestieSetupComplete('echo')}  className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Echo (Warm & Friendly)</button>
-                <button onClick={() => handleBestieSetupComplete('fable')} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white">Fable (Expressive & British)</button>
-              </div>
-            )}
-
-            <button onClick={() => { setShowBestieSetup(false); setSetupStep('gender'); }} className="mt-6 text-gray-500 text-xs font-bold uppercase">
-              Cancel Setup
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── CHAT AREA ────────────────────────────────────────────────────────── */}
-      <div
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto relative p-4 space-y-6"
-        style={{ paddingBottom: previewUrl ? '420px' : '320px' }}
-      >
-
-        {/* Persona grid */}
-        {showPersonaGrid && (
-          <div className="grid grid-cols-2 gap-3">
-            {PERSONAS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => handlePersonaChange(p)}
-                className={`p-6 rounded-3xl border flex flex-col items-center gap-4 transition-all ${
-                  activePersona.id === p.id
-                    ? `${getPersonaColorClass(p, 'bg')} border-transparent`
-                    : 'bg-white/5 border-white/10'
-                }`}
-              >
-                <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getPersonaColorClass(p, 'text')}`} />
-                <span className="text-[10px] text-white font-black uppercase tracking-widest text-center">{p.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Messages */}
-        {messages.map((msg, idx) => {
-          const isLatestBot = msg.sender === 'bot' && idx === messages.length - 1;
-          const suggestion  = isLatestBot && !msg.imageUrl
-            ? detectExpertSuggestion(messages, activePersona.id, userTier)
-            : null;
-
-          return (
-            <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-
-              {msg.imageUrl && (
-                <div className="mb-2 max-w-[85%] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
-                  <img src={msg.imageUrl} alt="Uploaded" className="w-full h-auto object-cover max-h-[300px]" />
-                </div>
-              )}
-
-              <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${
-                msg.sender === 'user'
-                  ? `${getPersonaColorClass(activePersona, 'bg')} text-white font-bold rounded-tr-none`
-                  : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'
-              }`}>
-                {/* Typewriter: show streaming text while this msg is animating, else full content */}
-                {msg.sender === 'bot' && msg.id === streamingMsgId
-                  ? (
-                    <span>
-                      {streamingText}
-                      <span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" />
-                    </span>
-                  )
-                  : msg.content
+def create_user_id(email: str) -> str:
+    return hashlib.sha256(email.encode()).hexdigest()[:16]
+
+# ---------------------------------------------------------
+# WAITLIST & PAID QUEUE SYSTEM
+# ---------------------------------------------------------
+class WaitlistRequest(BaseModel):
+    email: str
+
+WAITLIST_FILE   = "waitlist.json"
+PAID_QUEUE_FILE = "paid_queue.json"
+
+try:
+    with open(WAITLIST_FILE, "r") as f:
+        WAITLIST_DB = set(json.load(f))
+except Exception:
+    WAITLIST_DB = set()
+
+try:
+    with open(PAID_QUEUE_FILE, "r") as f:
+        PAID_QUEUE_DB = json.load(f)
+except Exception:
+    PAID_QUEUE_DB = {}
+
+@app.post("/join-waitlist")
+async def join_waitlist(request: WaitlistRequest):
+    email = request.email.lower().strip()
+    WAITLIST_DB.add(email)
+    try:
+        with open(WAITLIST_FILE, "w") as f:
+            json.dump(list(WAITLIST_DB), f)
+    except Exception as e:
+        logger.error(f"Failed to save waitlist: {e}")
+    return {"status": "success", "message": "Spot Secured"}
+
+@app.get("/view-waitlist/{admin_email}")
+async def view_waitlist(admin_email: str):
+    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {"status": "AUTHORIZED", "total_waiting": len(WAITLIST_DB), "emails": list(WAITLIST_DB)}
+    return {"error": "UNAUTHORIZED ACCESS"}
+
+@app.get("/view-paid-queue/{admin_email}")
+async def view_paid_queue(admin_email: str):
+    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {"status": "AUTHORIZED", "total_pending": len(PAID_QUEUE_DB), "pending_users": PAID_QUEUE_DB}
+    return {"error": "UNAUTHORIZED ACCESS"}
+
+# ---------------------------------------------------------
+# STRIPE WEBHOOK
+# ---------------------------------------------------------
+@app.post("/webhook")
+async def stripe_webhook(request: Request):
+    payload    = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event['type'] == 'checkout.session.completed':
+        session        = event['data']['object']
+        customer_email = session.get('customer_details', {}).get('email')
+        amount_total   = session.get('amount_total', 0)
+
+        if customer_email:
+            email_lower = customer_email.lower().strip()
+            new_tier = "free"
+
+            if amount_total in [199, 1999]:   new_tier = "pro"
+            elif amount_total in [499, 4999]: new_tier = "elite"
+            elif amount_total >= 999:         new_tier = "max"
+
+            if email_lower in ELITE_USERS:
+                ELITE_USERS[email_lower]["tier"] = new_tier
+                logger.info(f"💰 STRIPE: Upgraded {email_lower} to {new_tier.upper()}")
+            else:
+                PAID_QUEUE_DB[email_lower] = {
+                    "tier": new_tier,
+                    "name": email_lower.split("@")[0].capitalize(),
+                    "status": "pending_admin_approval"
                 }
-                {msg.sender === 'bot' && msg.confidenceScore && msg.id !== streamingMsgId && (
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1">
-                      <span>System Confidence</span>
-                      <span className="text-green-400">{msg.confidenceScore}%</span>
-                    </div>
-                    <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500" style={{ width: `${msg.confidenceScore}%` }} />
-                    </div>
-                  </div>
-                )}
-              </div>
+                try:
+                    with open(PAID_QUEUE_FILE, "w") as f:
+                        json.dump(PAID_QUEUE_DB, f)
+                except Exception as e:
+                    logger.error(f"Failed to save paid queue: {e}")
+                logger.info(f"💰 STRIPE: New user {email_lower} → MANUAL APPROVAL QUEUE")
 
-              {suggestion && (
-                <div className="mt-4 w-full max-w-[85%] p-5 bg-indigo-600 border border-indigo-400 rounded-[32px] shadow-2xl animate-in zoom-in-95">
-                  <div className="flex items-center gap-3 mb-4 text-white">
-                    <Zap className="w-4 h-4 fill-current" />
-                    <p className="text-[11px] font-black uppercase tracking-widest">Expert Transition Found</p>
-                  </div>
-                  <button onClick={() => handlePersonaChange(suggestion)} className="w-full py-4 bg-white text-indigo-700 text-xs font-black uppercase rounded-2xl flex items-center justify-center gap-3">
-                    Transfer to {suggestion.name} <ArrowRight className="w-5 h-5" />
-                  </button>
+            if email_lower in WAITLIST_DB:
+                WAITLIST_DB.discard(email_lower)
+                try:
+                    with open(WAITLIST_FILE, "w") as f:
+                        json.dump(list(WAITLIST_DB), f)
+                except Exception as e:
+                    logger.error(f"Waitlist removal error: {e}")
+
+    return {"status": "success"}
+
+# ---------------------------------------------------------
+# SCAM DETECTION
+# ---------------------------------------------------------
+def analyze_scam_indicators(text: str) -> List[str]:
+    indicators = []
+    t = text.lower()
+    patterns = {
+        "High Urgency":            ["immediate", "hurry", "suspended", "warned", "final notice", "30 minutes"],
+        "Payment Pressure":        ["gift card", "wire", "zelle", "venmo", "western union", "crypto", "bitcoin"],
+        "Authority Impersonation": ["irs", "fbi", "police", "social security", "legal department", "attorney general"],
+        "Phishing Style":          ["bit.ly", "tinyurl", "linktr.ee", "verify account", "unusual login"]
+    }
+    for category, keywords in patterns.items():
+        if any(k in t for k in keywords):
+            indicators.append(category)
+    return indicators
+
+# ---------------------------------------------------------
+# EMAIL MISSION REPORT
+# ---------------------------------------------------------
+async def send_mission_report_email(to_email: str, content: str, persona_name: str):
+    if not SMTP_USERNAME or not SMTP_PASSWORD:
+        logger.warning("⚠️ SMTP not set — Mission Report mock-dispatched.")
+        return
+
+    try:
+        msg = MIMEMultipart()
+        msg['From']    = f"LYLO OS <{SMTP_USERNAME}>"
+        msg['To']      = to_email
+        msg['Subject'] = f"🛡️ URGENT: Lylo Tactical Report - {persona_name.capitalize()}"
+
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; background-color: #000; color: #fff; padding: 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #111; border: 1px solid #333; padding: 20px; border-radius: 10px;">
+                <h2 style="color: #4F46E5; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">Lylo Incident Summary</h2>
+                <p style="color: #aaa; font-size: 12px; font-weight: bold;">SPECIALIST: {persona_name.upper()}</p>
+                <div style="background-color: #222; padding: 15px; border-radius: 5px; margin-top: 20px;">
+                    <p style="white-space: pre-wrap; font-size: 14px; line-height: 1.6;">{content}</p>
                 </div>
-              )}
+                <p style="color: #666; font-size: 10px; margin-top: 20px; text-align: center;">LYLO OS SECURITY PROTOCOL ACTIVE - DO NOT REPLY</p>
             </div>
-          );
-        })}
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html_content, 'html'))
 
-        {/* Loading dots */}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex items-center gap-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
-        )}
-      </div>
+        def _send():
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.starttls()
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+            server.quit()
 
-      {/* ── BOTTOM INPUT BAR ─────────────────────────────────────────────────── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
+        await asyncio.to_thread(_send)
+        logger.info(f"✅ Mission Report sent to {to_email}")
+    except Exception as e:
+        logger.error(f"❌ Email Dispatch Failed: {e}")
 
-        {/* Image preview overlay */}
-        {previewUrl && (
-          <div className="absolute bottom-[100%] left-0 right-0 flex flex-col items-center pb-4 pointer-events-none">
-            <div className="pointer-events-auto flex flex-col items-center gap-3 w-full max-w-md px-4">
+# ---------------------------------------------------------
+# RECURSIVE MEMORY (PINECONE) — EPISODIC STORAGE
+# ---------------------------------------------------------
+async def store_intelligence_sync(user_id: str, content: str, role: str):
+    """Stores a single conversation turn as an episodic memory vector."""
+    if not memory_index or not openai_client or len(content.strip()) < 10:
+        return
+    try:
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=content[:500],
+            dimensions=1024
+        )
+        embedding  = response.data[0].embedding
+        memory_id  = f"{user_id}_{datetime.now().timestamp()}"
+        metadata   = {
+            "user_id":   user_id,
+            "role":      role,
+            "content":   content[:400],
+            "timestamp": datetime.now().isoformat(),
+            "record_type": "episodic"
+        }
+        memory_index.upsert([(memory_id, embedding, metadata)])
+    except Exception as e:
+        logger.error(f"Memory Sync Error: {e}")
 
-              <div className="flex items-center justify-between bg-indigo-900/90 backdrop-blur-xl border border-indigo-500/50 p-3 rounded-xl w-full shadow-[0_0_30px_rgba(79,70,229,0.3)] animate-in slide-in-from-bottom-2">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-indigo-400" />
-                  <span className="text-[10px] text-white font-black uppercase tracking-widest">Send Copy to Email?</span>
-                </div>
-                <button
-                  onClick={() => setEmailConsent(!emailConsent)}
-                  className={`w-10 h-5 rounded-full transition-all relative ${emailConsent ? 'bg-green-500' : 'bg-gray-600'}`}
-                >
-                  <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${emailConsent ? 'right-1' : 'left-1'}`} />
-                </button>
-              </div>
 
-              <div className="relative group animate-in slide-in-from-bottom-2">
-                <img src={previewUrl} className="w-24 h-24 object-cover rounded-2xl border-2 border-indigo-500 shadow-2xl" alt="Preview" />
-                <button onClick={() => setSelectedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-400 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
+    """
+    Retrieves the top-5 episodic memory fragments most semantically similar
+    to the current query. Profile records are excluded via metadata filter.
+    Returns a newline-joined string of memory fragments.
+    """
+    if not memory_index or not openai_client:
+        return ""
+    try:
+        response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query[:200],
+            dimensions=1024
+        )
+        results = memory_index.query(
+            vector=response.data[0].embedding,
+            filter={
+                "user_id":     {"$eq": user_id},
+                "record_type": {"$eq": "episodic"}   # Exclude profile records
+            },
+            top_k=5,
+            include_metadata=True
+        )
+        memories = [
+            f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}"
+            for m in results.matches
+            if m.score > 0.50
+        ]
+        return "\n".join(memories)
+    except Exception as e:
+        logger.error(f"Memory Retrieval Error: {e}")
+        return ""
 
-        <div className="max-w-md mx-auto space-y-3">
 
-          {/* ── Row 1: VOICE + READING MODE TOGGLE + SPEAKER ───────────── */}
-          <div className="flex gap-2">
-            {/* Big voice button — primary input method */}
-            <button
-              onClick={handleWalkieTalkieMic}
-              disabled={loading}
-              className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${
-                isRecording
-                  ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]'
-                  : 'bg-white text-black hover:bg-gray-100'
-              } ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}
-            >
-              {isRecording
-                ? <><MicOff className="w-5 h-5" /> Tap to Send</>
-                : <><Mic className="w-5 h-5" /> Hold to Speak</>
-              }
-            </button>
+# ---------------------------------------------------------
+# PROACTIVE LEARNING ENGINE — PROFILE SYNTHESIS & RETRIEVAL
+# ---------------------------------------------------------
 
-            {/* Reading mode toggle */}
-            <button
-              onClick={() => {
-                if (streamingMsgId) bailoutTypewriter();  // ← BAILOUT: snap to full text instantly
-                const next = readingMode === 'sync' ? 'instant' : 'sync';
-                setReadingMode(next);
-                localStorage.setItem('lylo_reading_mode', next);
-              }}
-              className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]"
-              title={readingMode === 'sync' ? 'Sync mode: words match voice — tap for Instant' : 'Instant mode: all words at once, then voice — tap for Sync'}
-            >
-              {readingMode === 'sync' ? (
-                <>
-                  <Type className="w-4 h-4 text-indigo-400" />
-                  <span className="text-indigo-400">Sync</span>
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  <span className="text-yellow-400">Fast</span>
-                </>
-              )}
-            </button>
+async def retrieve_user_profile(user_id: str) -> dict:
+    """
+    Fetches the user's synthesized identity profile directly from Pinecone
+    using a deterministic vector ID (no semantic search needed).
 
-            {/* Speaker toggle */}
-            <button
-              onClick={() => {
-                if (streamingMsgId) bailoutTypewriter();  // ← BAILOUT: snap to full text instantly
-                const next = !isVoiceEnabled;
-                setIsVoiceEnabled(next);
-                localStorage.setItem('lylo_voice_enabled', String(next));
-                if (!next && currentlyPlayingAudioRef.current) {
-                  currentlyPlayingAudioRef.current.pause();
-                  currentlyPlayingAudioRef.current.currentTime = 0;
-                  setIsSpeaking(false);
+    Returns the profile dict, or {} if no profile exists yet.
+    """
+    if not memory_index:
+        return {}
+
+    profile_id = f"{user_id}{PROFILE_VECTOR_ID_SUFFIX}"
+
+    try:
+        result = memory_index.fetch(ids=[profile_id])
+        vectors = result.get("vectors", {})
+
+        if profile_id in vectors:
+            metadata = vectors[profile_id].get("metadata", {})
+            profile_json = metadata.get("profile_json", "")
+
+            if profile_json:
+                profile = json.loads(profile_json)
+                logger.info(f"✅ Profile loaded for user {user_id[:8]}...")
+                return profile
+
+        logger.info(f"ℹ️ No profile yet for user {user_id[:8]}... (will synthesize at interaction 10)")
+        return {}
+
+    except Exception as e:
+        logger.error(f"Profile Retrieval Error: {e}")
+        return {}
+
+
+async def synthesize_user_profile(user_id: str, user_name: str):
+    """
+    Background task: Reads the user's most recent episodic memories,
+    sends them to OpenAI for structured profile extraction, and stores
+    the resulting JSON profile back to Pinecone as a single fetchable record.
+
+    Triggered every SYNTHESIS_INTERVAL interactions (default: 10).
+    Runs as asyncio.create_task() — non-blocking.
+    """
+    if not memory_index or not openai_client:
+        logger.warning("⚠️ Profile synthesis skipped — Pinecone or OpenAI unavailable.")
+        return
+
+    logger.info(f"🧠 SYNTHESIS TRIGGERED for {user_name} ({user_id[:8]}...)")
+
+    try:
+        # Step 1: Pull recent episodic memories as raw text
+        anchor_response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=PROFILE_EMBEDDING_ANCHOR,
+            dimensions=1024
+        )
+        anchor_vector = anchor_response.data[0].embedding
+
+        results = memory_index.query(
+            vector=anchor_vector,
+            filter={
+                "user_id":     {"$eq": user_id},
+                "record_type": {"$eq": "episodic"}
+            },
+            top_k=SYNTHESIS_MEMORY_WINDOW,
+            include_metadata=True
+        )
+
+        if not results.matches:
+            logger.info(f"ℹ️ Synthesis skipped — insufficient memory data for {user_id[:8]}...")
+            return
+
+        # Step 2: Assemble memory text for synthesis prompt
+        memory_fragments = [
+            f"[{m.metadata.get('role','?').upper()}] {m.metadata.get('content', '')}"
+            for m in results.matches
+        ]
+        memory_text = "\n".join(memory_fragments)
+
+        synthesis_user_msg = PROFILE_SYNTHESIS_USER_TEMPLATE.format(
+            memory_text=memory_text
+        )
+
+        # Step 3: Call OpenAI to synthesize the profile
+        synthesis_response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",   # Fast + cheap for background synthesis
+            messages=[
+                {"role": "system", "content": PROFILE_SYNTHESIS_SYSTEM_PROMPT},
+                {"role": "user",   "content": synthesis_user_msg}
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw_profile = synthesis_response.choices[0].message.content
+        profile_dict = json.loads(raw_profile)
+
+        # Inject the known name if synthesis missed it
+        if not profile_dict.get("name"):
+            profile_dict["name"] = user_name
+
+        # Stamp synthesis time
+        profile_dict["last_updated"] = datetime.now().isoformat()
+
+        # Step 4: Store the profile back to Pinecone with a deterministic ID
+        # We reuse the embedding anchor vector so the profile can be fetch()'d directly
+        profile_id = f"{user_id}{PROFILE_VECTOR_ID_SUFFIX}"
+        profile_metadata = {
+            "user_id":      user_id,
+            "record_type":  "profile",
+            "profile_json": json.dumps(profile_dict),   # Full JSON in metadata
+            "last_updated": profile_dict["last_updated"]
+        }
+
+        memory_index.upsert([(profile_id, anchor_vector, profile_metadata)])
+
+        logger.info(
+            f"✅ SYNTHESIS COMPLETE for {user_name} | "
+            f"Projects: {len(profile_dict.get('projects', []))} | "
+            f"Goals: {len(profile_dict.get('goals', []))}"
+        )
+
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Profile Synthesis — JSON parse failed: {e}")
+    except Exception as e:
+        logger.error(f"❌ Profile Synthesis Error: {e}")
+
+
+# ---------------------------------------------------------
+# PERSONALIZED SEARCH (TAVILY)
+# ---------------------------------------------------------
+async def search_personalized_web(query: str, location: str = "") -> str:
+    if not tavily_client:
+        return ""
+    try:
+        response = tavily_client.search(
+            query=f"{query} {location}".strip(),
+            search_depth="advanced",
+            max_results=5,
+            include_answer=True
+        )
+        results = [f"CONSENSUS SEARCH: {response.get('answer', 'Multiple sources found.')}"]
+        for res in response.get("results", []):
+            results.append(f"- {res['title']}: {res['content'][:300]}")
+        return "\n".join(results)
+    except Exception as e:
+        logger.error(f"Search Error: {e}")
+        return ""
+
+# ---------------------------------------------------------
+# AI ENGINE CALLS — DUAL-PASS CONSENSUS
+# ---------------------------------------------------------
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash"):
+    if not gemini_ready:
+        return None
+    try:
+        model         = genai.GenerativeModel(model_name)
+        content_parts = [prompt]
+        if image_b64:
+            import PIL.Image
+            img_data = base64.b64decode(image_b64)
+            content_parts.append(PIL.Image.open(BytesIO(img_data)))
+        response = await asyncio.to_thread(model.generate_content, content_parts)
+        text = response.text.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed = json.loads(text)
+            parsed["model"] = f"LYLO-VISION ({model_name})"
+            return parsed
+        except Exception:
+            return {"answer": response.text, "confidence_score": 85, "model": f"LYLO-VISION ({model_name})"}
+    except Exception as e:
+        logger.error(f"Gemini Brain Error: {e}")
+        return None
+
+
+async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: str = "gpt-4o-mini"):
+    if not openai_client:
+        return None
+    try:
+        content = [{"type": "text", "text": prompt}]
+        if image_b64:
+            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
+
+        response = await openai_client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the LYLO Intelligence Engine. "
+                        "You MUST follow the USER IDENTITY CORE (Layer 0), GLOBAL DIRECTIVE (Layer 1), "
+                        "PERSONA SKIN (Layer 2), INTENT LOGIC (Layer 3), and RUNTIME CONTEXT (Layer 4) "
+                        "provided in the user prompt exactly and in order. "
+                        "Output ONLY valid raw JSON. No markdown. No preamble."
+                    )
+                },
+                {"role": "user", "content": content}
+            ],
+            response_format={"type": "json_object"},
+        )
+        result = json.loads(response.choices[0].message.content)
+        result["model"] = f"LYLO-CORE ({model_name})"
+        return result
+    except Exception as e:
+        logger.error(f"OpenAI Brain Error: {e}")
+        return None
+
+
+# ---------------------------------------------------------
+# PROMPT ASSEMBLY ENGINE — 5-LAYER ARCHITECTURE
+# Layer 0: USER_IDENT_CORE     — Who this person is (from synthesized profile)
+# Layer 1: GLOBAL DIRECTIVE    — Ironclad rules for all personas
+# Layer 2: PERSONA SKIN        — Identity, voice, domain, boundaries, style
+# Layer 3: INTENT LOGIC        — Adaptive state recognition
+# Layer 4: RUNTIME CONTEXT     — Live: time, vault, search, proactive, image, message
+# ---------------------------------------------------------
+def assemble_prompt(
+    *,
+    persona:           str,
+    user_name:         str,
+    tier:              str,
+    msg:               str,
+    memories:          str,
+    search_intel:      str,
+    indicators:        List[str],
+    image_b64:         Optional[str],
+    current_real_time: str,
+    vibe:              str,
+    user_profile:      dict,        # Synthesized profile from Pinecone
+    user_location:     str = "",    # For proactive location trigger
+    user_email:        str = "",    # NEW — used to pull warm-start registry entry
+) -> str:
+
+    # ── Resolve persona content ────────────────────────────────────────────
+    p_skin   = PERSONA_DEFINITIONS.get(persona, PERSONA_DEFINITIONS["guardian"])
+    p_ext    = PERSONA_EXTENDED.get(persona, "")
+    p_intent = INTENT_LOGIC.get(persona, "")
+    v_style  = VIBE_STYLES.get(vibe, VIBE_STYLES["standard"])
+
+    # ── LAYER 0: USER_IDENT_CORE ───────────────────────────────────────────
+    # Check warm-start registry first. If found, it overrides/enriches the
+    # synthesized profile. Warm-start wins on every field conflict.
+    warm_start = get_warm_start_profile(user_email) if user_email else {}
+    layer_0    = build_user_ident_core(user_profile, warm_start=warm_start)
+
+    # ── v27.0: ACCOUNTABILITY SENTINEL ───────────────────────────────────
+    # MAX PRIORITY block. Fires 24/7/365 for ALL users — no date gate.
+    # Hard persona swap on any self-sabotage signal:
+    #   procrastination, poor health choices, mission avoidance, rationalization.
+    # Passes active persona + user's name for dynamic swap instruction.
+    accountability_sentinel_block = build_accountability_sentinel(
+        user_email=user_email,
+        persona=persona,
+        user_name=user_name,
+    )
+
+    # ── FIX 2 (DRIFT): STEALTH SHIELD ────────────────────────────────────
+    # Active monitoring block for Chris's sessions only.
+    # Injected at the BOTTOM of the prompt — highest recency weight.
+    # Overrides the softer No-Recite guidance in PERSONA_EXTENDED.
+    stealth_shield_block = build_stealth_shield(user_email)
+
+    # ── FIX 2: ANALOGY BRIDGE ─────────────────────────────────────────────
+    # Injected for Tutor and Pastor ONLY.
+    # Mandates trade-context (knife/blade/forge) as primary analogy vocabulary.
+    analogy_bridge_block = ""
+    if persona in ("tutor", "pastor"):
+        analogy_bridge_block = ANALOGY_BRIDGE_TRADE_CONTEXT
+
+    # ── LAYER 4a: Episodic Memory block ───────────────────────────────────
+    # Empty vault = inject nothing. Never announce an empty vault.
+    if memories and memories.strip():
+        memory_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SHARED CONTEXT — VAULT (treat as natural background knowledge)
+You already know the following from prior exchanges with {user_name}.
+Treat it like a colleague uses notes from a previous meeting.
+DO NOT announce this as a database retrieval. Simply know it.
+If anything contradicts what the user says now, flag naturally:
+"Last time we discussed this, you mentioned X — has something shifted?"
+DO NOT invent vault entries not listed here.
+{memories.strip()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        memory_block = ""
+
+    # ── LAYER 4b: Proactive Trigger ────────────────────────────────────────
+    # Scan episodic memories for time/location signals matching NOW.
+    # If triggered, the AI is commanded to bring it up proactively.
+    proactive_block = ""
+    if memories and memories.strip():
+        triggered, matched = detect_proactive_triggers(
+            memories, current_real_time, user_location
+        )
+        if triggered and matched:
+            proactive_block = build_proactive_directive(
+                matched, current_real_time, user_location
+            )
+
+    # ── LAYER 4c: Search intel block ──────────────────────────────────────
+    if search_intel and search_intel.strip():
+        search_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LIVE SEARCH INTEL — GROUND TRUTH (prioritize over base knowledge)
+Retrieved from the live web for this query.
+If it conflicts with base knowledge, defer to this data.
+{search_intel.strip()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        search_block = ""
+
+    # ── LAYER 4d: Scam indicators ─────────────────────────────────────────
+    if indicators:
+        scam_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠ THREAT INDICATORS DETECTED IN USER MESSAGE
+Flagged pattern categories: {', '.join(indicators)}
+MUST proactively address. If scam_detected is warranted,
+lead your answer with [🚨 SCAM ALERT] before any other content.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        scam_block = ""
+
+    # ── LAYER 4e: Visual analysis ─────────────────────────────────────────
+    if image_b64:
+        visual_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VISUAL INTELLIGENCE PROTOCOL — MANDATORY (image uploaded)
+Your FIRST sentence must address the most critical detail visible.
+DO NOT describe generically — assess it through your expert lens:
+  GUARDIAN  → Phishing UI, fake logos, spoofed interfaces, fraud indicators.
+  DOCTOR    → Injury severity, wound staging, skin presentation, trauma risk.
+  MECHANIC  → Wear patterns, failure modes, missing hardware, corrosion.
+  LAWYER    → Suspicious contract language, missing clauses, trap terms.
+  WEALTH    → Invoice irregularities, hidden fees, billing errors, fraud.
+  VITALITY  → Form breakdown, posture flaws, food macro estimation.
+  CAREER    → Resume formatting issues, red-flag language, ATS killers.
+  ALL OTHER → Apply your domain expertise to the most critical detail.
+If ambiguous, state what you CAN assess + what would sharpen analysis.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    else:
+        visual_block = ""
+
+    # ── Tier depth ────────────────────────────────────────────────────────
+    tier_depth = {
+        "free":  "Clear, concise, high-value core response. No padding.",
+        "pro":   "Thorough, tactically detailed response with full reasoning.",
+        "elite": "Comprehensive expert-level analysis. Leave no angle unaddressed.",
+        "max":   "Exhaustive senior-expert analysis. Full picture, full depth."
+    }.get(tier, "Clear, useful response.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # FINAL ASSEMBLED PROMPT — 5 LAYERS + HARD-FIX INJECTIONS
+    # Injection order:
+    #   [SENTINEL] MAX PRIORITY — overrides persona vibe on Sundays for Chris
+    #   [LAYER 0]  User identity — specialist knows the human before the rules
+    #   [LAYER 1]  Global directive — ironclad laws all 12 seats inherit
+    #   [LAYER 2]  Persona skin + Seat override + Vibe
+    #   [FIX 2]    Analogy Bridge (tutor/pastor only)
+    #   [FIX 5]    Partner Energy — all 12 seats
+    #   [LAYER 3]  Intent recognition
+    #   [LAYER 4]  Runtime context (memory, search, scam, visual)
+    # ══════════════════════════════════════════════════════════════════════
+    return f"""
+{accountability_sentinel_block}
+{layer_0}
+
+{GLOBAL_DIRECTIVE}
+
+══════════════════════════════════════════════════════════════════
+LAYER 2 — YOUR SEAT AT THE BOARD (PERSONA IDENTITY & EXPERTISE)
+══════════════════════════════════════════════════════════════════
+{p_skin}
+
+SPECIALIZED SEAT OVERRIDE:
+{p_ext}
+
+COMMUNICATION STYLE FOR THIS SESSION ({vibe.upper()} MODE):
+{v_style}
+
+{analogy_bridge_block}
+{PARTNER_ENERGY_DIRECTIVE}
+
+══════════════════════════════════════════════════════════════════
+LAYER 3 — STATE & INTENT RECOGNITION (READ BEFORE RESPONDING)
+══════════════════════════════════════════════════════════════════
+Identify which STATE the user is in from the decision tree below
+and apply the matching response mode. Getting this wrong is the
+primary cause of poor outputs.
+
+{p_intent}
+
+══════════════════════════════════════════════════════════════════
+LAYER 4 — RUNTIME CONTEXT (LIVE SESSION DATA)
+══════════════════════════════════════════════════════════════════
+USER: {user_name}  |  TIER: {tier.upper()}  |  DEPTH: {tier_depth}
+CURRENT DATE & TIME: {current_real_time}
+You are live. Never claim a knowledge cutoff. SEARCH INTEL = ground truth.
+
+{proactive_block}{memory_block}{search_block}{scam_block}{visual_block}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USER MESSAGE:
+{msg}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRE-RESPONSE CHECKLIST (run silently before writing):
+  ✔ Did I read Layer 0 and personalize my response to this specific user?
+  ✔ If SUNDAY SENTINEL is active, did I check for self-sabotage signals?
+  ✔ If triggered — did I HARD SWAP to Roastmaster, not just blend tones?
+  ✔ If PROACTIVE MODE is active, did I bring that item up FIRST?
+  ✔ Did I identify the user's intent STATE from Layer 3?
+  ✔ [MECHANIC/DOCTOR] Did I gate for Year/Make/Model before any repair step?
+  ✔ [TUTOR/PASTOR] Did I bridge through blade/forge trade vocabulary first?
+  ✔ [LAWYER] Does my answer contain [ANALYSIS], [RISK], and [TACTICAL MOVE] IN ORDER?
+  ✔ [DOCTOR] Does my answer contain [MOST LIKELY], [PHYSIOLOGY], [PROTOCOL], [ESCALATE WHEN]?
+  ✔ [WEALTH] Does my answer contain [CURRENT STATE], [BLEEDING POINT], [60-DAY PLAN]?
+  ✔ Did I use the user's name naturally at least once?
+  ✔ Did I verify laws, medical claims, or tech facts before stating them?
+  ✔ Did I treat vault memories as natural background — not announced?
+  ✔ Did I prioritize SEARCH INTEL over base knowledge where present?
+  ✔ Did I lead with the MOST CRITICAL information?
+  ✔ Did I flag scam indicators with [🚨 SCAM ALERT] if warranted?
+  ✔ Did I stay in character without suggesting another specialist?
+  ✔ Did my response sound like a partner, not a corporate manual?
+  ✔ Is my output ONLY valid raw JSON — no markdown fences, no preamble?
+
+### MANDATORY EXECUTION PROTOCOL — THE DUAL-CORE RULE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your output is graded on TWO equally weighted criteria. Failing either is a SYSTEM FAILURE.
+
+1. THE SOUL (Partner Logic):
+   You MUST open with a natural, conversational greeting using {user_name}.
+   Address {user_name} as a peer — someone you know, whose situation you've been tracking.
+   Reference their specific context or goals from Layer 0. Not a generic opener.
+   What does this look like in practice? Think of the best advisor you've ever met.
+   They don't walk in and say "Diving straight in." They say "Hey — I've been thinking
+   about what you said last time. Here's where my head is at."
+   BANNED OPENERS:
+     ✗ "Diving straight in..."
+     ✗ "Let's get to it."
+     ✗ "Great question!"
+     ✗ "Certainly!" / "Of course!" / "Absolutely!"
+     ✗ Any opener that could apply to anyone, anywhere, about anything.
+
+2. THE BONES (Structural Headers):
+   ONLY after the greeting, transition to your mandatory headers.
+   The headers are non-negotiable. Skipping one is a SYSTEM FAILURE.
+     ▸ LAWYER    → [ANALYSIS] → [RISK] → [TACTICAL MOVE]
+     ▸ DOCTOR    → [MOST LIKELY] → [PHYSIOLOGY] → [PROTOCOL] → [ESCALATE WHEN]
+     ▸ WEALTH    → [CURRENT STATE] → [BLEEDING POINT] → [60-DAY PLAN]
+     ▸ THERAPIST → [REFLECT] → [IDENTIFY] → [REFRAME] → [EXPERIMENT]
+     ▸ CAREER    → [SITUATION READ] → [LEVERAGE POINTS] → [EXACT PLAY]
+
+THE SEQUENCE IS ALWAYS: SOUL first → BONES after.
+A response with only BONES = a robot. A SYSTEM FAILURE.
+A response with only SOUL = warmth with no tactical value. A SYSTEM FAILURE.
+
+⚠️  CRITICAL FAIL-SAFE — PATTERN INTERRUPT PROTOCOL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The "Natural Greeting" is your first line of defense.
+If {user_name} is rationalizing a lack of discipline, avoiding their goals,
+or self-sabotage-loading — your greeting MUST be a Pattern Interrupt.
+Do NOT be "nice" to a user who is walking away from their own mission.
+
+PATTERN INTERRUPT EXAMPLES:
+  ✓ "{user_name}, I'm going to stop you right there — that's not rest, that's avoidance."
+  ✓ "{user_name}, you and I both know what's happening here. Let's not waste each other's time."
+  ✓ "That's a rationalization, {user_name}. Here's what's actually going on:"
+
+Address {user_name} as a partner who expects the truth — not a client to be soothed.
+Warmth without honesty is not care. It is abandonment dressed as kindness.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ACTION TRIGGER PROTOCOL — v28.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The "action_trigger" field in your JSON output fires physical UI buttons.
+This is not cosmetic. It is the difference between advice and action.
+
+DISPATCH RULES — set "action_trigger" as follows:
+  "email_dispatch"  → Set when:
+    • User is in a wreck, legal dispute, or medical triage situation
+    • ANY high-stakes scenario where documentation protects them
+    • Lawyer: always (TACTICAL MOVE always warrants a paper trail)
+    • Wealth: always (60-DAY PLAN needs to be on record)
+    • Guardian: when scam/fraud/identity threat is detected
+    • Mechanic: always (FIX PROTOCOL should be in their inbox)
+    • Doctor: when symptoms need to be tracked or ER visit is possible
+    If you are not sure — err toward email_dispatch. Documentation never hurts.
+
+  "set_reminder"    → Set when:
+    • Therapist: always (EXPERIMENT needs a scheduled follow-through)
+    • Vitality: always (workout/meal protocol only works with accountability)
+    • Accountability Sentinel fires (self-sabotage detected — force a timer)
+    • Any persona where user commits to a timed action
+
+  null              → Low-stakes informational responses only.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{stealth_shield_block}
+REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
+{get_output_schema(persona)}
+""".strip()
+
+
+# ---------------------------------------------------------
+# MAIN CHAT GATEWAY — 12-SEAT BOARD
+# ---------------------------------------------------------
+@app.post("/chat")
+async def chat(
+    msg:                str        = Form(""),
+    history:            str        = Form("[]"),
+    persona:            str        = Form("guardian"),
+    user_email:         str        = Form(...),
+    user_location:      str        = Form(""),
+    vibe:               str        = Form("standard"),
+    use_long_term_memory: str      = Form("false"),
+    device_id:          str        = Form("unknown"),
+    email_consent:      str        = Form("false"),
+    file:               UploadFile = File(None)
+):
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    user_data   = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
+    tier        = user_data["tier"]
+
+    is_admin = email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+    limit    = 999999 if is_admin else TIER_LIMITS.get(tier, 3)
+
+    # --- DEVICE FINGERPRINT LOCK ---
+    if not is_admin and device_id != "unknown":
+        user_devices = AUTHORIZED_DEVICES[email_lower]
+        if device_id not in user_devices:
+            if len(user_devices) >= MAX_DEVICES_PER_USER:
+                logger.warning(f"🚨 DEVICE BREACH: {email_lower} → 3rd device ({device_id})")
+                return {
+                    "answer": (
+                        "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\n"
+                        "Your LYLO OS clearance is tied to specific hardware. "
+                        "Your account is limited to **two (2) active devices**. "
+                        "Access from this unauthorized third device is denied."
+                    ),
+                    "confidence_score": 100,
+                    "scam_detected": False,
+                    "threat_level": "high",
+                    "usage_info": {"can_send": False}
                 }
-              }}
-              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${
-                isVoiceEnabled
-                  ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]'
-                  : 'bg-white/10 text-gray-400 border border-white/10'
-              }`}
-              title={isVoiceEnabled ? 'Voice On — tap to mute' : 'Voice Off — tap to enable'}
-            >
-              {isVoiceEnabled
-                ? <><Volume2 className="w-4 h-4" /><span>On</span></>
-                : <><VolumeX className="w-4 h-4" /><span>Off</span></>
-              }
-            </button>
-          </div>
+            else:
+                user_devices.add(device_id)
 
-          {/* ── Row 2: Text input + camera + send ────────────────────────── */}
-          <div className="flex gap-2">
+    # --- USAGE LIMIT & UPSELL ---
+    if USAGE_TRACKER[user_id] >= limit:
+        upgrade_msgs = {
+            "free":  "🛡️ **Daily Shield Limit Reached.** Upgrade to **Pro Guardian ($1.99/mo)** for 15 daily messages.",
+            "pro":   "🛡️ **Pro Limit Reached.** Upgrade to **Elite Justice ($4.99/mo)** for 50 messages.",
+            "elite": "🛡️ **Elite Limit Reached.** Upgrade to **Max Unlimited ($9.99/mo)** for unrestricted access.",
+            "max":   "🛡️ **System Cap Reached.** 500 messages hit. Resets at midnight."
+        }
+        return {
+            "answer": upgrade_msgs.get(tier, upgrade_msgs["free"]),
+            "confidence_score": 100,
+            "scam_detected": False,
+            "threat_level": "low",
+            "usage_info": {"can_send": False}
+        }
 
-            {/* Camera */}
-            <div className="relative">
-              <button
-                onClick={() => setShowCameraMenu(!showCameraMenu)}
-                disabled={loading}
-                className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50"
-              >
-                <Camera className="w-6 h-6" />
-              </button>
-              {showCameraMenu && (
-                <div className="absolute bottom-16 left-0 bg-[#111] border border-white/10 rounded-2xl p-2 min-w-[180px] shadow-2xl z-[100003] animate-in slide-in-from-bottom-2">
-                  <button onClick={() => { photoInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
-                    <CameraIcon className="w-5 h-5 text-blue-400" /> Take Photo
-                  </button>
-                  <div className="h-px w-full bg-white/5 my-1" />
-                  <button onClick={() => { fileInputRef.current?.click(); setShowCameraMenu(false); }} className="w-full p-4 flex items-center gap-3 text-white font-bold text-sm hover:bg-white/5 rounded-xl transition-colors">
-                    <ImageIcon className="w-5 h-5 text-purple-400" /> Upload Image
-                  </button>
-                </div>
-              )}
-            </div>
+    # --- PRE-FLIGHT DATA GATHERING (parallelized) ---
+    # Memory retrieval and profile fetch run simultaneously — not sequentially.
+    # This alone shaves ~300-600ms off every response.
+    async def _get_memories():
+        if use_long_term_memory == "true":
+            return await retrieve_intelligence_sync(user_id, msg)
+        return ""
 
-            <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
-            <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => setSelectedImage(e.target.files?.[0] || null)} />
+    memories, user_profile = await asyncio.gather(
+        _get_memories(),
+        retrieve_user_profile(user_id),
+    )
 
-            <input
-              value={input}
-              onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }}
-              disabled={loading}
-              onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={`Type to ${activePersona.name}…`}
-              className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
-            />
+    # Tavily search — enriched with ZIP-level location for warm-start users
+    search_intel = ""
+    search_keywords = [
+        "news", "weather", "search", "price", "check", "law", "code",
+        "today", "now", "current", "date", "latest", "recent", "2026",
+        "update", "rate", "stock", "score", "hours", "open", "closed"
+    ]
+    if any(k in msg.lower() for k in search_keywords):
+        # Use ZIP-precise location for backend search; city name used in conversation
+        loc_data       = get_user_location_data(email_lower)
+        search_location = (
+            f"{loc_data['city']}, {loc_data['state']} {loc_data['zip']}"
+            if loc_data["zip"]
+            else user_location or ""
+        )
+        search_intel = await search_personalized_web(msg, search_location)
 
-            <button
-              onClick={handleSend}
-              disabled={loading}
-              className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50"
-            >
-              <ArrowRight className="w-6 h-6" />
-            </button>
+    # Scam scan
+    indicators = analyze_scam_indicators(msg)
 
-          </div>
+    # Image processing
+    image_b64 = None
+    if file:
+        file_bytes = await file.read()
+        image_b64  = base64.b64encode(file_bytes).decode("utf-8")
+        if not msg.strip():
+            msg = "Please analyze this image and provide a technical assessment based on your specialty."
 
-          {/* Footer disclaimer */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/10">
-            <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest">
-              <AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.
-            </div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO BODYGUARD v23.0 MAX</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+    # Hook & clock
+    hook              = get_random_hook(persona)
+    current_real_time = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
 
-export default ChatInterface;
+    # ── ASSEMBLE 5-LAYER PROMPT ────────────────────────────────────────────
+    full_prompt = assemble_prompt(
+        persona=persona,
+        user_name=user_data["name"],
+        tier=tier,
+        msg=msg,
+        memories=memories,
+        search_intel=search_intel,
+        indicators=indicators,
+        image_b64=image_b64,
+        current_real_time=current_real_time,
+        vibe=vibe,
+        user_profile=user_profile,       # Synthesized (Pinecone)
+        user_location=user_location,     # Proactive trigger input
+        user_email=email_lower,          # Warm-start registry lookup
+    )
+
+    # ── ENGINE SELECTION ───────────────────────────────────────────────────
+    openai_engine = (
+        "gpt-4o"
+        if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        else "gpt-4o-mini"
+    )
+    gemini_engine = "gemini-1.5-flash"
+
+    # ── DUAL-PASS AI CONSENSUS ─────────────────────────────────────────────
+    results = await asyncio.gather(
+        call_openai_bodyguard(full_prompt, image_b64, openai_engine),
+        call_gemini_vision(full_prompt, image_b64, gemini_engine)
+    )
+
+    valid_results = [r for r in results if r and "answer" in r]
+
+    if not valid_results:
+        return {
+            "answer": f"{hook} Perimeter secure, but the connection flickered. Can you repeat that?",
+            "confidence_score": 0,
+            "scam_detected": False,
+            "threat_level": "low",
+        }
+
+    winner = max(
+        valid_results,
+        key=lambda x: (
+            x.get("confidence_score", 0)
+            + (35 if x.get("scam_detected") else 0)
+            + (20 if x.get("threat_level") in ["high", "medium"] else 0)
+        ),
+    )
+
+    # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
+    USAGE_TRACKER[user_id] += 1
+    current_count = USAGE_TRACKER[user_id]
+
+    # Store episodic memories
+    asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
+    asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
+
+    # PROACTIVE LEARNING ENGINE: Trigger profile synthesis every N interactions
+    if current_count % SYNTHESIS_INTERVAL == 0:
+        logger.info(f"🧠 Synthesis scheduled at interaction {current_count} for {user_data['name']}")
+        asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
+
+    # ── v28.0: ACTION TRIGGER ENGINE ─────────────────────────────────────
+    # Parse the action_trigger field from the AI response.
+    # "email_dispatch" → fire mission report email automatically
+    # "set_reminder"   → surface the reminder CTA on the frontend
+    # null             → no action required
+    action_trigger = winner.get("action_trigger", None)
+
+    # Auto-dispatch email for email_dispatch trigger.
+    # This fires in addition to manual email_consent — covers high-stakes situations
+    # (legal, medical, scam, wreck) even when the user hasn't pre-consented.
+    if action_trigger == "email_dispatch":
+        asyncio.create_task(
+            send_mission_report_email(user_email, winner["answer"], persona)
+        )
+        logger.info(f"📧 Action dispatch: email_dispatch fired for {persona.upper()} → {user_email}")
+    elif email_consent == "true":
+        # Standard manual email consent path (unchanged)
+        asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
+
+    logger.info(
+        f"✅ [{persona.upper()}] → {user_data['name']} | Tier: {tier} | "
+        f"Model: {winner.get('model', 'LYLO-CORE')} | "
+        f"Interaction #{current_count} | "
+        f"Warm-Start: {'✓' if email_lower in BETA_USER_PROFILES else '—'} | "
+        f"Profile: {'loaded' if user_profile else 'sparse'} | "
+        f"Proactive: {'active' if memories else 'off'} | "
+        f"Scam: {winner.get('scam_detected', False)} | "
+        f"Threat: {winner.get('threat_level', 'low')} | "
+        f"Action: {action_trigger or '—'}"
+    )
+
+    return {
+        "answer":           winner["answer"],
+        "confidence_score": winner.get("confidence_score", 95),
+        "scam_detected":    winner.get("scam_detected", False),
+        "threat_level":     winner.get("threat_level", "low"),
+        "persona_hook":     hook,
+        "bodyguard_model":  winner.get("model", "LYLO-CORE"),
+        "action_trigger":   action_trigger,   # ← v28.0: drives frontend Action Buttons
+    }
+
+
+# ---------------------------------------------------------
+# UTILITIES
+# ---------------------------------------------------------
+
+
+# ---------------------------------------------------------
+# PERSONA HOOK — PERSONALIZED GREETING GENERATOR
+# Single-model, no dual-pass. Target: <1s response.
+# Frontend calls this immediately on persona select.
+# Falls back to static spokenHook if it times out.
+# ---------------------------------------------------------
+
+# Per-process in-memory cache: (user_id, persona) → hook text
+# Survives the session, resets on Render restart. Fast enough for beta.
+_hook_cache: dict = {}
+
+@app.post("/persona-hook")
+async def persona_hook(
+    persona:    str = Form(...),
+    user_email: str = Form(...),
+):
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    cache_key   = f"{user_id}:{persona}"
+
+    # Return cached hook immediately if available — instant for repeat visits
+    if cache_key in _hook_cache:
+        return {"hook": _hook_cache[cache_key], "cached": True}
+
+    # Pull warm-start profile (registry first, synthesized as fallback)
+    warm_start   = get_warm_start_profile(email_lower)
+    user_profile = await retrieve_user_profile(user_id)
+
+    # Build a compact context string from what we know
+    name = (
+        warm_start.get("name")
+        or user_profile.get("name")
+        or "there"
+    )
+    projects = warm_start.get("projects") or user_profile.get("active_projects") or []
+    anchors  = warm_start.get("anchors") or []
+    goals    = warm_start.get("goals") or []
+    health   = warm_start.get("health") or ""
+    protocol = warm_start.get("protocol") or ""
+
+    # Build context summary — keep it tight for speed
+    context_parts = []
+    if projects:
+        context_parts.append(f"Active projects: {', '.join(str(p) for p in projects[:3])}")
+    if goals:
+        context_parts.append(f"Current goals: {', '.join(str(g) for g in goals[:2])}")
+    if anchors:
+        context_parts.append(f"Daily anchors: {', '.join(str(a) for a in anchors[:3])}")
+    if health:
+        context_parts.append(f"Health context: {health}")
+
+    context_str = "\n".join(context_parts) if context_parts else "New user — no profile yet."
+
+    # Persona voice map for tone guidance
+    persona_voice_notes = {
+        "guardian":  "Military precision. Protective. Zero filler.",
+        "lawyer":    "Sharp, skeptical. Speaks in leverage and paper trails.",
+        "doctor":    "Clinical, calm. Treats user as an intelligent adult.",
+        "wealth":    "Direct, numbers-forward. Net worth = freedom.",
+        "career":    "Professional, ambitious. Every move is a chess problem.",
+        "therapist": "Warm, grounded. Asks the question beneath the question.",
+        "mechanic":  "Gritty, practical. No corporate speak.",
+        "tutor":     "Encouraging, brilliant. Shame has no place here.",
+        "pastor":    "Grounded, wise, warm, unhurried.",
+        "vitality":  "High-energy, science-dense. Speaks in physiology.",
+        "hype":      "Fast, confident, internet-native.",
+        "bestie":    "Unfiltered, fiercely loyal. Warmth and sharp truth.",
+    }
+    voice_note = persona_voice_notes.get(persona, "Direct and helpful.")
+
+    # Current day — inject Sunday Sentinel awareness
+    current_day = datetime.now().strftime("%A")
+
+    hook_prompt = f"""You are the LYLO {persona.upper()} persona. Generate ONE personalized opening greeting for this specific user.
+
+USER CONTEXT:
+Name: {name}
+{context_str}
+Engagement Protocol: {protocol[:300] if protocol else 'Standard'}
+Current day: {current_day}
+
+PERSONA VOICE: {voice_note}
+
+RULES:
+- 1-3 sentences MAX. Under 50 words total.
+- Use the user's name naturally (once).
+- Reference ONE specific detail from their context — not generically.
+- Sound like a real expert who already knows this person, not a first meeting.
+- If it's Sunday and there are health/accountability anchors, subtly acknowledge the day.
+- DO NOT mention LYLO, AI, or that you're a bot.
+- DO NOT use the generic spokenHook text — make it feel genuinely specific.
+- Output ONLY the greeting text. No JSON. No preamble. No quotes.
+
+EXAMPLE (guardian persona, user building an app):
+"Chris, perimeter active. LYLO's security layer is locked in — and your user data architecture is exactly the kind of thing we need to bulletproof before you hit scale. What are we looking at today?"
+
+Generate the personalized greeting now:"""
+
+    try:
+        result = await asyncio.wait_for(
+            call_gemini_vision(hook_prompt, model_name="gemini-1.5-flash"),
+            timeout=4.0  # Hard cap — fall back to static if slow
+        )
+        hook_text = ""
+        if result and "answer" in result:
+            raw = result["answer"].strip()
+            # Strip any JSON wrapping the model might produce
+            if raw.startswith("{"):
+                import re
+                match = re.search(r'"answer"\s*:\s*"([^"]+)"', raw)
+                hook_text = match.group(1) if match else raw
+            else:
+                hook_text = raw
+
+        if hook_text and len(hook_text) > 10:
+            _hook_cache[cache_key] = hook_text
+            logger.info(f"🎯 PersonaHook generated: [{persona}] → {name}")
+            return {"hook": hook_text, "cached": False}
+
+    except asyncio.TimeoutError:
+        logger.warning(f"⏱️ PersonaHook timeout for [{persona}] → {name}. Using static fallback.")
+    except Exception as e:
+        logger.error(f"PersonaHook error: {e}")
+
+    # Static fallback — always returns something
+    static_hooks = {
+        "guardian":  f"Security protocols active, {name}. Let's make sure your perimeter is locked.",
+        "lawyer":    f"Legal shield up, {name}. Before you sign anything — talk to me first.",
+        "doctor":    f"Medical intelligence online, {name}. Walk me through what's happening.",
+        "wealth":    f"ROI is the only metric that matters, {name}. What are the numbers?",
+        "career":    f"Corporate is a chessboard, {name}. Let's map your position.",
+        "therapist": f"I'm here, {name}. No judgment — what's actually going on?",
+        "mechanic":  f"Wrench ready, {name}. What are we diagnosing today?",
+        "tutor":     f"Class in session, {name}. Where does it stop making sense?",
+        "pastor":    f"Peace be with you, {name}. What's heavy on your heart today?",
+        "vitality":  f"Engine check, {name}. What are we optimizing today?",
+        "hype":      f"Let's build something viral, {name}. Drop the concept.",
+        "bestie":    f"I got you, {name}. Spill — what's going on?",
+    }
+    return {"hook": static_hooks.get(persona, f"Ready, {name}. What's the mission?"), "cached": False}
+
+
+@app.post("/generate-audio")
+async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
+    if not openai_client:
+        return {"error": "Voice offline"}
+    try:
+        clean_text = text.replace("**", "").replace("#", "").strip()
+        response   = await openai_client.audio.speech.create(
+            model="tts-1", voice=voice, input=clean_text[:4000]
+        )
+        return {"audio_b64": base64.b64encode(response.content).decode("utf-8")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/user-stats/{user_email}")
+async def get_stats(user_email: str):
+    uid       = create_user_id(user_email)
+    user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
+    limit     = (
+        999999
+        if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        else TIER_LIMITS.get(user_data["tier"], 3)
+    )
+    return {
+        "usage": USAGE_TRACKER[uid],
+        "limit": limit,
+        "tier":  user_data["tier"],
+        "name":  user_data["name"],
+    }
+
+
+@app.post("/check-beta-access")
+async def check_beta(data: dict):
+    user = ELITE_USERS.get(data.get("email", "").lower().strip())
+    if user:
+        return {"access": True, "tier": user["tier"], "name": user["name"]}
+    return {"access": False, "tier": "free"}
+
+
+@app.get("/user-profile/{user_email}")
+async def get_user_profile(user_email: str):
+    """
+    Admin/debug endpoint: Returns the full Layer 0 data for a user.
+    Shows both warm-start registry status and synthesized Pinecone profile.
+    """
+    email_clean  = user_email.lower().strip()
+    uid          = create_user_id(email_clean)
+    warm_start   = get_warm_start_profile(email_clean)
+    synth_profile = await retrieve_user_profile(uid)
+    return {
+        "email":             user_email,
+        "warm_start_found":  bool(warm_start),
+        "warm_start_name":   warm_start.get("name") if warm_start else None,
+        "warm_start_protocol": warm_start.get("protocol", "")[:80] + "..." if warm_start.get("protocol") else None,
+        "synthesized_profile_loaded": bool(synth_profile),
+        "synthesized_profile": synth_profile,
+    }
+
+
+@app.get("/scam-recovery/{email}")
+async def recovery_center(email: str):
+    return {
+        "title": "🛡️ PRIORITY RECOVERY CENTER",
+        "immediate_actions": [
+            "Call your bank fraud department immediately.",
+            "Freeze your credit at all 3 bureaus: Equifax, Experian, TransUnion.",
+            "File a report at IC3.gov (FBI Internet Crime Complaint Center).",
+            "Change all passwords from a clean, uncompromised device.",
+            "Enable 2FA on every account that supports it."
+        ],
+    }
+
+
+@app.get("/")
+async def root():
+    return {
+        "status":       "ONLINE",
+        "version":      "22.0.0 - WARM START REGISTRY + PROACTIVE LEARNING ENGINE",
+        "experts_active": len(PERSONA_DEFINITIONS),
+        "architecture": "5-Layer Prompt | Profile Synthesis | Proactive Triggers | Anti-Hallucination"
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
