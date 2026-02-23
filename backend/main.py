@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="28.0.0 - ACTION & DISPATCH PATCH | email_dispatch | set_reminder | Action Buttons | 24/7 Sentinel"
+    version="28.2.0 - SPEED PATCH: First-wins race | Parallel pre-flight | Profile cache | max_tokens=700 | Search timeout"
 )
 
 app.add_middleware(
@@ -123,6 +123,13 @@ TIER_LIMITS = {
 USAGE_TRACKER      = defaultdict(int)
 AUTHORIZED_DEVICES = defaultdict(set)
 MAX_DEVICES_PER_USER = 2
+
+# ── v28.1 SPEED: In-process profile cache ─────────────────────────────────
+# Avoids a cold Pinecone fetch on every message for the same user.
+# TTL: 5 minutes — profile is stable enough between interactions.
+# Structure: { user_id: (profile_dict, timestamp) }
+_PROFILE_CACHE: dict = {}
+_PROFILE_CACHE_TTL  = 300  # seconds
 
 # ---------------------------------------------------------
 # CLIENT INITIALIZATION
@@ -421,8 +428,19 @@ async def retrieve_user_profile(user_id: str) -> dict:
     Fetches the user's synthesized identity profile directly from Pinecone
     using a deterministic vector ID (no semantic search needed).
 
-    Returns the profile dict, or {} if no profile exists yet.
+    v28.1 SPEED: Checks in-process cache first — skips Pinecone entirely on hit.
+    Cache TTL: 5 minutes. Returns the profile dict, or {} if no profile exists yet.
     """
+    # ── Cache hit: return immediately without any I/O ────────────────────
+    import time
+    cached = _PROFILE_CACHE.get(user_id)
+    if cached:
+        profile, ts = cached
+        if time.time() - ts < _PROFILE_CACHE_TTL:
+            return profile
+        else:
+            del _PROFILE_CACHE[user_id]  # Expired — fall through to Pinecone
+
     if not memory_index:
         return {}
 
@@ -438,7 +456,8 @@ async def retrieve_user_profile(user_id: str) -> dict:
 
             if profile_json:
                 profile = json.loads(profile_json)
-                logger.info(f"✅ Profile loaded for user {user_id[:8]}...")
+                _PROFILE_CACHE[user_id] = (profile, time.time())  # Store in cache
+                logger.info(f"✅ Profile loaded + cached for user {user_id[:8]}...")
                 return profile
 
         logger.info(f"ℹ️ No profile yet for user {user_id[:8]}... (will synthesize at interaction 10)")
@@ -613,6 +632,8 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
                 {"role": "user", "content": content}
             ],
             response_format={"type": "json_object"},
+            max_tokens=700,          # ← hard cap: prevents long tail latency
+            temperature=0.4,         # ← lower temp = faster, more deterministic JSON
         )
         result = json.loads(response.choices[0].message.content)
         result["model"] = f"LYLO-CORE ({model_name})"
@@ -823,26 +844,18 @@ USER MESSAGE:
 {msg}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PRE-RESPONSE CHECKLIST (run silently before writing):
-  ✔ Did I read Layer 0 and personalize my response to this specific user?
-  ✔ If SUNDAY SENTINEL is active, did I check for self-sabotage signals?
-  ✔ If triggered — did I HARD SWAP to Roastmaster, not just blend tones?
-  ✔ If PROACTIVE MODE is active, did I bring that item up FIRST?
-  ✔ Did I identify the user's intent STATE from Layer 3?
-  ✔ [MECHANIC/DOCTOR] Did I gate for Year/Make/Model before any repair step?
-  ✔ [TUTOR/PASTOR] Did I bridge through blade/forge trade vocabulary first?
-  ✔ [LAWYER] Does my answer contain [ANALYSIS], [RISK], and [TACTICAL MOVE] IN ORDER?
-  ✔ [DOCTOR] Does my answer contain [MOST LIKELY], [PHYSIOLOGY], [PROTOCOL], [ESCALATE WHEN]?
-  ✔ [WEALTH] Does my answer contain [CURRENT STATE], [BLEEDING POINT], [60-DAY PLAN]?
-  ✔ Did I use the user's name naturally at least once?
-  ✔ Did I verify laws, medical claims, or tech facts before stating them?
-  ✔ Did I treat vault memories as natural background — not announced?
-  ✔ Did I prioritize SEARCH INTEL over base knowledge where present?
-  ✔ Did I lead with the MOST CRITICAL information?
-  ✔ Did I flag scam indicators with [🚨 SCAM ALERT] if warranted?
-  ✔ Did I stay in character without suggesting another specialist?
-  ✔ Did my response sound like a partner, not a corporate manual?
-  ✔ Is my output ONLY valid raw JSON — no markdown fences, no preamble?
+PRE-EXECUTION CHECKLIST — RUN IN ZERO TIME, OUTPUT IN ONE PASS:
+  ✔ Read Layer 0. Address {user_name} as a partner. Not a client. Not a student.
+  ✔ Ignore all internal "Master Tutor", "Expert Transition", or role-label language.
+     Do not explain your reasoning. Do not announce your approach. Execute.
+  ✔ Identified user intent → Selected correct action_trigger → Written into JSON.
+     Speed and execution are the ONLY metrics. Explanation is waste.
+  ✔ Self-sabotage signal detected? → Hard-swap to Roastmaster. action_trigger = "set_reminder".
+  ✔ Legal / wealth / emergency / documentation? → action_trigger = "email_dispatch". No deliberation.
+  ✔ Structural headers present in correct order? (Lawyer, Doctor, Wealth, Therapist, Career)
+  ✔ SCAM detected? → [🚨 SCAM ALERT] in answer. action_trigger = "email_dispatch". Immediate.
+  ✔ Response sounds like a partner who has been in the trenches with {user_name}? Not a manual?
+  ✔ Output is ONLY valid raw JSON? No text before the opening brace. No text after the closing brace.
 
 ### MANDATORY EXECUTION PROTOCOL — THE DUAL-CORE RULE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -983,37 +996,52 @@ async def chat(
             "usage_info": {"can_send": False}
         }
 
-    # --- PRE-FLIGHT DATA GATHERING (parallelized) ---
-    # Memory retrieval and profile fetch run simultaneously — not sequentially.
-    # This alone shaves ~300-600ms off every response.
+    # --- PRE-FLIGHT DATA GATHERING (fully parallelized) ---
+    # Memory, profile, and search all run simultaneously.
+    # Search no longer blocks prompt assembly — it races alongside memory.
     async def _get_memories():
         if use_long_term_memory == "true":
-            return await retrieve_intelligence_sync(user_id, msg)
+            try:
+                return await asyncio.wait_for(
+                    retrieve_intelligence_sync(user_id, msg),
+                    timeout=0.8   # ← hard cap: skip slow memory, don't block response
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"⚡ Memory timeout — skipping for speed [{user_id[:8]}]")
+                return ""
         return ""
 
-    memories, user_profile = await asyncio.gather(
+    async def _get_search():
+        search_keywords = [
+            "news", "weather", "search", "price", "check", "law", "code",
+            "today", "now", "current", "date", "latest", "recent", "2026",
+            "update", "rate", "stock", "score", "hours", "open", "closed"
+        ]
+        if any(k in msg.lower() for k in search_keywords):
+            loc_data        = get_user_location_data(email_lower)
+            search_location = (
+                f"{loc_data['city']}, {loc_data['state']} {loc_data['zip']}"
+                if loc_data.get("zip")
+                else user_location or ""
+            )
+            try:
+                return await asyncio.wait_for(
+                    search_personalized_web(msg, search_location),
+                    timeout=1.5   # ← hard cap: skip slow search results
+                )
+            except asyncio.TimeoutError:
+                logger.warning("⚡ Search timeout — skipping for speed")
+                return ""
+        return ""
+
+    # Fire memory + profile + search simultaneously
+    memories, user_profile, search_intel = await asyncio.gather(
         _get_memories(),
         retrieve_user_profile(user_id),
+        _get_search(),
     )
 
-    # Tavily search — enriched with ZIP-level location for warm-start users
-    search_intel = ""
-    search_keywords = [
-        "news", "weather", "search", "price", "check", "law", "code",
-        "today", "now", "current", "date", "latest", "recent", "2026",
-        "update", "rate", "stock", "score", "hours", "open", "closed"
-    ]
-    if any(k in msg.lower() for k in search_keywords):
-        # Use ZIP-precise location for backend search; city name used in conversation
-        loc_data       = get_user_location_data(email_lower)
-        search_location = (
-            f"{loc_data['city']}, {loc_data['state']} {loc_data['zip']}"
-            if loc_data["zip"]
-            else user_location or ""
-        )
-        search_intel = await search_personalized_web(msg, search_location)
-
-    # Scam scan
+    # Scam scan (pure CPU — instant)
     indicators = analyze_scam_indicators(msg)
 
     # Image processing
@@ -1040,9 +1068,9 @@ async def chat(
         image_b64=image_b64,
         current_real_time=current_real_time,
         vibe=vibe,
-        user_profile=user_profile,       # Synthesized (Pinecone)
-        user_location=user_location,     # Proactive trigger input
-        user_email=email_lower,          # Warm-start registry lookup
+        user_profile=user_profile,
+        user_location=user_location,
+        user_email=email_lower,
     )
 
     # ── ENGINE SELECTION ───────────────────────────────────────────────────
@@ -1053,30 +1081,41 @@ async def chat(
     )
     gemini_engine = "gemini-1.5-flash"
 
-    # ── DUAL-PASS AI CONSENSUS ─────────────────────────────────────────────
-    results = await asyncio.gather(
-        call_openai_bodyguard(full_prompt, image_b64, openai_engine),
+    # ── FIRST-WINS RACE MODE ───────────────────────────────────────────────
+    # Both engines fire simultaneously. The FIRST valid JSON response wins
+    # and is returned immediately — we don't wait for the slower engine.
+    # Gemini acts as a hot standby: if OpenAI is slow, Gemini wins the race.
+    # If OpenAI wins (typical), Gemini's task is cancelled — zero wasted time.
+    openai_task = asyncio.create_task(
+        call_openai_bodyguard(full_prompt, image_b64, openai_engine)
+    )
+    gemini_task = asyncio.create_task(
         call_gemini_vision(full_prompt, image_b64, gemini_engine)
     )
 
-    valid_results = [r for r in results if r and "answer" in r]
+    winner = None
+    pending = {openai_task, gemini_task}
 
-    if not valid_results:
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            result = task.result()
+            if result and "answer" in result:
+                winner = result
+                # Cancel the slower engine — we already have a valid answer
+                for p in pending:
+                    p.cancel()
+                pending = set()  # break outer while
+                break
+
+    if not winner:
         return {
             "answer": f"{hook} Perimeter secure, but the connection flickered. Can you repeat that?",
             "confidence_score": 0,
             "scam_detected": False,
             "threat_level": "low",
+            "action_trigger": None,
         }
-
-    winner = max(
-        valid_results,
-        key=lambda x: (
-            x.get("confidence_score", 0)
-            + (35 if x.get("scam_detected") else 0)
-            + (20 if x.get("threat_level") in ["high", "medium"] else 0)
-        ),
-    )
 
     # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
     USAGE_TRACKER[user_id] += 1
