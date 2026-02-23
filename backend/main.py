@@ -11,6 +11,8 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from io import BytesIO
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -319,36 +321,395 @@ def analyze_scam_indicators(text: str) -> List[str]:
             indicators.append(category)
     return indicators
 
+# =============================================================================
+# V30: PDF MISSION REPORT GENERATOR
+# =============================================================================
+# Generates a formal, persona-specific PDF report using ReportLab Platypus.
+# Each persona has its own document type, header template, and color scheme.
+# The PDF is attached to the mission report email — replacing plain text body.
+#
+# Document types by persona:
+#   lawyer    → LEGAL DEMAND LETTER       (deep navy, formal legal structure)
+#   doctor    → MEDICAL PROTOCOL REPORT   (clinical white, symptom/protocol table)
+#   wealth    → FINANCIAL BATTLE PLAN     (green, current state / bleeding / plan)
+#   mechanic  → DIAGNOSTIC WORK ORDER     (industrial gray, tech checklist)
+#   guardian  → SECURITY INCIDENT REPORT  (red alert, threat / exposure / action)
+#   therapist → THERAPEUTIC CARE PLAN     (soft indigo, reflect / reframe / experiment)
+#   career    → CAREER STRATEGY BRIEF     (executive black, situation / leverage / play)
+#   default   → LYLO TACTICAL REPORT      (indigo OS branding)
+# =============================================================================
+
+def _hex_to_rgb_color(hex_str: str):
+    """Convert '#RRGGBB' → reportlab Color object."""
+    from reportlab.lib.colors import HexColor
+    return HexColor(hex_str)
+
+
+# Persona → (doc_title, doc_type_label, accent_hex, secondary_hex)
+PERSONA_PDF_CONFIG = {
+    "lawyer":    ("LEGAL DEMAND LETTER",        "CONFIDENTIAL LEGAL DOCUMENT",   "#0D2137", "#C09B3A"),
+    "doctor":    ("MEDICAL PROTOCOL REPORT",    "CLINICAL ADVISORY DOCUMENT",    "#0A2E1F", "#10B981"),
+    "wealth":    ("FINANCIAL BATTLE PLAN",       "EYES ONLY — FINANCIAL STRATEGY","#0A1F0A", "#16A34A"),
+    "mechanic":  ("DIAGNOSTIC WORK ORDER",       "TECHNICAL ASSESSMENT DOCUMENT", "#1A1A1A", "#6B7280"),
+    "guardian":  ("SECURITY INCIDENT REPORT",    "PRIORITY THREAT DOCUMENT",      "#1F0A0A", "#DC2626"),
+    "therapist": ("THERAPEUTIC CARE PLAN",       "PRIVATE WELLNESS DOCUMENT",     "#0F0A2E", "#818CF8"),
+    "career":    ("CAREER STRATEGY BRIEF",       "EXECUTIVE ADVISORY DOCUMENT",   "#0A0A1F", "#6366F1"),
+    "vitality":  ("HEALTH OPTIMIZATION PROTOCOL","WELLNESS STRATEGY DOCUMENT",    "#0A2010", "#22C55E"),
+    "tutor":     ("LEARNING ROADMAP",            "ACADEMIC ADVISORY DOCUMENT",    "#1A0A2E", "#A855F7"),
+    "hype":      ("VIRAL GROWTH STRATEGY",       "CREATIVE BRIEF DOCUMENT",       "#1F0A00", "#F97316"),
+    "pastor":    ("SPIRITUAL COUNSEL RECORD",    "PRIVATE PASTORAL DOCUMENT",     "#1A1005", "#D97706"),
+    "bestie":    ("PERSONAL ADVISORY RECORD",    "PRIVATE — INNER CIRCLE ONLY",   "#1F0A1A", "#EC4899"),
+}
+
+DEFAULT_PDF_CONFIG = ("LYLO TACTICAL REPORT", "MISSION INTELLIGENCE DOCUMENT", "#0F0B2E", "#4F46E5")
+
+
+def generate_mission_report_pdf(
+    content:     str,
+    persona:     str,
+    user_name:   str,
+    timestamp:   str = "",
+) -> BytesIO:
+    """
+    Generates a formal, persona-specific PDF report.
+    Returns a BytesIO buffer — ready to attach to email or return as file.
+    Pure synchronous — call via asyncio.to_thread() from async context.
+    """
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.lib.colors import HexColor, white, black
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, HRFlowable,
+        Table, TableStyle, KeepTogether
+    )
+    from reportlab.lib import colors
+
+    # ── Config resolution ─────────────────────────────────────────────────────
+    cfg             = PERSONA_PDF_CONFIG.get(persona.lower(), None)
+    doc_title, doc_type, accent_hex, accent2_hex = cfg if cfg else DEFAULT_PDF_CONFIG
+    accent          = HexColor(accent_hex)
+    accent2         = HexColor(accent2_hex)
+    bg_dark         = HexColor("#0C0C0C")
+    bg_panel        = HexColor("#161616")
+    text_primary    = HexColor("#F1F5F9")
+    text_secondary  = HexColor("#94A3B8")
+    ts              = timestamp or datetime.now().strftime("%B %d, %Y — %I:%M %p")
+    persona_upper   = persona.upper()
+
+    # ── Document setup ────────────────────────────────────────────────────────
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=letter,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+        topMargin=0.6 * inch,
+        bottomMargin=0.75 * inch,
+        title=doc_title,
+        author="LYLO OS Intelligence Engine",
+        subject=f"Mission Report — {persona.capitalize()}",
+    )
+
+    # ── Style sheet ───────────────────────────────────────────────────────────
+    styles = getSampleStyleSheet()
+
+    def make_style(name, **kwargs):
+        base = dict(fontName="Helvetica", fontSize=10, textColor=text_primary,
+                    leading=14, spaceAfter=4)
+        base.update(kwargs)
+        return ParagraphStyle(name, **base)
+
+    s_doc_type  = make_style("DocType",   fontSize=7,  textColor=accent2,
+                             fontName="Helvetica-Bold", alignment=TA_CENTER,
+                             spaceAfter=2, letterSpacing=2)
+    s_title     = make_style("Title",     fontSize=20, textColor=text_primary,
+                             fontName="Helvetica-Bold", alignment=TA_CENTER,
+                             spaceAfter=6, leading=24)
+    s_meta      = make_style("Meta",      fontSize=8,  textColor=text_secondary,
+                             alignment=TA_CENTER, spaceAfter=0)
+    s_section   = make_style("Section",   fontSize=9,  textColor=accent2,
+                             fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=4,
+                             letterSpacing=1.5)
+    s_body      = make_style("Body",      fontSize=10, textColor=text_primary,
+                             leading=16,  spaceAfter=8)
+    s_body_sm   = make_style("BodySm",    fontSize=9,  textColor=text_secondary,
+                             leading=14,  spaceAfter=6)
+    s_bullet    = make_style("Bullet",    fontSize=10, textColor=text_primary,
+                             leading=15,  leftIndent=14, spaceAfter=5,
+                             bulletIndent=4)
+    s_footer    = make_style("Footer",    fontSize=7,  textColor=text_secondary,
+                             alignment=TA_CENTER, spaceBefore=12)
+    s_watermark = make_style("Watermark", fontSize=7,  textColor=HexColor("#333333"),
+                             alignment=TA_CENTER)
+
+    # ── Canvas background painter ─────────────────────────────────────────────
+    def _draw_background(canvas_obj, doc_obj):
+        """Paint dark background and accent header bar on every page."""
+        w, h = letter
+        canvas_obj.saveState()
+
+        # Full-page dark background
+        canvas_obj.setFillColor(bg_dark)
+        canvas_obj.rect(0, 0, w, h, fill=1, stroke=0)
+
+        # Accent header bar (top 0.55in)
+        canvas_obj.setFillColor(accent)
+        canvas_obj.rect(0, h - 0.55 * inch, w, 0.55 * inch, fill=1, stroke=0)
+
+        # Persona label in header bar
+        canvas_obj.setFillColor(white)
+        canvas_obj.setFont("Helvetica-Bold", 7)
+        canvas_obj.drawString(0.75 * inch, h - 0.35 * inch,
+                              f"LYLO OS  ·  {persona_upper} INTELLIGENCE  ·  CLASSIFIED")
+
+        # Page number top-right
+        canvas_obj.setFont("Helvetica", 7)
+        canvas_obj.setFillColor(white)
+        canvas_obj.drawRightString(w - 0.75 * inch, h - 0.35 * inch,
+                                   f"Page {doc_obj.page}")
+
+        # Bottom rule
+        canvas_obj.setStrokeColor(HexColor("#222222"))
+        canvas_obj.setLineWidth(0.5)
+        canvas_obj.line(0.75 * inch, 0.55 * inch, w - 0.75 * inch, 0.55 * inch)
+
+        canvas_obj.restoreState()
+
+    # ── Content parsing: convert markdown-ish text into Platypus elements ─────
+    def parse_content(raw: str) -> list:
+        """
+        Parses AI response text into styled ReportLab Platypus elements.
+        Handles:
+          **bold** or ## headers → section headers
+          - bullet items         → bulleted paragraphs
+          [HEADER]               → section label
+          plain paragraphs       → body text
+        """
+        elements   = []
+        paragraphs = raw.split("\n")
+        i = 0
+        while i < len(paragraphs):
+            line = paragraphs[i].strip()
+            i += 1
+
+            if not line:
+                elements.append(Spacer(1, 6))
+                continue
+
+            # Section header: **text** or ##text or [TEXT] patterns
+            if (line.startswith("**") and line.endswith("**")) or line.startswith("## "):
+                text = line.strip("*# ").strip()
+                elements.append(Spacer(1, 4))
+                elements.append(HRFlowable(
+                    width="100%", thickness=0.5,
+                    color=accent2, spaceAfter=4
+                ))
+                elements.append(Paragraph(text.upper(), s_section))
+                continue
+
+            # [BRACKET HEADER] — structural keys like [ANALYSIS], [PROTOCOL]
+            if line.startswith("[") and "]" in line and len(line) < 80:
+                bracket_end = line.index("]")
+                label  = line[1:bracket_end].strip()
+                rest   = line[bracket_end + 1:].strip()
+                header = f"[ {label} ]"
+                elements.append(Spacer(1, 6))
+                elements.append(Paragraph(header, s_section))
+                if rest:
+                    elements.append(Paragraph(rest, s_body))
+                continue
+
+            # Bullet point
+            if line.startswith("- ") or line.startswith("• "):
+                text = line.lstrip("-• ").strip()
+                # Strip inline bold markers
+                text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+                elements.append(Paragraph(f"• {text}", s_bullet))
+                continue
+
+            # Numbered list
+            if re.match(r"^\d+\.\s", line):
+                text = re.sub(r"^\d+\.\s+", "", line)
+                text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+                elements.append(Paragraph(f"{line[:2]} {text}", s_bullet))
+                continue
+
+            # Standard body paragraph — inline bold
+            line_html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", line)
+            elements.append(Paragraph(line_html, s_body))
+
+        return elements
+
+    # ── Story assembly ────────────────────────────────────────────────────────
+    story = []
+
+    # Title block (sits below the accent header bar)
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph(doc_type, s_doc_type))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(doc_title, s_title))
+    story.append(Spacer(1, 6))
+
+    # Metadata table
+    meta_data = [
+        ["SPECIALIST", persona.capitalize()],
+        ["RECIPIENT",  user_name],
+        ["ISSUED",     ts],
+        ["STATUS",     "ACTIVE — FOR IMMEDIATE ACTION"],
+    ]
+    meta_table = Table(
+        meta_data,
+        colWidths=[1.2 * inch, 5.6 * inch],
+        hAlign="LEFT"
+    )
+    meta_table.setStyle(TableStyle([
+        ("BACKGROUND",  (0, 0), (0, -1), HexColor("#1A1A1A")),
+        ("BACKGROUND",  (1, 0), (1, -1), bg_panel),
+        ("TEXTCOLOR",   (0, 0), (0, -1), accent2),
+        ("TEXTCOLOR",   (1, 0), (1, -1), text_primary),
+        ("FONTNAME",    (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME",    (1, 0), (1, -1), "Helvetica"),
+        ("FONTSIZE",    (0, 0), (-1, -1), 8),
+        ("TOPPADDING",  (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("GRID",        (0, 0), (-1, -1), 0.3, HexColor("#2A2A2A")),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [bg_panel, HexColor("#111111")]),
+    ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 12))
+
+    # Accent divider
+    story.append(HRFlowable(width="100%", thickness=1.5, color=accent2, spaceAfter=10))
+
+    # ── MAIN CONTENT ──────────────────────────────────────────────────────────
+    story.extend(parse_content(content))
+
+    # ── DISCLAIMER ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#333333"), spaceAfter=8))
+    story.append(Paragraph(
+        "LYLO OS DISCLAIMER: This document was generated by the LYLO Intelligence Engine "
+        "and is intended solely for the named recipient. LYLO OS does not provide licensed "
+        "legal, medical, or financial advice. This report is advisory in nature. "
+        "Consult a licensed professional for legally binding guidance.",
+        s_body_sm
+    ))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        f"Generated by LYLO OS v30.0  ·  {ts}  ·  LYLO Intelligence Engine  ·  DO NOT DISTRIBUTE",
+        s_footer
+    ))
+
+    # ── BUILD ─────────────────────────────────────────────────────────────────
+    doc.build(story, onFirstPage=_draw_background, onLaterPages=_draw_background)
+    buf.seek(0)
+    return buf
+
+
 # ---------------------------------------------------------
-# EMAIL MISSION REPORT
+# EMAIL MISSION REPORT — V30: PDF ATTACHMENT DISPATCH
+# Replaces plain-text body with a formal ReportLab PDF.
+# Falls back to HTML body if PDF generation fails.
 # ---------------------------------------------------------
-async def send_mission_report_email(to_email: str, content: str, persona_name: str):
+async def send_mission_report_email(
+    to_email:    str,
+    content:     str,
+    persona_name: str,
+    user_name:   str = "Operative",
+):
     if not SMTP_USERNAME or not SMTP_PASSWORD:
         logger.warning("⚠️ SMTP not set — Mission Report mock-dispatched.")
         return
 
-    try:
-        msg = MIMEMultipart()
-        msg['From']    = f"LYLO OS <{SMTP_USERNAME}>"
-        msg['To']      = to_email
-        msg['Subject'] = f"🛡️ URGENT: Lylo Tactical Report - {persona_name.capitalize()}"
+    cfg         = PERSONA_PDF_CONFIG.get(persona_name.lower(), None)
+    doc_title   = cfg[0] if cfg else "LYLO TACTICAL REPORT"
+    ts          = datetime.now().strftime("%B %d, %Y — %I:%M %p")
+    filename    = f"LYLO_{persona_name.upper()}_REPORT_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
 
-        html_content = f"""
+    try:
+        msg              = MIMEMultipart("mixed")
+        msg["From"]      = f"LYLO OS <{SMTP_USERNAME}>"
+        msg["To"]        = to_email
+        msg["Subject"]   = f"🛡️ LYLO {doc_title} — {ts}"
+
+        # ── HTML body (teaser) ────────────────────────────────────────────────
+        html_body = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; background-color: #000; color: #fff; padding: 20px;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: #111; border: 1px solid #333; padding: 20px; border-radius: 10px;">
-                <h2 style="color: #4F46E5; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">Lylo Incident Summary</h2>
-                <p style="color: #aaa; font-size: 12px; font-weight: bold;">SPECIALIST: {persona_name.upper()}</p>
-                <div style="background-color: #222; padding: 15px; border-radius: 5px; margin-top: 20px;">
-                    <p style="white-space: pre-wrap; font-size: 14px; line-height: 1.6;">{content}</p>
-                </div>
-                <p style="color: #666; font-size: 10px; margin-top: 20px; text-align: center;">LYLO OS SECURITY PROTOCOL ACTIVE - DO NOT REPLY</p>
+        <body style="font-family: 'Arial', sans-serif; background: #000; color: #fff; padding: 24px; margin: 0;">
+          <div style="max-width: 560px; margin: 0 auto; background: #0C0C0C;
+                      border: 1px solid #222; border-radius: 12px; overflow: hidden;">
+
+            <div style="background: #4F46E5; padding: 20px 24px;">
+              <p style="margin:0; color:#c7d2fe; font-size:10px; font-weight:700;
+                         letter-spacing:3px; text-transform:uppercase;">LYLO OS · SECURE DISPATCH</p>
+              <h1 style="margin:6px 0 0; color:#fff; font-size:20px;
+                          font-weight:900; text-transform:uppercase; letter-spacing:1px;">{doc_title}</h1>
             </div>
+
+            <div style="padding: 24px;">
+              <p style="color:#94a3b8; font-size:11px; font-weight:700;
+                         text-transform:uppercase; letter-spacing:2px; margin:0 0 4px;">
+                SPECIALIST: {persona_name.upper()}
+              </p>
+              <p style="color:#94a3b8; font-size:11px; font-weight:700;
+                         text-transform:uppercase; letter-spacing:2px; margin:0 0 20px;">
+                RECIPIENT: {user_name.upper()} &nbsp;|&nbsp; ISSUED: {ts}
+              </p>
+
+              <div style="background:#161616; border:1px solid #222; border-radius:8px;
+                           padding:16px; margin-bottom:20px;">
+                <p style="color:#f1f5f9; font-size:13px; line-height:1.7; margin:0;
+                            white-space:pre-wrap;">{content[:600]}{"..." if len(content) > 600 else ""}</p>
+              </div>
+
+              <p style="color:#64748b; font-size:12px; margin:0;">
+                The full tactical document is attached as a PDF.
+                Open it for the complete analysis, protocol, and action steps.
+              </p>
+            </div>
+
+            <div style="background:#0A0A0A; border-top:1px solid #1a1a1a;
+                         padding:14px 24px; text-align:center;">
+              <p style="color:#334155; font-size:9px; margin:0; letter-spacing:1px;">
+                LYLO OS SECURITY PROTOCOL ACTIVE · DO NOT REPLY TO THIS ADDRESS
+              </p>
+            </div>
+          </div>
         </body>
         </html>
         """
-        msg.attach(MIMEText(html_content, 'html'))
+        msg.attach(MIMEText(html_body, "html"))
 
+        # ── PDF attachment ────────────────────────────────────────────────────
+        try:
+            pdf_buffer = await asyncio.to_thread(
+                generate_mission_report_pdf,
+                content,
+                persona_name,
+                user_name,
+                ts,
+            )
+            pdf_bytes = pdf_buffer.read()
+
+            attachment = MIMEBase("application", "pdf")
+            attachment.set_payload(pdf_bytes)
+            encoders.encode_base64(attachment)
+            attachment.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename=filename,
+            )
+            msg.attach(attachment)
+            logger.info(f"📎 PDF attached: {filename} ({len(pdf_bytes):,} bytes)")
+
+        except Exception as pdf_err:
+            logger.error(f"❌ PDF generation failed — email sent without attachment: {pdf_err}")
+
+        # ── SMTP send ─────────────────────────────────────────────────────────
         def _send():
             server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
             server.starttls()
@@ -357,7 +718,8 @@ async def send_mission_report_email(to_email: str, content: str, persona_name: s
             server.quit()
 
         await asyncio.to_thread(_send)
-        logger.info(f"✅ Mission Report sent to {to_email}")
+        logger.info(f"✅ Mission Report + PDF dispatched → {to_email}")
+
     except Exception as e:
         logger.error(f"❌ Email Dispatch Failed: {e}")
 
@@ -1350,11 +1712,19 @@ async def chat(
                 asyncio.create_task(store_intelligence_sync(user_id, answer, "bot"))
                 if action_trigger == "email_dispatch":
                     asyncio.create_task(
-                        send_mission_report_email(user_email, answer, persona)
+                        send_mission_report_email(
+                            user_email, answer, persona,
+                            user_name=user_data["name"]
+                        )
                     )
                     logger.info(f"📧 email_dispatch fired: {persona.upper()} → {user_email}")
                 elif email_consent == "true":
-                    asyncio.create_task(send_mission_report_email(user_email, answer, persona))
+                    asyncio.create_task(
+                        send_mission_report_email(
+                            user_email, answer, persona,
+                            user_name=user_data["name"]
+                        )
+                    )
 
             audio_b64, _ = await asyncio.gather(
                 generate_audio_inline(answer, voice),
