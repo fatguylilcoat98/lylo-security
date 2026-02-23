@@ -1630,7 +1630,7 @@ async def chat(
 
     winner = None
     pending = {openai_task, gemini_task}
-    RACE_TIMEOUT = 7.0   # Hard ceiling — 7s for complex structured JSON
+    RACE_TIMEOUT = 25.0 if image_b64 else 8.0
 
     # Deadline-based loop so BOTH engines get a fair shot.
     # Bug fix: old code set elapsed=RACE_TIMEOUT unconditionally after first
