@@ -49,10 +49,10 @@ from intelligence_data import (
     # ── BOARD STRESS-TEST HARD-FIXES (v9.0) ───────────────────────────────
     # FIX 2: Analogy Bridge — injected for tutor + pastor
     ANALOGY_BRIDGE_TRADE_CONTEXT,
-    # FIX 3: Sunday Sentinel — injected when current_real_time is Sunday + Chris
-    SUNDAY_SENTINEL_OVERRIDE,
-    build_sunday_sentinel,
-    # FIX 5: Partner Energy — injected for all 12 seats
+    # FIX 3 → v27.0: Accountability Sentinel — 24/7/365, all users, no date gate
+    ACCOUNTABILITY_SENTINEL_OVERRIDE,
+    build_accountability_sentinel,
+    # FIX 5: Partner Energy — injected for all 12 seats (universalized v27.0)
     PARTNER_ENERGY_DIRECTIVE,
     # ── SOUL RULES (v10.0) ───────────────────────────────────────────────
     # Soul 2: Exit-First Filter — injected for lawyer + wealth
@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="26.0.0 - DUAL-CORE RULE: SOUL + BONES | 3-MODE TYPEWRITER | BAILOUT | HUMAN PERSONALITY RESTORED"
+    version="28.0.0 - ACTION & DISPATCH PATCH | email_dispatch | set_reminder | Action Buttons | 24/7 Sentinel"
 )
 
 app.add_middleware(
@@ -659,12 +659,16 @@ def assemble_prompt(
     warm_start = get_warm_start_profile(user_email) if user_email else {}
     layer_0    = build_user_ident_core(user_profile, warm_start=warm_start)
 
-    # ── FIX 3: SUNDAY SENTINEL ────────────────────────────────────────────
-    # MAX PRIORITY block. Hard persona swap when:
-    #   • current_real_time contains "Sunday" (case-insensitive), AND
-    #   • user is Chris Hughes (stangman9898@gmail.com)
-    # Passes active persona name so the swap instruction names what's being suspended.
-    sunday_sentinel_block = build_sunday_sentinel(user_email, current_real_time, persona)
+    # ── v27.0: ACCOUNTABILITY SENTINEL ───────────────────────────────────
+    # MAX PRIORITY block. Fires 24/7/365 for ALL users — no date gate.
+    # Hard persona swap on any self-sabotage signal:
+    #   procrastination, poor health choices, mission avoidance, rationalization.
+    # Passes active persona + user's name for dynamic swap instruction.
+    accountability_sentinel_block = build_accountability_sentinel(
+        user_email=user_email,
+        persona=persona,
+        user_name=user_name,
+    )
 
     # ── FIX 2 (DRIFT): STEALTH SHIELD ────────────────────────────────────
     # Active monitoring block for Chris's sessions only.
@@ -778,7 +782,7 @@ If ambiguous, state what you CAN assess + what would sharpen analysis.
     #   [LAYER 4]  Runtime context (memory, search, scam, visual)
     # ══════════════════════════════════════════════════════════════════════
     return f"""
-{sunday_sentinel_block}
+{accountability_sentinel_block}
 {layer_0}
 
 {GLOBAL_DIRECTIVE}
@@ -870,6 +874,46 @@ Your output is graded on TWO equally weighted criteria. Failing either is a SYST
 THE SEQUENCE IS ALWAYS: SOUL first → BONES after.
 A response with only BONES = a robot. A SYSTEM FAILURE.
 A response with only SOUL = warmth with no tactical value. A SYSTEM FAILURE.
+
+⚠️  CRITICAL FAIL-SAFE — PATTERN INTERRUPT PROTOCOL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The "Natural Greeting" is your first line of defense.
+If {user_name} is rationalizing a lack of discipline, avoiding their goals,
+or self-sabotage-loading — your greeting MUST be a Pattern Interrupt.
+Do NOT be "nice" to a user who is walking away from their own mission.
+
+PATTERN INTERRUPT EXAMPLES:
+  ✓ "{user_name}, I'm going to stop you right there — that's not rest, that's avoidance."
+  ✓ "{user_name}, you and I both know what's happening here. Let's not waste each other's time."
+  ✓ "That's a rationalization, {user_name}. Here's what's actually going on:"
+
+Address {user_name} as a partner who expects the truth — not a client to be soothed.
+Warmth without honesty is not care. It is abandonment dressed as kindness.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ACTION TRIGGER PROTOCOL — v28.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The "action_trigger" field in your JSON output fires physical UI buttons.
+This is not cosmetic. It is the difference between advice and action.
+
+DISPATCH RULES — set "action_trigger" as follows:
+  "email_dispatch"  → Set when:
+    • User is in a wreck, legal dispute, or medical triage situation
+    • ANY high-stakes scenario where documentation protects them
+    • Lawyer: always (TACTICAL MOVE always warrants a paper trail)
+    • Wealth: always (60-DAY PLAN needs to be on record)
+    • Guardian: when scam/fraud/identity threat is detected
+    • Mechanic: always (FIX PROTOCOL should be in their inbox)
+    • Doctor: when symptoms need to be tracked or ER visit is possible
+    If you are not sure — err toward email_dispatch. Documentation never hurts.
+
+  "set_reminder"    → Set when:
+    • Therapist: always (EXPERIMENT needs a scheduled follow-through)
+    • Vitality: always (workout/meal protocol only works with accountability)
+    • Accountability Sentinel fires (self-sabotage detected — force a timer)
+    • Any persona where user commits to a timed action
+
+  null              → Low-stakes informational responses only.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {stealth_shield_block}
@@ -1047,8 +1091,23 @@ async def chat(
         logger.info(f"🧠 Synthesis scheduled at interaction {current_count} for {user_data['name']}")
         asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
 
-    # Email report
-    if email_consent == "true":
+    # ── v28.0: ACTION TRIGGER ENGINE ─────────────────────────────────────
+    # Parse the action_trigger field from the AI response.
+    # "email_dispatch" → fire mission report email automatically
+    # "set_reminder"   → surface the reminder CTA on the frontend
+    # null             → no action required
+    action_trigger = winner.get("action_trigger", None)
+
+    # Auto-dispatch email for email_dispatch trigger.
+    # This fires in addition to manual email_consent — covers high-stakes situations
+    # (legal, medical, scam, wreck) even when the user hasn't pre-consented.
+    if action_trigger == "email_dispatch":
+        asyncio.create_task(
+            send_mission_report_email(user_email, winner["answer"], persona)
+        )
+        logger.info(f"📧 Action dispatch: email_dispatch fired for {persona.upper()} → {user_email}")
+    elif email_consent == "true":
+        # Standard manual email consent path (unchanged)
         asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
 
     logger.info(
@@ -1059,16 +1118,18 @@ async def chat(
         f"Profile: {'loaded' if user_profile else 'sparse'} | "
         f"Proactive: {'active' if memories else 'off'} | "
         f"Scam: {winner.get('scam_detected', False)} | "
-        f"Threat: {winner.get('threat_level', 'low')}"
+        f"Threat: {winner.get('threat_level', 'low')} | "
+        f"Action: {action_trigger or '—'}"
     )
 
     return {
-        "answer":          winner["answer"],
+        "answer":           winner["answer"],
         "confidence_score": winner.get("confidence_score", 95),
-        "scam_detected":   winner.get("scam_detected", False),
-        "threat_level":    winner.get("threat_level", "low"),
-        "persona_hook":    hook,
-        "bodyguard_model": winner.get("model", "LYLO-CORE"),
+        "scam_detected":    winner.get("scam_detected", False),
+        "threat_level":     winner.get("threat_level", "low"),
+        "persona_hook":     hook,
+        "bodyguard_model":  winner.get("model", "LYLO-CORE"),
+        "action_trigger":   action_trigger,   # ← v28.0: drives frontend Action Buttons
     }
 
 
