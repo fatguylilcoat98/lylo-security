@@ -232,6 +232,7 @@ function ChatInterface({
   const currentlyPlayingAudioRef = useRef<HTMLAudioElement | null>(null);
   const typewriterRef           = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamingTextRef        = useRef<string>('');   // live text for synced render
+  const pendingAudioRef         = useRef<Promise<HTMLAudioElement | null> | null>(null); // v29.0: in-flight audio fetch
 
   // Streaming typewriter state — which message is currently being typed out
   const [streamingMsgId, setStreamingMsgId]   = useState<string | null>(null);
@@ -571,8 +572,7 @@ function ChatInterface({
       formData.append('email_consent',        emailConsent ? 'true' : 'false');
       if (selectedImage) formData.append('file', selectedImage);
 
-      // ── v28.1 SPEED: Claim botMsgId BEFORE the API call ───────────────────
-      // This lets us pre-register the message slot and scroll instantly.
+      // Claim botMsgId and voiceToUse before API call
       const botMsgId   = `bot-${Date.now()}`;
       const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
 
@@ -582,9 +582,21 @@ function ChatInterface({
 
       const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
 
+      // ── v29.0 PARALLEL AUDIO FETCH ─────────────────────────────────────────
+      // Fire TTS fetch the INSTANT the API responds — before text renders, before
+      // mode branch, before React re-renders. By the time the user sees text
+      // (instant mode) or the typewriter starts (sync mode), the TTS request is
+      // already in-flight or done. Eliminates perceived voice lag entirely.
+      // Stored in pendingAudioRef so the bailout toggle can grab it mid-stream.
+      let audioPrefetch: Promise<HTMLAudioElement | null> = Promise.resolve(null);
+      if (isVoiceEnabled && !isLockout) {
+        audioPrefetch = fetchAudioSilently(response.answer, voiceToUse);
+        pendingAudioRef.current = audioPrefetch;
+      }
+
       // ── THREE MODE BRANCH ─────────────────────────────────────────────────
       // MODE 1 — Sync & Speak:    claim slot → empty box → typewriter + audio together
-      // MODE 2 — Instant & Speak: no claim → full text now → audio starts after paint
+      // MODE 2 — Instant & Speak: no claim → full text now → audio arrives in parallel
       // MODE 3 — Instant & Silent: no claim → full text now → no audio fetch at all
       if (readingMode === 'sync' && isVoiceEnabled) {
         setStreamingMsgId(botMsgId);
@@ -606,11 +618,14 @@ function ChatInterface({
       if (isLockout) { setStreamingMsgId(null); return; }
 
       if (isVoiceEnabled) {
-        // Modes 1 & 2 — fetch audio then animate
-        const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
+        // Await the already-in-flight prefetch.
+        // Instant mode: text is visible NOW, audio is partially/fully fetched → near-zero wait
+        // Sync mode: typewriter hasn't started → audio arrives before or alongside first char
+        const audioToPlay = await audioPrefetch;
+        pendingAudioRef.current = null;
         animateSynced(response.answer, botMsgId, audioToPlay);
       }
-      // Mode 3 (voice off): nothing — text is already visible, done.
+      // Mode 3 (voice off): nothing — text already visible, done.
 
     } catch (e) {
       console.error(e);
@@ -1295,9 +1310,9 @@ function ChatInterface({
                 )}
               </div>
 
-              {/* ── v28.3: ACTION BUTTONS — only secondary element below bot messages ── */}
+              {/* ── v28.3/v29.0: ACTION BUTTONS — only secondary element, high-contrast, full clearance ── */}
               {msg.sender === 'bot' && (msg as any).actionTrigger && (
-                <div className="mt-3 mb-2 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="mt-3 mb-3 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
                   {(msg as any).actionTrigger === 'email_dispatch' && (
                     <button
@@ -1392,8 +1407,17 @@ function ChatInterface({
 
             {/* Reading mode toggle */}
             <button
-              onClick={() => {
-                if (streamingMsgId) bailoutTypewriter();  // ← BAILOUT: snap to full text instantly
+              onClick={async () => {
+                if (streamingMsgId) {
+                  bailoutTypewriter();
+                  // v29.0 BAILOUT AUDIO: grab the already-in-flight audio and play immediately
+                  // Text just snapped to full — voice should follow in the same tick
+                  if (pendingAudioRef.current && isVoiceEnabled) {
+                    const audio = await pendingAudioRef.current;
+                    pendingAudioRef.current = null;
+                    if (audio) playAudioSafely(audio);
+                  }
+                }
                 const next = readingMode === 'sync' ? 'instant' : 'sync';
                 setReadingMode(next);
                 localStorage.setItem('lylo_reading_mode', next);
