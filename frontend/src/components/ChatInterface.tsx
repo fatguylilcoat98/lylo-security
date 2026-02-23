@@ -1142,7 +1142,7 @@ function ChatInterface({
                 <h2 className="text-white font-black text-2xl leading-tight mt-1 mb-1">{currentQ.question}</h2>
                 <p className="text-gray-500 text-xs mb-6 leading-relaxed">{currentQ.subtitle}</p>
 
-                <div className="grid grid-cols-2 gap-2 mb-5">
+                                <div className="grid grid-cols-2 gap-2 mb-5">
                   {currentQ.options.map(opt => {
                     const isSelected = current === opt.value;
                     return (
@@ -1165,8 +1165,9 @@ function ChatInterface({
                         <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
                       </button>
                     );
-                  })()}
+                  })}
                 </div>
+
 
                 <div className="flex gap-3">
                   {onboardingStep > 1 && (
