@@ -1106,7 +1106,7 @@ function ChatInterface({
                         <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
                       </button>
                     );
-                  })()}
+                  })}
                 </div>
 
                 <div className="flex gap-3">
