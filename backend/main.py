@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="29.0.0 - INSTANT SYNC: Parallel audio fetch | Bailout audio | 4s race timeout | Clean HUD"
+    version="29.6.0 - LIGHTSPEED SYNC: temp=0.2 | payload trimmed | race deadline fix"
 )
 
 app.add_middleware(
@@ -633,7 +633,7 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
             ],
             response_format={"type": "json_object"},
             max_tokens=1200,         # ← structured JSON with headers + greeting needs room; 700 was truncating
-            temperature=0.4,
+            temperature=0.2,         # ← v29.6: maximum focus, minimum generation variance
         )
         raw = response.choices[0].message.content
 
@@ -1167,8 +1167,6 @@ async def chat(
             "scam_detected":    False,
             "threat_level":     "low",
             "action_trigger":   None,
-            "persona_hook":     hook,
-            "bodyguard_model":  "SYSTEM-BUSY",
         }
 
     # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
@@ -1216,13 +1214,14 @@ async def chat(
     )
 
     return {
+        # ── v29.6: Payload trimmed to only fields the frontend reads ──────
+        # Removed: persona_hook, bodyguard_model — unused by ChatInterface.tsx
+        # Smaller payload = faster JSON parse + lower network transfer
         "answer":           winner["answer"],
         "confidence_score": winner.get("confidence_score", 95),
         "scam_detected":    winner.get("scam_detected", False),
         "threat_level":     winner.get("threat_level", "low"),
-        "persona_hook":     hook,
-        "bodyguard_model":  winner.get("model", "LYLO-CORE"),
-        "action_trigger":   action_trigger,   # ← v28.0: drives frontend Action Buttons
+        "action_trigger":   action_trigger,
     }
 
 
