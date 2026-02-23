@@ -639,6 +639,7 @@ function ChatInterface({
       formData.append('use_long_term_memory', 'true');
       formData.append('device_id',            deviceId);
       formData.append('email_consent',        emailConsent ? 'true' : 'false');
+      formData.append('voice',                voiceToUse || 'onyx');  // v29.7: backend generates TTS inline
       if (selectedImage) formData.append('file', selectedImage);
 
       // Claim botMsgId and voiceToUse before API call
@@ -651,17 +652,27 @@ function ChatInterface({
 
       const isLockout  = response.threat_level === 'high' && response.answer.includes('DEVICE LIMIT EXCEEDED');
 
-      // ── v29.0 PARALLEL AUDIO FETCH ─────────────────────────────────────────
-      // Fire TTS fetch the INSTANT the API responds — before text renders, before
-      // mode branch, before React re-renders. By the time the user sees text
-      // (instant mode) or the typewriter starts (sync mode), the TTS request is
-      // already in-flight or done. Eliminates perceived voice lag entirely.
-      // Stored in pendingAudioRef so the bailout toggle can grab it mid-stream.
-      let audioPrefetch: Promise<HTMLAudioElement | null> = Promise.resolve(null);
-      if (isVoiceEnabled && !isLockout) {
+      // ── v29.7 AUDIO HANDSHAKE ─────────────────────────────────────────────
+      // Backend now generates TTS concurrently with post-processing and returns
+      // audio_b64 inline in the chat response. No second round-trip needed.
+      // If audio_b64 is present → construct Audio object immediately (zero fetch lag).
+      // If empty (TTS failed on backend) → fall back to fetchAudioSilently.
+      let audioPrefetch: Promise<HTMLAudioElement | null>;
+
+      if (isVoiceEnabled && !isLockout && response.audio_b64) {
+        // Inline audio path — audio arrived with the text, construct instantly
+        const audio = new Audio(`data:audio/mp3;base64,${response.audio_b64}`);
+        audio.preload = 'auto';
+        audioPrefetch = Promise.resolve(audio);
+        console.log('[AUDIO] Inline audio_b64 received — zero fetch lag.');
+      } else if (isVoiceEnabled && !isLockout) {
+        // Fallback path — backend TTS failed, fire separate request
+        console.log('[AUDIO] No inline audio — falling back to /generate-audio.');
         audioPrefetch = fetchAudioSilently(response.answer, voiceToUse);
-        pendingAudioRef.current = audioPrefetch;
+      } else {
+        audioPrefetch = Promise.resolve(null);
       }
+      pendingAudioRef.current = audioPrefetch;
 
       // ── THREE MODE BRANCH ─────────────────────────────────────────────────
       // MODE 1 — Sync & Speak:    claim slot → empty box → typewriter + audio together
