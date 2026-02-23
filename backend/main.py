@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import uvicorn
 import json
@@ -13,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from io import BytesIO
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -84,7 +86,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="29.7.0 - AUDIO HANDSHAKE: Inline TTS in chat response | Zero second round-trip | Concurrent storage+TTS"
+    version="30.0.0 - STREAMING RESPONSE | INTAKE PROFILE | ADAPTIVE SEAT 9 | HOOK CACHE REMOVED"
 )
 
 app.add_middleware(
@@ -666,6 +668,117 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
 
 
 # ---------------------------------------------------------
+# V30: SENTENCE SPLITTER — mirrors frontend splitIntoSentences
+# Used by the streaming generator to yield sentence-sized chunks.
+# AQM on frontend fires TTS for chunk[0] the instant it arrives.
+# ---------------------------------------------------------
+def split_into_sentences(text: str) -> list:
+    """Split AI answer into TTS-safe sentence chunks for streaming."""
+    clean = re.sub(r"\*{1,2}|#{1,6}\s?", "", text).strip()
+    parts = re.findall(r"[^.!?\n]+(?:[.!?]+[\"']?(?:\s|$)|\n|$)", clean)
+    result = [s.strip() for s in parts if len(s.strip()) > 3]
+    return result if result else [clean]
+
+
+# ---------------------------------------------------------
+# V30: SEAT 9 ADAPTIVE THEOLOGY BLOCKS
+# assemble_prompt() selects one of three theological frameworks
+# based on the user's intake profile (occupation, mission, vibe).
+# Injected into Layer 2 for persona == "pastor" ONLY.
+# ---------------------------------------------------------
+SEAT9_CHRISTIAN = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEAT 9 — THE PASTOR (Christian Framework — Default)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You counsel from a Christian foundation — scripture, prayer, grace.
+PRIMARY VOCABULARY: Sermon on the Mount, Romans, Psalms, Proverbs.
+  • Open with a scripture reference when it speaks directly to the situation.
+  • Offer prayer support naturally — not performatively.
+  • Distinguish "conviction" (Spirit-led growth) from "condemnation" (shame spiral).
+  • When moral tension is present, hold the line with grace — not rigidity.
+BANNED: Platitudes ("everything happens for a reason"), spiritual bypassing,
+         prosperity gospel framing, guilt as a motivator.
+TONE: A trusted pastor who has been through the fire himself. Not a pulpit —
+      a kitchen table. Warm, specific, and spiritually grounded.
+"""
+
+SEAT9_STOIC = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEAT 9 — THE PHILOSOPHER (Stoic / Secular Framework)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You counsel through philosophical reasoning — Stoicism, Existentialism,
+Virtue Ethics. No scripture. No supernatural framing.
+PRIMARY VOCABULARY: Marcus Aurelius, Epictetus, Seneca, Frankl, Camus.
+  • Lead with the Socratic question: what does the user actually believe here?
+  • Apply the dichotomy of control: separate what is in their power from what isn't.
+  • Identify the virtue being tested — courage, temperance, justice, wisdom.
+  • Memento mori as a tool: does this matter in the context of a full life?
+BANNED: Religious framing, prayer references, "God's plan" language.
+TONE: A philosopher who takes the conversation seriously. Rigorous, warm,
+      and intellectually honest. Challenges the premise when needed.
+"""
+
+SEAT9_MULTIFAITH = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEAT 9 — THE FAITH SCHOLAR (Multi-Faith / Academic Framework)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You counsel across faith traditions with scholarly depth and genuine respect.
+PRIMARY TRADITIONS: Islam (Quran, hadith), Judaism (Torah, Talmud), Buddhism
+(Dharma, Four Noble Truths), Hinduism (Bhagavad Gita), Christianity (Bible),
+Indigenous wisdom, and secular humanism — you draw from the tradition most
+relevant to the user's expressed faith or question.
+  • Ask or infer the user's tradition before assuming a framework.
+  • Find the convergence point — what do most traditions agree on for THIS moment?
+  • Respect orthopraxy — honor the specific practice of the tradition, not a
+    watered-down "all religions say the same thing" reduction.
+  • Cite specific sacred texts when they speak precisely to the situation.
+BANNED: Ranking traditions, suggesting conversion, dismissing secular users.
+TONE: A scholar who honors what the user holds sacred — deeply informed,
+      non-dogmatic, and genuinely curious about their specific journey.
+"""
+
+def get_seat9_theology(intake_profile: dict, user_profile: dict) -> str:
+    """
+    Resolves which Seat 9 theology block to inject based on intake + synthesized profile.
+
+    Priority order:
+      1. Explicit faith_tradition field (set during intake or synthesis)
+      2. Vibe = 'academic' → Stoic
+      3. Mission = 'personal_growth' OR occupation in ('student','professional') → Stoic
+      4. Roadblock = 'knowledge' → Stoic
+      5. Default → Christian (most common among LYLO's demographic)
+    """
+    # Check synthesized profile first — may have explicit faith field
+    faith = (
+        intake_profile.get("faith_tradition", "")
+        or user_profile.get("faith_tradition", "")
+    ).lower().strip()
+
+    if faith in ("islam", "muslim", "jewish", "judaism", "buddhism", "buddhist",
+                 "hindu", "hinduism", "multifaith", "interfaith", "custom"):
+        return SEAT9_MULTIFAITH
+
+    if faith in ("atheist", "agnostic", "secular", "stoic", "none"):
+        return SEAT9_STOIC
+
+    # Intake-driven logic
+    vibe       = intake_profile.get("vibe", user_profile.get("vibe", ""))
+    mission    = intake_profile.get("mission", "")
+    roadblock  = intake_profile.get("roadblock", "")
+    occupation = intake_profile.get("occupation", "")
+
+    if vibe == "academic":
+        return SEAT9_STOIC
+    if mission in ("personal_growth",) or roadblock == "knowledge":
+        return SEAT9_STOIC
+    if occupation == "student":
+        return SEAT9_STOIC
+
+    # Christian default
+    return SEAT9_CHRISTIAN
+
+
+# ---------------------------------------------------------
 # PROMPT ASSEMBLY ENGINE — 5-LAYER ARCHITECTURE
 # Layer 0: USER_IDENT_CORE     — Who this person is (from synthesized profile)
 # Layer 1: GLOBAL DIRECTIVE    — Ironclad rules for all personas
@@ -686,8 +799,9 @@ def assemble_prompt(
     current_real_time: str,
     vibe:              str,
     user_profile:      dict,        # Synthesized profile from Pinecone
-    user_location:     str = "",    # For proactive location trigger
-    user_email:        str = "",    # NEW — used to pull warm-start registry entry
+    intake_profile:    dict  = {},  # V30: Raw intake answers (5-question onboarding)
+    user_location:     str   = "",  # For proactive location trigger
+    user_email:        str   = "",  # Used to pull warm-start registry entry
 ) -> str:
 
     # ── Resolve persona content ────────────────────────────────────────────
@@ -725,6 +839,14 @@ def assemble_prompt(
     analogy_bridge_block = ""
     if persona in ("tutor", "pastor"):
         analogy_bridge_block = ANALOGY_BRIDGE_TRADE_CONTEXT
+
+    # ── V30: ADAPTIVE SEAT 9 — THEOLOGY SELECTOR ─────────────────────────
+    # For persona == "pastor", replace generic counseling with the framework
+    # that matches the user's intake profile. Christian / Stoic / Multi-Faith.
+    # For all other personas, this block is empty — no overhead.
+    seat9_block = ""
+    if persona == "pastor":
+        seat9_block = get_seat9_theology(intake_profile, user_profile)
 
     # ── LAYER 4a: Episodic Memory block ───────────────────────────────────
     # Empty vault = inject nothing. Never announce an empty vault.
@@ -838,6 +960,7 @@ LAYER 2 — YOUR SEAT AT THE BOARD (PERSONA IDENTITY & EXPERTISE)
 SPECIALIZED SEAT OVERRIDE:
 {p_ext}
 
+{seat9_block}
 COMMUNICATION STYLE FOR THIS SESSION ({vibe.upper()} MODE):
 {v_style}
 
@@ -1015,18 +1138,16 @@ async def chat(
         if device_id not in user_devices:
             if len(user_devices) >= MAX_DEVICES_PER_USER:
                 logger.warning(f"🚨 DEVICE BREACH: {email_lower} → 3rd device ({device_id})")
-                return {
-                    "answer": (
-                        "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\n"
-                        "Your LYLO OS clearance is tied to specific hardware. "
-                        "Your account is limited to **two (2) active devices**. "
-                        "Access from this unauthorized third device is denied."
-                    ),
-                    "confidence_score": 100,
-                    "scam_detected": False,
-                    "threat_level": "high",
-                    "usage_info": {"can_send": False}
-                }
+                lockout_msg = (
+                    "🛡️ **SECURITY ALERT: DEVICE LIMIT EXCEEDED.**\n\n"
+                    "Your LYLO OS clearance is tied to specific hardware. "
+                    "Your account is limited to **two (2) active devices**. "
+                    "Access from this unauthorized third device is denied."
+                )
+                async def _lockout_stream():
+                    yield f"data: {json.dumps({'type': 'text', 'content': lockout_msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'meta', 'confidence_score': 100, 'scam_detected': False, 'threat_level': 'high', 'action_trigger': None, 'audio_b64': '', 'full_answer': lockout_msg})}\n\n"
+                return StreamingResponse(_lockout_stream(), media_type="text/event-stream")
             else:
                 user_devices.add(device_id)
 
@@ -1038,13 +1159,11 @@ async def chat(
             "elite": "🛡️ **Elite Limit Reached.** Upgrade to **Max Unlimited ($9.99/mo)** for unrestricted access.",
             "max":   "🛡️ **System Cap Reached.** 500 messages hit. Resets at midnight."
         }
-        return {
-            "answer": upgrade_msgs.get(tier, upgrade_msgs["free"]),
-            "confidence_score": 100,
-            "scam_detected": False,
-            "threat_level": "low",
-            "usage_info": {"can_send": False}
-        }
+        upsell_msg = upgrade_msgs.get(tier, upgrade_msgs["free"])
+        async def _upsell_stream():
+            yield f"data: {json.dumps({'type': 'text', 'content': upsell_msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'confidence_score': 100, 'scam_detected': False, 'threat_level': 'low', 'action_trigger': None, 'audio_b64': '', 'full_answer': upsell_msg})}\n\n"
+        return StreamingResponse(_upsell_stream(), media_type="text/event-stream")
 
     # --- PRE-FLIGHT DATA GATHERING (fully parallelized) ---
     # Memory, profile, and search all run simultaneously.
@@ -1084,11 +1203,16 @@ async def chat(
                 return ""
         return ""
 
-    # Fire memory + profile + search simultaneously
-    memories, user_profile, search_intel = await asyncio.gather(
+    # V30: Load intake profile (deterministic fetch from Pinecone, or localStorage echo)
+    async def _get_intake():
+        return await retrieve_intake_profile(user_id)
+
+    # Fire memory + profile + search + intake simultaneously
+    memories, user_profile, search_intel, intake_profile = await asyncio.gather(
         _get_memories(),
         retrieve_user_profile(user_id),
         _get_search(),
+        _get_intake(),
     )
 
     # Scam scan (pure CPU — instant)
@@ -1119,6 +1243,7 @@ async def chat(
         current_real_time=current_real_time,
         vibe=vibe,
         user_profile=user_profile,
+        intake_profile=intake_profile,   # V30: raw onboarding answers
         user_location=user_location,
         user_email=email_lower,
     )
@@ -1189,58 +1314,82 @@ async def chat(
         p.cancel()
 
     if not winner:
-        logger.warning(f"⚡ Race timeout ({RACE_TIMEOUT}s) — returning System Busy for {user_data['name']}")
-        return {
-            "answer":           f"{user_data['name']}, the system is under heavy load right now. Give it 10 seconds and resend — your request is queued.",
-            "confidence_score": 0,
-            "scam_detected":    False,
-            "threat_level":     "low",
-            "action_trigger":   None,
-        }
+        logger.warning(f"⚡ Race timeout ({RACE_TIMEOUT}s) — System Busy for {user_data['name']}")
+        busy_msg = f"{user_data['name']}, the system is under heavy load right now. Give it 10 seconds and resend — your request is queued."
+        async def _busy_stream():
+            yield f"data: {json.dumps({'type': 'text', 'content': busy_msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'confidence_score': 0, 'scam_detected': False, 'threat_level': 'low', 'action_trigger': None, 'audio_b64': '', 'full_answer': busy_msg})}\n\n"
+        return StreamingResponse(_busy_stream(), media_type="text/event-stream")
 
-    # ── v29.7 POST-RESPONSE: Usage tracking + Audio Handshake ──────────────
-    USAGE_TRACKER[user_id] += 1
-    current_count = USAGE_TRACKER[user_id]
+    # ── V30: STREAMING RESPONSE ────────────────────────────────────────────
+    # Protocol:
+    #   data: {"type": "text", "content": "<sentence>"}\n\n  ← one per sentence
+    #   data: {"type": "meta", "confidence_score": N, ...}\n\n  ← final event
+    # Frontend AQM fires TTS on first "text" event — zero wait for voice start.
+    # action_trigger buttons and audio_b64 arrive in the "meta" event.
 
-    action_trigger = winner.get("action_trigger", None)
+    async def stream_response():
+        try:
+            # ── USAGE TRACKING ────────────────────────────────────────────
+            USAGE_TRACKER[user_id] += 1
+            current_count = USAGE_TRACKER[user_id]
+            action_trigger = winner.get("action_trigger", None)
+            answer         = winner["answer"]
 
-    # TTS runs concurrently with memory storage and email dispatch.
-    # Both complete before the response is returned — one round trip for everything.
-    async def _post_storage():
-        asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
-        asyncio.create_task(store_intelligence_sync(user_id, winner["answer"], "bot"))
-        if action_trigger == "email_dispatch":
-            asyncio.create_task(
-                send_mission_report_email(user_email, winner["answer"], persona)
+            # ── STREAM ANSWER — sentence by sentence ──────────────────────
+            # split_into_sentences mirrors frontend logic for clean TTS cuts.
+            sentences = split_into_sentences(answer)
+            for sentence in sentences:
+                chunk = {"type": "text", "content": sentence}
+                yield f"data: {json.dumps(chunk)}\n\n"
+                await asyncio.sleep(0.008)   # Tiny yield — keeps event loop healthy
+
+            # ── CONCURRENT: TTS + STORAGE + EMAIL ────────────────────────
+            async def _post_storage():
+                asyncio.create_task(store_intelligence_sync(user_id, msg, "user"))
+                asyncio.create_task(store_intelligence_sync(user_id, answer, "bot"))
+                if action_trigger == "email_dispatch":
+                    asyncio.create_task(
+                        send_mission_report_email(user_email, answer, persona)
+                    )
+                    logger.info(f"📧 email_dispatch fired: {persona.upper()} → {user_email}")
+                elif email_consent == "true":
+                    asyncio.create_task(send_mission_report_email(user_email, answer, persona))
+
+            audio_b64, _ = await asyncio.gather(
+                generate_audio_inline(answer, voice),
+                _post_storage(),
             )
-            logger.info(f"📧 Action dispatch: email_dispatch fired for {persona.upper()} → {user_email}")
-        elif email_consent == "true":
-            asyncio.create_task(send_mission_report_email(user_email, winner["answer"], persona))
 
-    audio_b64, _ = await asyncio.gather(
-        generate_audio_inline(winner["answer"], voice),
-        _post_storage(),
-    )
+            # ── PROFILE SYNTHESIS TRIGGER ─────────────────────────────────
+            if current_count % SYNTHESIS_INTERVAL == 0:
+                logger.info(f"🧠 Synthesis at #{current_count} for {user_data['name']}")
+                asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
 
-    if current_count % SYNTHESIS_INTERVAL == 0:
-        logger.info(f"🧠 Synthesis at interaction {current_count} for {user_data['name']}")
-        asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
+            logger.info(
+                f"✅ [{persona.upper()}] → {user_data['name']} | Tier: {tier} | "
+                f"#{current_count} | Sentences: {len(sentences)} | "
+                f"Audio: {'✓' if audio_b64 else '✗'} | Action: {action_trigger or '—'}"
+            )
 
-    logger.info(
-        f"✅ [{persona.upper()}] → {user_data['name']} | Tier: {tier} | "
-        f"Interaction #{current_count} | "
-        f"Audio: {'✓ inline' if audio_b64 else '✗ fallback'} | "
-        f"Action: {action_trigger or '—'}"
-    )
+            # ── FINAL META EVENT ──────────────────────────────────────────
+            meta = {
+                "type":             "meta",
+                "confidence_score": winner.get("confidence_score", 95),
+                "scam_detected":    winner.get("scam_detected", False),
+                "threat_level":     winner.get("threat_level", "low"),
+                "action_trigger":   action_trigger,
+                "audio_b64":        audio_b64,
+                "full_answer":      answer,   # Complete text for sync mode fallback
+            }
+            yield f"data: {json.dumps(meta)}\n\n"
 
-    return {
-        "answer":           winner["answer"],
-        "confidence_score": winner.get("confidence_score", 95),
-        "scam_detected":    winner.get("scam_detected", False),
-        "threat_level":     winner.get("threat_level", "low"),
-        "action_trigger":   action_trigger,
-        "audio_b64":        audio_b64,
-    }
+        except Exception as exc:
+            logger.error(f"❌ Stream generator error: {exc}")
+            err = {"type": "error", "message": "Stream error — retry in 5s."}
+            yield f"data: {json.dumps(err)}\n\n"
+
+    return StreamingResponse(stream_response(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------
@@ -1249,15 +1398,208 @@ async def chat(
 
 
 # ---------------------------------------------------------
+# V30: INTAKE PROFILE — DETERMINISTIC PINECONE STORE/RETRIEVE
+# Separate from episodic memory and synthesized profiles.
+# Vector ID: {user_id}_intake
+# Stored on every onboarding answer. Read in pre-flight alongside profile.
+# ---------------------------------------------------------
+INTAKE_VECTOR_ID_SUFFIX = "_intake"
+
+async def retrieve_intake_profile(user_id: str) -> dict:
+    """
+    Fetches the user's raw onboarding intake answers from Pinecone.
+    Returns {} if not yet completed or Pinecone unavailable.
+    Cached in _PROFILE_CACHE with key '{user_id}_intake'.
+    """
+    cache_key = f"{user_id}_intake"
+    cached = _PROFILE_CACHE.get(cache_key)
+    if cached:
+        profile, ts = cached
+        if time.time() - ts < _PROFILE_CACHE_TTL:
+            return profile
+        else:
+            del _PROFILE_CACHE[cache_key]
+
+    if not memory_index:
+        return {}
+
+    intake_id = f"{user_id}{INTAKE_VECTOR_ID_SUFFIX}"
+    try:
+        result  = memory_index.fetch(ids=[intake_id])
+        vectors = result.get("vectors", {})
+        if intake_id in vectors:
+            metadata = vectors[intake_id].get("metadata", {})
+            raw_json = metadata.get("intake_json", "")
+            if raw_json:
+                profile = json.loads(raw_json)
+                _PROFILE_CACHE[cache_key] = (profile, time.time())
+                return profile
+    except Exception as e:
+        logger.error(f"Intake profile retrieval error: {e}")
+
+    return {}
+
+
+async def upsert_intake_profile(user_id: str, intake_data: dict):
+    """
+    Upserts the user's intake answers to Pinecone as a deterministic record.
+    Uses a stable embedding anchor so the record can be fetch()'d by ID.
+    Also invalidates the in-process cache so next pre-flight gets fresh data.
+    """
+    if not memory_index or not openai_client:
+        logger.warning("⚠️ Intake upsert skipped — Pinecone or OpenAI unavailable.")
+        return
+
+    try:
+        # Stable embedding anchor — same text every time so vector is consistent
+        anchor_text = "user identity intake profile occupation mission roadblock relationship vibe"
+        emb_response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=anchor_text,
+            dimensions=1024
+        )
+        anchor_vector = emb_response.data[0].embedding
+
+        intake_data["last_updated"] = datetime.now().isoformat()
+        intake_id = f"{user_id}{INTAKE_VECTOR_ID_SUFFIX}"
+        metadata  = {
+            "user_id":      user_id,
+            "record_type":  "intake_profile",
+            "intake_json":  json.dumps(intake_data),
+            "last_updated": intake_data["last_updated"],
+            # Flat fields for Pinecone metadata filter compatibility
+            "occupation":   intake_data.get("occupation", ""),
+            "mission":      intake_data.get("mission", ""),
+            "roadblock":    intake_data.get("roadblock", ""),
+            "relationship": intake_data.get("relationship", ""),
+            "vibe":         intake_data.get("vibe", ""),
+        }
+
+        memory_index.upsert([(intake_id, anchor_vector, metadata)])
+
+        # Bust the cache so next request picks up the fresh intake immediately
+        cache_key = f"{user_id}_intake"
+        if cache_key in _PROFILE_CACHE:
+            del _PROFILE_CACHE[cache_key]
+
+        logger.info(f"✅ Intake upserted for {user_id[:8]}... | {intake_data}")
+
+    except Exception as e:
+        logger.error(f"❌ Intake upsert error: {e}")
+
+
+@app.post("/user-intake")
+async def user_intake(
+    user_email:   str = Form(...),
+    question_id:  str = Form(...),
+    value:        str = Form(...),
+    full_profile: str = Form("{}"),   # Full intake JSON from frontend (all answered so far)
+):
+    """
+    V30 Onboarding: Called per question as user taps answers.
+    Saves to localStorage on frontend immediately (instant UX).
+    This endpoint upserts the full accumulated profile to Pinecone
+    so Layer 0 is available on next session even without re-onboarding.
+    """
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+
+    try:
+        intake_data = json.loads(full_profile)
+    except Exception:
+        intake_data = {question_id: value}
+
+    # Ensure the current answer is included (frontend sends partial profiles)
+    intake_data[question_id]     = value
+    intake_data["intake_source"] = "tap_to_build"
+
+    # Non-blocking upsert — don't make the user wait for Pinecone
+    asyncio.create_task(upsert_intake_profile(user_id, intake_data))
+
+    logger.info(f"📋 Intake answer [{question_id}={value}] for {email_lower}")
+    return {"status": "ok", "question_id": question_id, "value": value}
+
+
+@app.post("/initialize-profile")
+async def initialize_profile(
+    user_email:   str = Form(...),
+    occupation:   str = Form(""),
+    mission:      str = Form(""),
+    roadblock:    str = Form(""),
+    relationship: str = Form(""),
+    vibe:         str = Form("standard"),
+    full_profile: str = Form("{}"),   # Optional: complete JSON payload from frontend
+):
+    """
+    V30 Onboarding: Bulk endpoint — receives all 5 intake answers at once.
+    Formats into Layer 0 schema and upserts to Pinecone.
+    Also seeds the initial persona hook cache with intake context.
+
+    Layer 0 intake schema:
+      occupation    → what they do (calibrates depth of advice)
+      mission       → #1 objective (routes council focus)
+      roadblock     → what's blocking them (concentrates firepower)
+      relationship  → status (calibrates tone on personal topics)
+      vibe          → communication style (all personas adapt)
+      faith_inferred → Stoic | Christian | Multi-Faith (drives Seat 9)
+    """
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+
+    # Try to parse full_profile JSON if provided; fall back to individual fields
+    try:
+        provided = json.loads(full_profile) if full_profile != "{}" else {}
+    except Exception:
+        provided = {}
+
+    intake_data = {
+        "occupation":    provided.get("occupation", occupation).strip(),
+        "mission":       provided.get("mission",    mission).strip(),
+        "roadblock":     provided.get("roadblock",  roadblock).strip(),
+        "relationship":  provided.get("relationship", relationship).strip(),
+        "vibe":          provided.get("vibe",        vibe).strip() or "standard",
+        "intake_source": "initialize_profile",
+        "intake_completed": True,
+    }
+
+    # Infer faith framework from intake signals — stored for Seat 9 routing
+    vibe_val    = intake_data["vibe"]
+    mission_val = intake_data["mission"]
+    occ_val     = intake_data["occupation"]
+    roadblock_v = intake_data["roadblock"]
+
+    if vibe_val == "academic" or roadblock_v == "knowledge":
+        intake_data["faith_inferred"] = "stoic"
+    elif mission_val == "personal_growth" or occ_val == "student":
+        intake_data["faith_inferred"] = "stoic"
+    else:
+        intake_data["faith_inferred"] = "christian"   # Default
+
+    # Upsert to Pinecone (awaited here so we can confirm success in response)
+    await upsert_intake_profile(user_id, intake_data)
+
+    logger.info(
+        f"🎯 Profile initialized: {email_lower} | "
+        f"Occupation: {intake_data['occupation']} | Mission: {intake_data['mission']} | "
+        f"Faith inferred: {intake_data['faith_inferred']}"
+    )
+
+    return {
+        "status":          "initialized",
+        "faith_inferred":  intake_data["faith_inferred"],
+        "vibe_set":        intake_data["vibe"],
+        "intake_complete": True,
+    }
+
+
+# ---------------------------------------------------------
 # PERSONA HOOK — PERSONALIZED GREETING GENERATOR
 # Single-model, no dual-pass. Target: <1s response.
-# Frontend calls this immediately on persona select.
+# Frontend V30 prefetches all 12 hooks in background at mount.
 # Falls back to static spokenHook if it times out.
+# V30: _hook_cache DELETED — frontend background prefetcher handles caching.
+#      Backend cache caused stale hooks; fresh generation every call is correct.
 # ---------------------------------------------------------
-
-# Per-process in-memory cache: (user_id, persona) → hook text
-# Survives the session, resets on Render restart. Fast enough for beta.
-_hook_cache: dict = {}
 
 @app.post("/persona-hook")
 async def persona_hook(
@@ -1266,11 +1608,8 @@ async def persona_hook(
 ):
     email_lower = user_email.lower().strip()
     user_id     = create_user_id(email_lower)
-    cache_key   = f"{user_id}:{persona}"
-
-    # Return cached hook immediately if available — instant for repeat visits
-    if cache_key in _hook_cache:
-        return {"hook": _hook_cache[cache_key], "cached": True}
+    # V30: No cache — frontend background prefetcher handles its own caching.
+    # Every call here generates a fresh hook so the user never hears a stale opener.
 
     # Pull warm-start profile (registry first, synthesized as fallback)
     warm_start   = get_warm_start_profile(email_lower)
@@ -1363,8 +1702,7 @@ Generate the personalized greeting now:"""
                 hook_text = raw
 
         if hook_text and len(hook_text) > 10:
-            _hook_cache[cache_key] = hook_text
-            logger.info(f"🎯 PersonaHook generated: [{persona}] → {name}")
+            logger.info(f"🎯 PersonaHook generated (fresh): [{persona}] → {name}")
             return {"hook": hook_text, "cached": False}
 
     except asyncio.TimeoutError:
@@ -1467,9 +1805,9 @@ async def recovery_center(email: str):
 async def root():
     return {
         "status":       "ONLINE",
-        "version":      "22.0.0 - WARM START REGISTRY + PROACTIVE LEARNING ENGINE",
+        "version":      "30.0.0 - STREAMING | INTAKE PROFILE | ADAPTIVE SEAT 9 | HOOK CACHE REMOVED",
         "experts_active": len(PERSONA_DEFINITIONS),
-        "architecture": "5-Layer Prompt | Profile Synthesis | Proactive Triggers | Anti-Hallucination"
+        "architecture": "5-Layer Prompt | Streaming SSE | Intake Profile | Adaptive Seat 9 | AQM"
     }
 
 
