@@ -820,7 +820,7 @@ function ChatInterface({
             </div>
           )}
 
-          {/* [FIX 4] Clean conditional — no IIFE, vars hoisted above */}
+          {/* [FIX 2] BUILD TYPO FIXED — map closes with })} not })() */}
           {isQ && currentQ && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
               <span className={`text-xs font-black uppercase tracking-[0.2em] ${qScheme.text}`}>Question {onboardingStep} of {TOTAL}</span>
