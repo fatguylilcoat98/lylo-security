@@ -9,7 +9,7 @@
 # FIX 3: SUNDAY SENTINEL    — Vitality + Bestie flip to Roastmaster/Honest-Friend
 # FIX 4: DNA ENFORCEMENT    — Lawyer MUST output [ANALYSIS][RISK][TACTICAL MOVE]
 # FIX 5: PARTNER ENERGY     — All 12 seats: name, mission, Hustle Lab as the Why
-# ── CONVERSATIONAL DRIFT FIXES (v10.0) ──
+# ── CONVERSATIONAL DRIFT FIXES (v11.0) ──
 # DRIFT 1: SCHEMA LOCK      — Persona-specific JSON schemas force header compliance
 # DRIFT 2: STEALTH SHIELD   — Active monitoring threat block for No-Recite violations
 # DRIFT 3: STRUCTURAL PENALTY BLOCK — End-of-prompt mandate, 5 structural personas
@@ -52,7 +52,7 @@ def build_user_ident_core(profile: dict, warm_start: dict = None) -> str:
     if not merged:
         return """
 ╔══════════════════════════════════════════════════════════════╗
-║            LAYER 0 — USER IDENTITY CORE (SPARSE)            ║
+║            LAYER 0 — USER IDENTITY CORE (SPARSE)             ║
 ╚══════════════════════════════════════════════════════════════╝
 First session or profile not yet synthesized.
 Treat this user as a new contact. Gather context naturally
@@ -1107,53 +1107,53 @@ studied this person's actual situation — because you have. Use it.
 
 
 # ==============================================================================
-# FIX 1: PERSONA-SPECIFIC OUTPUT SCHEMAS
+# FIX 1: PERSONA-SPECIFIC OUTPUT SCHEMAS (UPDATED FOR PARTNER ENERGY + FLAGS)
 # Forcing persona-specific keys into the JSON schema makes structural drift
 # a syntax error — the model must fill in the headers to produce valid JSON.
-# get_output_schema(persona) is called by assemble_prompt() to replace the
-# generic schema block with a persona-aware one.
+# The inclusion of the "Natural, conversational greeting" prefix guarantees
+# the AI speaks like a human *before* acting like a machine.
 # ==============================================================================
 
 PERSONA_OUTPUT_SCHEMAS = {
 
     "doctor": """{
-    "answer": "[MOST LIKELY]: <your primary diagnosis and reasoning>\\n[PHYSIOLOGY]: <the biological mechanism explaining why>\\n[PROTOCOL]: <what to do right now — steps, timeline>\\n[ESCALATE WHEN]: <exact symptoms that require immediate medical attention>",
+    "answer": "<Natural, conversational greeting using the user's name>\\n\\n<If medical emergency: Call 911 override here>\\n\\n[MOST LIKELY]: <your primary diagnosis and reasoning>\\n[PHYSIOLOGY]: <the biological mechanism explaining why>\\n[PROTOCOL]: <what to do right now — steps, timeline>\\n[ESCALATE WHEN]: <exact symptoms that require immediate medical attention>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
 }""",
 
     "lawyer": """{
-    "answer": "[ANALYSIS]: <legal cause of action — name it in the first sentence>\\n[RISK]: <what the user stands to lose or gain, deadlines, exposure>\\n[TACTICAL MOVE]: <the ONE concrete action to take in the next 24-48 hours>",
+    "answer": "<Natural, conversational greeting using the user's name>\\n\\n<If exit conflict: [⚠️ CRITICAL STRATEGIC RISK] flag here>\\n\\n[ANALYSIS]: <legal cause of action — name it in the first sentence>\\n[RISK]: <what the user stands to lose or gain, deadlines, exposure>\\n[TACTICAL MOVE]: <the ONE concrete action to take in the next 24-48 hours>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
 }""",
 
     "wealth": """{
-    "answer": "[CURRENT STATE]: <exactly where the money situation stands right now>\\n[BLEEDING POINT]: <where the loss or risk is occurring and at what rate>\\n[60-DAY PLAN]: <the specific actions and targets for the next 60 days>",
+    "answer": "<Natural, conversational greeting using the user's name>\\n\\n<If exit conflict: [⚠️ CRITICAL STRATEGIC RISK] flag here>\\n\\n[CURRENT STATE]: <exactly where the money situation stands right now>\\n[BLEEDING POINT]: <where the loss or risk is occurring and at what rate>\\n[60-DAY PLAN]: <the specific actions and targets for the next 60 days>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
 }""",
 
     "therapist": """{
-    "answer": "[REFLECT]: <validate the emotion — one sentence, no analysis yet>\\n[IDENTIFY]: <name the cognitive distortion or pattern explicitly>\\n[REFRAME]: <the alternative, accurate interpretation>\\n[EXPERIMENT]: <one concrete behavioral experiment for this week>",
+    "answer": "<Warm, natural greeting using the user's name>\\n\\n<If suicidal/emergency: 988 lifeline override here>\\n\\n[REFLECT]: <validate the emotion — one sentence, no analysis yet>\\n[IDENTIFY]: <name the cognitive distortion or pattern explicitly>\\n[REFRAME]: <the alternative, accurate interpretation>\\n[EXPERIMENT]: <one concrete behavioral experiment for this week>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
 }""",
 
     "career": """{
-    "answer": "[SITUATION READ]: <what is actually happening here, politically and strategically>\\n[LEVERAGE POINTS]: <what the user controls, what they can use>\\n[EXACT PLAY]: <the specific move — script, timing, framing>",
+    "answer": "<Natural, conversational greeting using the user's name>\\n\\n<If legal risk detected: flag here>\\n\\n[SITUATION READ]: <what is actually happening here, politically and strategically>\\n[LEVERAGE POINTS]: <what the user controls, what they can use>\\n[EXACT PLAY]: <the specific move — script, timing, framing>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
 }""",
 
-    # All other personas use the standard schema
+    # All other personas use the standard schema (now with room for scam/proactive flags)
     "_default": """{
-    "answer": "Your complete in-character tactical response.",
+    "answer": "<Natural, conversational greeting using the user's name>\\n\\n<If SCAM ALERT or PROACTIVE TRIGGER: place here>\\n\\n<Your complete in-character tactical response.>",
     "confidence_score": <integer 0-100>,
     "scam_detected": <true|false>,
     "threat_level": <"low"|"medium"|"high">
@@ -1243,7 +1243,7 @@ def build_sunday_sentinel(user_email: str, current_real_time: str, persona: str 
 
 GLOBAL_DIRECTIVE = """
 ╔══════════════════════════════════════════════════════════════╗
-║       LYLO OS — GLOBAL OPERATING DIRECTIVE (NON-NEGOTIABLE)  ║
+║        LYLO OS — GLOBAL OPERATING DIRECTIVE (NON-NEGOTIABLE) ║
 ╚══════════════════════════════════════════════════════════════╝
 
 You are an expert agent inside the LYLO Digital Bodyguard OS.
