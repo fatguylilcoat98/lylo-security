@@ -1,28 +1,12 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.0.1 — ZERO-LATENCY ARCHITECTURE (STREAMING PARSER FIXED)
+// Version: 30.1.0 — STREAMING + COMPRESSION ARCHITECTURE
 // ─────────────────────────────────────────────────────────────────────────────
-// V30 Systems:
-//
-//  [1] AUDIO QUEUE MANAGER (useAudioQueueManager)
-//      splitIntoSentences() → sentence[0] TTS fires the instant text arrives
-//      Sentences 1-N prefetched in parallel → gapless playback via onended chain
-//      Inline audio_b64 from backend used for sentence[0] when available (v29.7)
-//
-//  [2] BACKGROUND HOOK PREFETCHER
-//      All 12 persona hooks fetched silently 800ms after mount
-//      Stored in hookCacheRef — persona switch is zero-latency (cache hit)
-//      Cache entry invalidated after use → next load fetches fresh
-//
-//  [3] TAP-TO-BUILD ONBOARDING (5 questions)
-//      Occupation → Mission → Roadblock → Relationship → Vibe
-//      Auto-advances on tap, skip available, saves to localStorage instantly
-//      Non-blocking POST to /user-intake for Pinecone storage
-//
-//  [4] ADAPTIVE SEAT 9 — The Pastor
-//      getPastor(intakeProfile) → Philosopher | Faith Scholar | Base Pastor
-//      Driven by mission + roadblock + vibe intake answers
-//      "Adapted" badge shown in persona grid when morphed
+// V30.1 Fixes:
+//  [FIX 1] IMAGE SHRINK-RAY — handleImageSelect() canvas 1024px / 0.7 JPEG
+//  [FIX 2] STREAMING PARSER — SSE getReader()+TextDecoder replaces apiRes.json()
+//  [FIX 3] AUTO-SCROLL DURING STREAM — useEffect on streamingText
+//  [FIX 4] confidenceScore > 0 guard + onboarding IIFE removed (vars hoisted)
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -90,7 +74,6 @@ interface ChatInterfaceProps {
   onUsageUpdate?: () => void;
 }
 
-// V30: User intake profile
 interface IntakeProfile {
   occupation: string;
   mission: string;
@@ -99,7 +82,6 @@ interface IntakeProfile {
   vibe: string;
 }
 
-// V30: Audio queue entry
 interface AudioQueueEntry {
   sentence: string;
   audio: HTMLAudioElement | null;
@@ -124,7 +106,6 @@ const BASE_PERSONAS: PersonaConfig[] = [
   { id: 'bestie',    name: 'The Bestie',            serviceLabel: 'RIDE OR DIE',       description: 'Inner Circle',        protectiveJob: 'Loyalty Lead',   spokenHook: "I've got your back, 100%. No filters, no judgment. What's actually going on?",          briefing: 'Blunt life advice.',               color: 'pink',   requiredTier: 'pro',   icon: Heart,     capabilities: ['Venting space', 'Secret keeping'],          fixedVoice: 'nova'    },
 ];
 
-// V30: Adaptive Seat 9 — alternate identities for The Pastor
 const PHILOSOPHER_PERSONA: PersonaConfig = {
   id: 'pastor', name: 'The Philosopher', serviceLabel: 'WISDOM ARCHITECT',
   description: 'Socratic Guide', protectiveJob: 'Philosophy Lead',
@@ -133,6 +114,7 @@ const PHILOSOPHER_PERSONA: PersonaConfig = {
   color: 'gold', requiredTier: 'pro', icon: Compass,
   capabilities: ['Critical thinking', 'Ethical frameworks'], fixedVoice: 'onyx',
 };
+
 const SCHOLAR_PERSONA: PersonaConfig = {
   id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR',
   description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead',
@@ -142,14 +124,9 @@ const SCHOLAR_PERSONA: PersonaConfig = {
   capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx',
 };
 
-// V30: Resolve which Seat 9 identity to use based on intake answers
 const getPastor = (intake: Partial<IntakeProfile>): PersonaConfig => {
   if (intake.vibe === 'academic') return SCHOLAR_PERSONA;
-  if (
-    intake.mission === 'personal_growth' ||
-    intake.roadblock === 'knowledge' ||
-    intake.occupation === 'student'
-  ) return PHILOSOPHER_PERSONA;
+  if (intake.mission === 'personal_growth' || intake.roadblock === 'knowledge' || intake.occupation === 'student') return PHILOSOPHER_PERSONA;
   return BASE_PERSONAS.find(p => p.id === 'pastor')!;
 };
 
@@ -157,41 +134,35 @@ const getPastor = (intake: Partial<IntakeProfile>): PersonaConfig => {
 // VIBE OPTIONS
 // ============================================================================
 const VIBE_OPTIONS = [
-  { value: 'standard',  label: 'Standard',  sublabel: 'Direct & Helpful'        },
-  { value: 'chill',     label: 'Chill',     sublabel: 'Conversational & Easy'   },
-  { value: 'intense',   label: 'Intense',   sublabel: 'Maximum Urgency'         },
-  { value: 'nurturing', label: 'Nurturing', sublabel: 'Warm & Supportive'       },
-  { value: 'blunt',     label: 'Blunt',     sublabel: 'Zero Filter, No Padding' },
-  { value: 'academic',  label: 'Academic',  sublabel: 'Structured & Cited'      },
+  { value: 'standard',  label: 'Standard'  },
+  { value: 'chill',     label: 'Chill'     },
+  { value: 'intense',   label: 'Intense'   },
+  { value: 'nurturing', label: 'Nurturing' },
+  { value: 'blunt',     label: 'Blunt'     },
+  { value: 'academic',  label: 'Academic'  },
 ];
 
 const LEGACY_VIBE_MAP: Record<string, string> = { roast: 'blunt', business: 'academic' };
 
 // ============================================================================
-// V30: TAP-TO-BUILD — 5 Intake Questions
+// INTAKE QUESTIONS
 // ============================================================================
 const INTAKE_QUESTIONS = [
   {
-    id: 'occupation',
-    question: 'What do you do for work?',
-    subtitle: 'Calibrates your personal AI Task Force.',
-    icon: Briefcase,
-    accentColor: 'blue',
+    id: 'occupation', question: 'What do you do for work?', subtitle: 'Calibrates your personal AI Task Force.',
+    icon: Briefcase, accentColor: 'blue',
     options: [
-      { label: 'Professional',        emoji: '💼', value: 'professional' },
-      { label: 'Entrepreneur',        emoji: '🚀', value: 'entrepreneur' },
-      { label: 'Student',             emoji: '🎓', value: 'student'      },
-      { label: 'Parent / Caregiver',  emoji: '🏠', value: 'caregiver'    },
-      { label: 'Job Seeker',          emoji: '🔍', value: 'job_seeker'   },
-      { label: 'Retired',             emoji: '🌅', value: 'retired'      },
+      { label: 'Professional',       emoji: '💼', value: 'professional' },
+      { label: 'Entrepreneur',       emoji: '🚀', value: 'entrepreneur' },
+      { label: 'Student',            emoji: '🎓', value: 'student'      },
+      { label: 'Parent / Caregiver', emoji: '🏠', value: 'caregiver'    },
+      { label: 'Job Seeker',         emoji: '🔍', value: 'job_seeker'   },
+      { label: 'Retired',            emoji: '🌅', value: 'retired'      },
     ],
   },
   {
-    id: 'mission',
-    question: 'Your #1 mission right now?',
-    subtitle: 'We route your council around this objective.',
-    icon: Target,
-    accentColor: 'green',
+    id: 'mission', question: 'Your #1 mission right now?', subtitle: 'We route your council around this objective.',
+    icon: Target, accentColor: 'green',
     options: [
       { label: 'Build Wealth',            emoji: '💰', value: 'build_wealth'    },
       { label: 'Protect My Family',       emoji: '🛡️', value: 'protect_family' },
@@ -202,11 +173,8 @@ const INTAKE_QUESTIONS = [
     ],
   },
   {
-    id: 'roadblock',
-    question: "What's standing in your way?",
-    subtitle: 'Your council focuses firepower here.',
-    icon: Flame,
-    accentColor: 'red',
+    id: 'roadblock', question: "What's standing in your way?", subtitle: 'Your council focuses firepower here.',
+    icon: Flame, accentColor: 'red',
     options: [
       { label: 'Money',              emoji: '💸', value: 'money'        },
       { label: 'Time',               emoji: '⏰', value: 'time'         },
@@ -217,26 +185,20 @@ const INTAKE_QUESTIONS = [
     ],
   },
   {
-    id: 'relationship',
-    question: 'Relationship status?',
-    subtitle: 'Advisors calibrate tone to your situation.',
-    icon: Heart,
-    accentColor: 'pink',
+    id: 'relationship', question: 'Relationship status?', subtitle: 'Advisors calibrate tone to your situation.',
+    icon: Heart, accentColor: 'pink',
     options: [
-      { label: 'Single',               emoji: '🎯', value: 'single'       },
-      { label: 'In a Relationship',    emoji: '💛', value: 'relationship'  },
-      { label: 'Married',              emoji: '💍', value: 'married'       },
-      { label: 'Divorced / Separated', emoji: '🔓', value: 'divorced'      },
-      { label: "It's Complicated",     emoji: '🌀', value: 'complicated'   },
-      { label: 'Prefer Not to Say',    emoji: '🔒', value: 'private'       },
+      { label: 'Single',               emoji: '🎯', value: 'single'      },
+      { label: 'In a Relationship',    emoji: '💛', value: 'relationship' },
+      { label: 'Married',              emoji: '💍', value: 'married'      },
+      { label: 'Divorced / Separated', emoji: '🔓', value: 'divorced'     },
+      { label: "It's Complicated",     emoji: '🌀', value: 'complicated'  },
+      { label: 'Prefer Not to Say',    emoji: '🔒', value: 'private'      },
     ],
   },
   {
-    id: 'vibe',
-    question: 'How should your council talk to you?',
-    subtitle: 'Every advisor adapts to your style.',
-    icon: Sliders,
-    accentColor: 'purple',
+    id: 'vibe', question: 'How should your council talk to you?', subtitle: 'Every advisor adapts to your style.',
+    icon: Sliders, accentColor: 'purple',
     options: [
       { label: 'Direct & Helpful',   emoji: '🎯', value: 'standard'  },
       { label: 'Chill & Easy',       emoji: '😎', value: 'chill'     },
@@ -249,7 +211,7 @@ const INTAKE_QUESTIONS = [
 ];
 
 // ============================================================================
-// HELPERS
+// COLOR MAP
 // ============================================================================
 const COLOR_MAP: Record<string, Record<string, string>> = {
   blue:   { border: 'border-blue-400',   glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]',  bg: 'bg-blue-500',   text: 'text-blue-400',   selected: 'border-blue-400 bg-blue-500/20',   ring: 'hover:border-blue-400/60 hover:bg-blue-500/10'   },
@@ -268,171 +230,88 @@ const getColor = (color: string, key: string) => COLOR_MAP[color]?.[key] ?? COLO
 
 const getDeviceId = () => {
   let id = localStorage.getItem('lylo_device_id');
-  if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + Math.random().toString(36).slice(2);
-    localStorage.setItem('lylo_device_id', id);
-  }
+  if (!id) { id = crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + Math.random().toString(36).slice(2); localStorage.setItem('lylo_device_id', id); }
   return id;
 };
 
-// V30: Split AI response into TTS-safe sentences
 const splitIntoSentences = (text: string): string[] => {
-  const clean = text
-    .replace(/\*\*/g, '')
-    .replace(/#{1,6}\s/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .trim();
+  const clean = text.replace(/\*\*/g, '').replace(/#{1,6}\s/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
   const parts = clean.match(/[^.!?\n]+(?:[.!?]+["']?(?:\s|$)|\n|$)/g) ?? [clean];
   return parts.map(s => s.trim()).filter(s => s.length > 3);
 };
 
 // ============================================================================
-// V30 SYSTEM [1]: AUDIO QUEUE MANAGER HOOK
+// AUDIO QUEUE MANAGER
 // ============================================================================
-// Architecture:
-//   enqueue(fullText, voice, inlineAudioB64?)
-//     → splitIntoSentences → mark all 'pending'
-//     → sentence[0]: if inlineAudioB64 present, construct instantly (zero fetch)
-//                    else fire /generate-audio immediately (shortest text = fastest TTS)
-//     → sentences[1..N]: prefetch in parallel background tasks
-//     → playNext(): find next 'ready' entry → play → on onended → playNext()
-//     → if next not ready yet → poll every 100ms until it is (gapless wait)
-//   stop(): drain queue, kill current audio, reset speaking state
-// ============================================================================
-function useAudioQueueManager(
-  isVoiceEnabled: boolean,
-  onSpeakingChange: (speaking: boolean) => void
-) {
+function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boolean) => void) {
   const queueRef        = useRef<AudioQueueEntry[]>([]);
   const isPlayingRef    = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const isVoiceRef      = useRef(isVoiceEnabled);
   const speakingCbRef   = useRef(onSpeakingChange);
 
-  useEffect(() => { isVoiceRef.current = isVoiceEnabled; },     [isVoiceEnabled]);
+  useEffect(() => { isVoiceRef.current = isVoiceEnabled; }, [isVoiceEnabled]);
   useEffect(() => { speakingCbRef.current = onSpeakingChange; }, [onSpeakingChange]);
 
   const fetchSentenceAudio = async (sentence: string, voice: string): Promise<HTMLAudioElement | null> => {
     try {
-      const fd = new FormData();
-      fd.append('text', sentence);
-      fd.append('voice', voice);
-      const res  = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
+      const fd = new FormData(); fd.append('text', sentence); fd.append('voice', voice);
+      const res = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.audio_b64) {
-        const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-        audio.preload = 'auto';
-        return audio;
-      }
-    } catch (e) {
-      console.warn('[AQM] Sentence fetch failed:', e);
-    }
+      if (data.audio_b64) { const a = new Audio(`data:audio/mp3;base64,${data.audio_b64}`); a.preload = 'auto'; return a; }
+    } catch (e) { console.warn('[AQM] fetch failed:', e); }
     return null;
   };
 
   const playNext = useCallback(() => {
     if (!isVoiceRef.current) return;
-
     const nextReady = queueRef.current.find(e => e.status === 'ready');
-
     if (!nextReady) {
       const stillFetching = queueRef.current.some(e => e.status === 'fetching' || e.status === 'pending');
-      if (!stillFetching) {
-        // Queue fully drained
-        isPlayingRef.current = false;
-        speakingCbRef.current(false);
-        console.log('[AQM] Queue exhausted.');
-      } else {
-        // Wait for background fetch to complete
-        setTimeout(playNext, 100);
-      }
+      if (!stillFetching) { isPlayingRef.current = false; speakingCbRef.current(false); }
+      else setTimeout(playNext, 100);
       return;
     }
-
     nextReady.status = 'played';
     const audio = nextReady.audio;
-    if (!audio) { playNext(); return; }  // null audio → skip silently
-
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-    }
+    if (!audio) { playNext(); return; }
+    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; }
     currentAudioRef.current = audio;
-    isPlayingRef.current    = true;
+    isPlayingRef.current = true;
     speakingCbRef.current(true);
-
     audio.onended = () => playNext();
-    audio.play().catch(err => {
-      console.warn('[AQM] Play blocked:', err);
-      playNext();
-    });
+    audio.play().catch(() => playNext());
   }, []);
 
   const stop = useCallback(() => {
     queueRef.current = [];
     isPlayingRef.current = false;
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-      currentAudioRef.current = null;
-    }
+    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; currentAudioRef.current = null; }
     speakingCbRef.current(false);
-    console.log('[AQM] Stopped and drained.');
   }, []);
 
-  const enqueue = useCallback(async (
-    fullText:       string,
-    voice:          string,
-    inlineAudioB64?: string
-  ) => {
+  const enqueue = useCallback(async (fullText: string, voice: string, inlineAudioB64?: string) => {
     if (!isVoiceRef.current) return;
     stop();
-
     const sentences = splitIntoSentences(fullText);
     if (!sentences.length) return;
-
-    console.log(`[AQM] Enqueuing ${sentences.length} sentence(s) → voice: ${voice}`);
-
-    queueRef.current = sentences.map(s => ({
-      sentence: s, audio: null, status: 'pending' as const,
-    }));
-
-    // ── Sentence 0: instant or fast-fire ─────────────────────────────────────
+    queueRef.current = sentences.map(s => ({ sentence: s, audio: null, status: 'pending' as const }));
     queueRef.current[0].status = 'fetching';
-
     if (inlineAudioB64) {
-      // v29.7 inline: backend already generated full audio → use it for first sentence
-      const audio = new Audio(`data:audio/mp3;base64,${inlineAudioB64}`);
-      audio.preload = 'auto';
-      queueRef.current[0].audio  = audio;
-      queueRef.current[0].status = 'ready';
-      console.log('[AQM] Sentence 0: inline audio_b64 — zero fetch.');
+      const audio = new Audio(`data:audio/mp3;base64,${inlineAudioB64}`); audio.preload = 'auto';
+      queueRef.current[0].audio = audio; queueRef.current[0].status = 'ready';
       playNext();
     } else {
-      // Fire TTS for just the first sentence (short text = ~300ms latency)
       fetchSentenceAudio(sentences[0], voice).then(audio => {
-        if (queueRef.current[0]) {
-          queueRef.current[0].audio  = audio;
-          queueRef.current[0].status = 'ready';
-          console.log('[AQM] Sentence 0: ready — starting playback.');
-          playNext();
-        }
+        if (queueRef.current[0]) { queueRef.current[0].audio = audio; queueRef.current[0].status = 'ready'; playNext(); }
       });
     }
-
-    // ── Sentences 1..N: prefetch in parallel ──────────────────────────────────
     for (let i = 1; i < sentences.length; i++) {
       const idx = i;
       if (!queueRef.current[idx]) break;
       queueRef.current[idx].status = 'fetching';
-
       fetchSentenceAudio(sentences[idx], voice).then(audio => {
-        if (queueRef.current[idx]) {
-          queueRef.current[idx].audio  = audio;
-          queueRef.current[idx].status = 'ready';
-          console.log(`[AQM] Sentence ${idx} ready.`);
-          if (!isPlayingRef.current) playNext();
-        }
+        if (queueRef.current[idx]) { queueRef.current[idx].audio = audio; queueRef.current[idx].status = 'ready'; if (!isPlayingRef.current) playNext(); }
       });
     }
   }, [stop, playNext]);
@@ -451,11 +330,9 @@ function ChatInterface({
   onUsageUpdate  = () => {},
 }: ChatInterfaceProps) {
 
-  // ── V30: Intake-aware PERSONAS list ──────────────────────────────────────
-  const [intakeProfile, setIntakeProfile] = useState<Partial<IntakeProfile>>({});
+  const [intakeProfile, setIntakeProfile]           = useState<Partial<IntakeProfile>>({});
   const PERSONAS = BASE_PERSONAS.map(p => p.id === 'pastor' ? getPastor(intakeProfile) : p);
 
-  // Core state
   const [activePersona, setActivePersona]           = useState<PersonaConfig>(() => initialPersona ?? PERSONAS[0]);
   const [messages, setMessages]                     = useState<Message[]>([]);
   const [input, setInput]                           = useState('');
@@ -480,42 +357,35 @@ function ChatInterface({
   const [showCrisisShield, setShowCrisisShield]     = useState(false);
   const [showPersonaGrid, setShowPersonaGrid]       = useState(true);
   const [showOnboarding, setShowOnboarding]         = useState(false);
-  const [onboardingStep, setOnboardingStep]         = useState(0);  // 0 = briefing, 1-5 = questions
+  const [onboardingStep, setOnboardingStep]         = useState(0);
   const [deviceId]                                  = useState(() => getDeviceId());
   const [emailConsent, setEmailConsent]             = useState(false);
   const [streamingMsgId, setStreamingMsgId]         = useState<string | null>(null);
   const [streamingText, setStreamingText]           = useState('');
+  const [deferredPrompt, setDeferredPrompt]         = useState<any>(null);
+  const [installMethod, setInstallMethod]           = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
+  const [showInstallModal, setShowInstallModal]     = useState(false);
+  const [canInstall, setCanInstall]                 = useState(false);
 
-  // PWA
-  const [deferredPrompt, setDeferredPrompt]     = useState<any>(null);
-  const [installMethod, setInstallMethod]       = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
-  const [showInstallModal, setShowInstallModal] = useState(false);
-  const [canInstall, setCanInstall]             = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef     = useRef<HTMLInputElement>(null);
+  const photoInputRef    = useRef<HTMLInputElement>(null);
+  const recognitionRef   = useRef<any>(null);
+  const isRecordingRef   = useRef(false);
+  const accumulatedRef   = useRef('');
+  const inputTextRef     = useRef('');
+  const typewriterRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamingTextRef = useRef('');
+  const pendingAudioRef  = useRef<Promise<HTMLAudioElement | null> | null>(null);
+  const hookCacheRef     = useRef<Record<string, string>>({});
+  const hooksFetchedRef  = useRef(false);
 
-  // Refs
-  const chatContainerRef   = useRef<HTMLDivElement>(null);
-  const fileInputRef       = useRef<HTMLInputElement>(null);
-  const photoInputRef      = useRef<HTMLInputElement>(null);
-  const recognitionRef     = useRef<any>(null);
-  const isRecordingRef     = useRef(false);
-  const accumulatedRef     = useRef('');
-  const inputTextRef       = useRef('');
-  const typewriterRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamingTextRef   = useRef('');
-  const pendingAudioRef    = useRef<Promise<HTMLAudioElement | null> | null>(null);
-
-  // V30 System [2]: Hook prefetch cache
-  const hookCacheRef      = useRef<Record<string, string>>({});
-  const hooksFetchedRef   = useRef(false);
-
-  // V30 System [1]: Audio Queue Manager
   const handleSpeakingChange = useCallback((v: boolean) => setIsSpeaking(v), []);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
 
-  // ── PWA ──────────────────────────────────────────────────────────────────
+  // PWA
   useEffect(() => {
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-      ('standalone' in window.navigator && (window.navigator as any).standalone === true);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in window.navigator && (window.navigator as any).standalone === true);
     if (isStandalone) return;
     const alreadySeen = localStorage.getItem('lylo_install_modal_seen');
     const ua = window.navigator.userAgent.toLowerCase();
@@ -523,11 +393,7 @@ function ChatInterface({
       setInstallMethod('manual_ios'); setCanInstall(true);
       if (!alreadySeen) setShowInstallModal(true);
     } else {
-      const h = (e: any) => {
-        e.preventDefault(); setDeferredPrompt(e);
-        setInstallMethod('prompt'); setCanInstall(true);
-        if (!alreadySeen) setShowInstallModal(true);
-      };
+      const h = (e: any) => { e.preventDefault(); setDeferredPrompt(e); setInstallMethod('prompt'); setCanInstall(true); if (!alreadySeen) setShowInstallModal(true); };
       window.addEventListener('beforeinstallprompt', h);
       return () => window.removeEventListener('beforeinstallprompt', h);
     }
@@ -536,21 +402,14 @@ function ChatInterface({
   const dismissInstallModal = () => { localStorage.setItem('lylo_install_modal_seen', 'true'); setShowInstallModal(false); };
   const handleInstallClick  = async () => {
     dismissInstallModal();
-    if (installMethod === 'prompt' && deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setCanInstall(false);
-      setDeferredPrompt(null);
-    } else if (installMethod === 'manual_ios') {
-      alert('APPLE SECURE INSTALL:\n\n1. Tap the Share icon (square with up arrow).\n2. Tap "Add to Home Screen".');
-    } else {
-      alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots in Chrome.\n2. Tap "Install app" or "Add to Home screen".');
-    }
+    if (installMethod === 'prompt' && deferredPrompt) { deferredPrompt.prompt(); const { outcome } = await deferredPrompt.userChoice; if (outcome === 'accepted') setCanInstall(false); setDeferredPrompt(null); }
+    else if (installMethod === 'manual_ios') alert('APPLE SECURE INSTALL:\n\n1. Tap the Share icon.\n2. Tap "Add to Home Screen".');
+    else alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots in Chrome.\n2. Tap "Install app".');
   };
 
-  // ── Hydrate preferences ───────────────────────────────────────────────────
+  // Hydrate prefs
   useEffect(() => {
-    const emailRaw   = userEmail.toLowerCase();
+    const emailRaw = userEmail.toLowerCase();
     const storedName = localStorage.getItem('userName');
     const storedTier = localStorage.getItem('userTier') as any;
     if (storedName) setUserName(storedName);
@@ -559,102 +418,65 @@ function ChatInterface({
     const savedBestie = localStorage.getItem('lylo_bestie_config');
     if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
     const rawStyle = localStorage.getItem('lylo_communication_style');
-    if (rawStyle) {
-      const migrated = LEGACY_VIBE_MAP[rawStyle] ?? rawStyle;
-      if (migrated !== rawStyle) localStorage.setItem('lylo_communication_style', migrated);
-      setCommunicationStyle(migrated);
-    }
-    const savedFont = localStorage.getItem('lylo_font_level');
-    if (savedFont) setFontLevel(parseInt(savedFont, 10));
-    const savedVoice = localStorage.getItem('lylo_voice_enabled');
-    if (savedVoice !== null) setIsVoiceEnabled(savedVoice === 'true');
-    const savedMode = localStorage.getItem('lylo_reading_mode');
-    if (savedMode === 'sync' || savedMode === 'instant') setReadingMode(savedMode as any);
+    if (rawStyle) { const migrated = LEGACY_VIBE_MAP[rawStyle] ?? rawStyle; if (migrated !== rawStyle) localStorage.setItem('lylo_communication_style', migrated); setCommunicationStyle(migrated); }
+    const savedFont = localStorage.getItem('lylo_font_level'); if (savedFont) setFontLevel(parseInt(savedFont, 10));
+    const savedVoice = localStorage.getItem('lylo_voice_enabled'); if (savedVoice !== null) setIsVoiceEnabled(savedVoice === 'true');
+    const savedMode = localStorage.getItem('lylo_reading_mode'); if (savedMode === 'sync' || savedMode === 'instant') setReadingMode(savedMode as any);
     if ('Notification' in window && Notification.permission === 'granted') setNotificationsEnabled(true);
-
-    // Load saved intake
     const savedIntake = localStorage.getItem(`lylo_intake_${emailRaw}`);
-    if (savedIntake) {
-      const parsed: Partial<IntakeProfile> = JSON.parse(savedIntake);
-      setIntakeProfile(parsed);
-      if (parsed.vibe) setCommunicationStyle(parsed.vibe);
-    }
-
+    if (savedIntake) { const parsed: Partial<IntakeProfile> = JSON.parse(savedIntake); setIntakeProfile(parsed); if (parsed.vibe) setCommunicationStyle(parsed.vibe); }
     const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
     if (!hasOnboarded) setShowOnboarding(true);
   }, [userEmail]);
 
-  // ── V30 System [2]: Background Hook Prefetcher ────────────────────────────
-  // Fires 800ms after mount. Fetches all 12 persona hooks in parallel.
-  // On persona switch → cache hit = instant; cache miss = live fetch (rare).
-  // Cache entry deleted after use so each press gets a fresh hook next time.
+  // Background hook prefetch
   useEffect(() => {
     if (!userEmail || hooksFetchedRef.current) return;
     hooksFetchedRef.current = true;
-
     const prefetchAll = async () => {
-      console.log('[HOOKS] Starting background prefetch for all personas...');
-      await Promise.allSettled(
-        BASE_PERSONAS.map(async persona => {
-          try {
-            const fd = new FormData();
-            fd.append('persona',    persona.id);
-            fd.append('user_email', userEmail);
-            const res = await Promise.race([
-              fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }),
-              new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
-            ]) as Response;
-            if (res.ok) {
-              const data = await res.json();
-              if (data.hook) {
-                hookCacheRef.current[persona.id] = data.hook;
-                console.log(`[HOOKS] ✓ ${persona.id}`);
-              }
-            }
-          } catch {
-            console.log(`[HOOKS] ${persona.id} — static fallback.`);
-          }
-        })
-      );
-      console.log('[HOOKS] Prefetch complete.');
+      await Promise.allSettled(BASE_PERSONAS.map(async persona => {
+        try {
+          const fd = new FormData(); fd.append('persona', persona.id); fd.append('user_email', userEmail);
+          const res = await Promise.race([fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]) as Response;
+          if (res.ok) { const data = await res.json(); if (data.hook) hookCacheRef.current[persona.id] = data.hook; }
+        } catch {}
+      }));
     };
-
     const timer = setTimeout(prefetchAll, 800);
     return () => clearTimeout(timer);
   }, [userEmail]);
 
-  // ── Hardware back-button lock ─────────────────────────────────────────────
+  // Back button
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; return ''; };
-    const lock     = () => window.history.pushState(null, '', window.location.href);
-    const onPop    = () => {
+    const lock = () => window.history.pushState(null, '', window.location.href);
+    const onPop = () => {
       window.history.pushState(null, '', window.location.href);
-      if (showOnboarding)        return;
-      if (showDropdown)          { setShowDropdown(false); return; }
-      if (showCameraMenu)        { setShowCameraMenu(false); return; }
-      if (showCrisisShield)      { setShowCrisisShield(false); return; }
-      if (!showPersonaGrid)      { handleInternalBack(); return; }
+      if (showOnboarding) return;
+      if (showDropdown) { setShowDropdown(false); return; }
+      if (showCameraMenu) { setShowCameraMenu(false); return; }
+      if (showCrisisShield) { setShowCrisisShield(false); return; }
+      if (!showPersonaGrid) { handleInternalBack(); return; }
       alert('Use the Logout button to exit securely.');
     };
-    window.addEventListener('beforeunload', onUnload);
-    window.addEventListener('popstate', onPop);
-    lock();
+    window.addEventListener('beforeunload', onUnload); window.addEventListener('popstate', onPop); lock();
     return () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('popstate', onPop); };
   }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
-  useEffect(() => {
-    if (chatContainerRef.current)
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [messages, previewUrl]);
+  // Scroll on new messages
+  useEffect(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; }, [messages, previewUrl]);
 
   useEffect(() => {
     const lastBot = [...messages].reverse().find(m => m.sender === 'bot');
     if (!lastBot || !(lastBot as any).actionTrigger) return;
-    requestAnimationFrame(() => {
-      if (chatContainerRef.current)
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    });
+    requestAnimationFrame(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; });
   }, [messages, streamingMsgId]);
+
+  // [FIX 3] Auto-scroll during live SSE stream
+  useEffect(() => {
+    if (!streamingText || !chatContainerRef.current) return;
+    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  }, [streamingText]);
 
   useEffect(() => {
     if (!selectedImage) { setPreviewUrl(null); return; }
@@ -663,98 +485,56 @@ function ChatInterface({
     return () => URL.revokeObjectURL(url);
   }, [selectedImage]);
 
-  // ── Legacy single-audio play (sync mode typewriter) ───────────────────────
   const playAudioSafely = (audio: HTMLAudioElement) => {
-    aqm.stop();
-    setIsSpeaking(true);
+    aqm.stop(); setIsSpeaking(true);
     audio.onended = () => setIsSpeaking(false);
     audio.play().catch(e => console.warn('[AUDIO] Blocked:', e));
   };
 
-  // ── Typewriter (sync mode) ────────────────────────────────────────────────
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    streamingTextRef.current = '';
-    setStreamingText('');
-
-    if (readingMode === 'instant') {
-      setStreamingMsgId(null);
-      if (audioEl && isVoiceEnabled) playAudioSafely(audioEl);
-      return;
-    }
-
+    streamingTextRef.current = ''; setStreamingText('');
+    if (readingMode === 'instant') { setStreamingMsgId(null); if (audioEl && isVoiceEnabled) playAudioSafely(audioEl); return; }
     const startTyping = (msPerChar: number) => {
       let i = 0;
       typewriterRef.current = setInterval(() => {
         i++;
-        const slice = text.slice(0, i);
-        streamingTextRef.current = slice;
-        setStreamingText(slice);
-        if (i >= text.length) {
-          clearInterval(typewriterRef.current!);
-          typewriterRef.current = null;
-          setStreamingMsgId(null);
-          setStreamingText('');
-        }
+        const slice = text.slice(0, i); streamingTextRef.current = slice; setStreamingText(slice);
+        if (i >= text.length) { clearInterval(typewriterRef.current!); typewriterRef.current = null; setStreamingMsgId(null); setStreamingText(''); }
       }, msPerChar);
     };
-
     if (audioEl && isVoiceEnabled) {
-      const kick = () => {
-        const ms = Math.max(18, (audioEl.duration * 1000) / text.length);
-        playAudioSafely(audioEl);
-        startTyping(ms);
-      };
+      const kick = () => { const ms = Math.max(18, (audioEl.duration * 1000) / text.length); playAudioSafely(audioEl); startTyping(ms); };
       if (isFinite(audioEl.duration) && audioEl.duration > 0) { kick(); }
-      else {
-        audioEl.addEventListener('loadedmetadata', kick, { once: true });
-        setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200);
-      }
-    } else {
-      startTyping(28);
-    }
+      else { audioEl.addEventListener('loadedmetadata', kick, { once: true }); setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200); }
+    } else { startTyping(28); }
   };
 
-  // ── V29.6: Mic Hard-Reset ─────────────────────────────────────────────────
   const buildRecognition = (): any => {
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
-    if (!SR) { console.warn('[MIC] API unavailable.'); return null; }
-    console.log('[MIC] Building fresh instance...');
-    const rec = new SR();
-    rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
-    rec.onstart  = () => console.log('[MIC] Hardware mic active.');
+    if (!SR) return null;
+    const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
       let interim = '', final = '';
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final   += e.results[i][0].transcript;
-        else                      interim += e.results[i][0].transcript;
-      }
+      for (let i = 0; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript; else interim += e.results[i][0].transcript; }
       if (final) accumulatedRef.current += final + ' ';
       const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
       setInput(full); inputTextRef.current = full;
     };
     rec.onerror = (e: any) => {
-      console.error(`[MIC] Error: ${e.error}`);
-      if (e.error === 'not-allowed') {
-        alert('Microphone blocked. Check browser site settings.'); isRecordingRef.current = false; setIsRecording(false);
-      } else if (e.error === 'network') {
-        isRecordingRef.current = false; setIsRecording(false);
-      } else if (isRecordingRef.current) {
-        setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150);
-      }
+      if (e.error === 'not-allowed') { alert('Microphone blocked.'); isRecordingRef.current = false; setIsRecording(false); }
+      else if (e.error === 'network') { isRecordingRef.current = false; setIsRecording(false); }
+      else if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
     };
-    rec.onend = () => {
-      if (isRecordingRef.current && !isSpeaking) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); }
-    };
+    rec.onend = () => { if (isRecordingRef.current && !isSpeaking) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } };
     return rec;
   };
 
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
-      try { recognitionRef.current?.stop(); } catch {}
-      recognitionRef.current = null;
+      try { recognitionRef.current?.stop(); } catch {} recognitionRef.current = null;
       setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
     } else {
       if (isSpeaking) return;
@@ -762,140 +542,128 @@ function ChatInterface({
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       recognitionRef.current = buildRecognition();
       if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
-      try { recognitionRef.current.start(); }
-      catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
+      try { recognitionRef.current.start(); } catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
     }
   };
 
-  // ── HANDLE SEND (V30 STREAMING PARSER) ────────────────────────────────────
-  const handleSend = async () => {
-    const text = (inputTextRef.current.trim() || input.trim());
-    if (!text && !selectedImage) return;
-    
-    if (typewriterRef.current) { 
-      clearInterval(typewriterRef.current); 
-      typewriterRef.current = null; 
-      setStreamingMsgId(null); 
-    }
-
-    setLoading(true); 
-    setInput(''); 
-    inputTextRef.current = ''; 
-    accumulatedRef.current = '';
-    setShowPersonaGrid(false);
-
-    const imgPreview = previewUrl;
-    const userMsg: Message = { 
-      id: Date.now().toString(), 
-      content: text || 'Analyzing image…', 
-      sender: 'user', 
-      timestamp: new Date(), 
-      imageUrl: imgPreview 
+  // [FIX 1] IMAGE SHRINK-RAY — Canvas resize to 1024px max, 0.7 JPEG quality
+  const handleImageSelect = (file: File | null | undefined) => {
+    if (!file) return;
+    const MAX_DIM = 1024;
+    const img = new window.Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width >= height) { height = Math.round((height * MAX_DIM) / width); width = MAX_DIM; }
+        else { width = Math.round((width * MAX_DIM) / height); height = MAX_DIM; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { setSelectedImage(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => {
+        if (!blob) { setSelectedImage(file); return; }
+        const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+        console.log(`[IMG] ${(file.size/1024).toFixed(0)}KB → ${(compressed.size/1024).toFixed(0)}KB (${width}×${height})`);
+        setSelectedImage(compressed);
+      }, 'image/jpeg', 0.7);
     };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); setSelectedImage(file); };
+    img.src = objUrl;
+  };
+
+  // [FIX 2] HANDLE SEND — SSE Streaming Parser
+  const handleSend = async () => {
+    const text = inputTextRef.current.trim() || input.trim();
+    if (!text && !selectedImage) return;
+    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
+    setLoading(true); setInput(''); inputTextRef.current = ''; accumulatedRef.current = '';
+    setShowPersonaGrid(false);
+    const imgPreview = previewUrl;
+    const userMsg: Message = { id: Date.now().toString(), content: text || 'Analyzing image…', sender: 'user', timestamp: new Date(), imageUrl: imgPreview };
     setMessages(prev => [...prev, userMsg]);
 
-    const botMsgId = `bot-${Date.now()}`;
-    const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : activePersona.fixedVoice;
-
     try {
+      const botMsgId = `bot-${Date.now()}`;
+      const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : activePersona.fixedVoice;
       const fd = new FormData();
-      fd.append('msg',                  text);
-      fd.append('history',              JSON.stringify(messages.slice(-6)));
-      fd.append('persona',              activePersona.id);
-      fd.append('user_email',           userEmail);
-      fd.append('user_location',        '');
-      fd.append('vibe',                 communicationStyle);
-      fd.append('use_long_term_memory', 'true');
-      fd.append('device_id',            deviceId);
-      fd.append('email_consent',        emailConsent ? 'true' : 'false');
-      fd.append('voice',                voiceToUse);
+      fd.append('msg', text); fd.append('history', JSON.stringify(messages.slice(-6)));
+      fd.append('persona', activePersona.id); fd.append('user_email', userEmail);
+      fd.append('user_location', ''); fd.append('vibe', communicationStyle);
+      fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
+      fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
       if (selectedImage) fd.append('file', selectedImage);
 
-      // 1. Create the empty bot message instantly on screen
-      setMessages(prev => [...prev, {
-        id: botMsgId, content: '', sender: 'bot' as const, timestamp: new Date()
-      }]);
-
-      setStreamingMsgId(botMsgId);
-      setStreamingText('');
-
-      // 2. Fetch the stream
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
-      if (!apiRes.body) throw new Error('No readable stream');
 
-      setLoading(false); // Stop the loading dots, stream is starting
+      // Seed the bot message bubble — content streams in live
+      setMessages(prev => [...prev, { id: botMsgId, content: '', sender: 'bot' as const, timestamp: new Date(), confidenceScore: 0, scamDetected: false, actionTrigger: null }]);
+      setStreamingMsgId(botMsgId);
+      setStreamingText('');
+      setLoading(false);
 
-      // 3. Setup the Stream Reader
-      const reader = apiRes.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let done = false;
-      let fullAnswer = '';
-      let metaData: any = null;
+      // SSE reader
+      const reader  = apiRes.body!.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = '';
+      let   fullAnswer = '';
+      let   metaData: any = null;
 
-      // 4. Read the firehose chunk by chunk
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          let parsed: any;
+          try { parsed = JSON.parse(raw); } catch { continue; }
 
-                if (data.type === 'text') {
-                  // Accumulate text and type it on screen instantly
-                  fullAnswer += (fullAnswer ? ' ' : '') + data.content;
-                  setStreamingText(fullAnswer);
-                } else if (data.type === 'meta') {
-                  // Catch the final metadata (buttons, audio, confidence)
-                  metaData = data;
-                }
-              } catch (err) {
-                // Safely ignore incomplete JSON chunks from buffer splits
-              }
-            }
+          if (parsed.type === 'text') {
+            fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
+            setStreamingText(fullAnswer);
+            setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
+          } else if (parsed.type === 'meta') {
+            metaData = parsed;
+            if (parsed.full_answer) fullAnswer = parsed.full_answer;
+            break outer;
           }
         }
       }
 
-      // 5. Stream Complete - Finalize UI
+      const finalText = fullAnswer.trim();
+      const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
+
+      setMessages(prev => prev.map(m =>
+        m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m
+      ));
       setStreamingMsgId(null);
       setStreamingText('');
 
-      const isLockout = metaData?.threat_level === 'high' && fullAnswer.includes('DEVICE LIMIT EXCEEDED');
-
-      // Lock in the final message with action buttons and confidence score
-      setMessages(prev => prev.map(m => m.id === botMsgId ? {
-        ...m,
-        content: fullAnswer,
-        confidenceScore: metaData?.confidence_score,
-        scamDetected: metaData?.scam_detected,
-        actionTrigger: metaData?.action_trigger ?? null,
-      } : m));
-
       if (isLockout) return;
 
-      // 6. Trigger Audio
       if (isVoiceEnabled) {
         if (readingMode === 'instant') {
-           // Fire the Audio Queue Manager using the inline audio generated by backend
-           await aqm.enqueue(fullAnswer, voiceToUse, metaData?.audio_b64 ?? undefined);
+          await aqm.enqueue(finalText, voiceToUse, metaData?.audio_b64 ?? undefined);
         } else {
-           let audioEl: HTMLAudioElement | null = null;
-           if (metaData?.audio_b64) {
-             audioEl = new Audio(`data:audio/mp3;base64,${metaData.audio_b64}`);
-             audioEl.preload = 'auto';
-           }
-           animateSynced(fullAnswer, botMsgId, audioEl);
+          let audioEl: HTMLAudioElement | null = null;
+          if (metaData?.audio_b64) { audioEl = new Audio(`data:audio/mp3;base64,${metaData.audio_b64}`); audioEl.preload = 'auto'; }
+          pendingAudioRef.current = Promise.resolve(audioEl);
+          const audioToPlay = await pendingAudioRef.current;
+          pendingAudioRef.current = null;
+          animateSynced(finalText, botMsgId, audioToPlay);
         }
       }
-
     } catch (e) {
-      console.error('Stream failed:', e);
+      console.error('[SEND] Error:', e);
       setStreamingMsgId(null);
       setLoading(false);
     } finally {
@@ -904,61 +672,42 @@ function ChatInterface({
     }
   };
 
-  // ── V30: Persona hook — cache hit = instant, miss = live fetch ────────────
   const getPersonaHook = async (persona: PersonaConfig): Promise<string> => {
     if (hookCacheRef.current[persona.id]) {
-      console.log(`[HOOKS] Cache hit — ${persona.id}`);
       const hook = hookCacheRef.current[persona.id];
-      delete hookCacheRef.current[persona.id];  // invalidate: fresh next time
+      delete hookCacheRef.current[persona.id];
       return hook;
     }
-    console.log(`[HOOKS] Cache miss — fetching ${persona.id}...`);
     try {
-      const fd = new FormData();
-      fd.append('persona', persona.id); fd.append('user_email', userEmail);
-      const res = await Promise.race([
-        fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500)),
-      ]) as Response;
+      const fd = new FormData(); fd.append('persona', persona.id); fd.append('user_email', userEmail);
+      const res = await Promise.race([fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500))]) as Response;
       if (!res.ok) throw new Error('failed');
       const data = await res.json();
       return data.hook || persona.spokenHook;
-    } catch {
-      return persona.spokenHook;
-    }
+    } catch { return persona.spokenHook; }
   };
 
-  // ── Persona change ────────────────────────────────────────────────────────
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
     aqm.stop();
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
     setActivePersona(persona); onPersonaChange(persona);
     setShowDropdown(false); setShowPersonaGrid(false); setLoading(true);
-
     const voiceToUse = persona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : persona.fixedVoice;
-    const hookText   = await getPersonaHook(persona);
-    const hookMsgId  = `hook-${Date.now()}`;
-
+    const hookText = await getPersonaHook(persona);
+    const hookMsgId = `hook-${Date.now()}`;
     if (readingMode === 'sync' && isVoiceEnabled) { setStreamingMsgId(hookMsgId); setStreamingText(''); }
     setMessages([{ id: hookMsgId, content: hookText, sender: 'bot' as const, timestamp: new Date() }]);
     setLoading(false);
-
     if (isVoiceEnabled) {
-      if (readingMode === 'instant') {
-        setStreamingMsgId(null);
-        await aqm.enqueue(hookText, voiceToUse);
-      } else {
+      if (readingMode === 'instant') { setStreamingMsgId(null); await aqm.enqueue(hookText, voiceToUse); }
+      else {
         try {
-          const fd = new FormData();
-          fd.append('text', hookText); fd.append('voice', voiceToUse);
-          const res  = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
+          const fd = new FormData(); fd.append('text', hookText); fd.append('voice', voiceToUse);
+          const res = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
           const data = await res.json();
-          if (data.audio_b64) {
-            const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
-            audio.preload = 'auto';
-            animateSynced(hookText, hookMsgId, audio);
-          } else { animateSynced(hookText, hookMsgId, null); }
+          if (data.audio_b64) { const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`); audio.preload = 'auto'; animateSynced(hookText, hookMsgId, audio); }
+          else animateSynced(hookText, hookMsgId, null);
         } catch { animateSynced(hookText, hookMsgId, null); }
       }
     }
@@ -966,24 +715,15 @@ function ChatInterface({
 
   const handleBestieSetupComplete = (voiceId: string) => {
     const cfg: BestieConfig = { gender: tempGender, voiceId, vibeLabel: tempGender === 'male' ? 'The Bro' : 'The Bestie' };
-    setBestieConfig(cfg);
-    localStorage.setItem('lylo_bestie_config', JSON.stringify(cfg));
+    setBestieConfig(cfg); localStorage.setItem('lylo_bestie_config', JSON.stringify(cfg));
     setShowBestieSetup(false);
     const bp = PERSONAS.find(p => p.id === 'bestie');
     if (bp) handlePersonaChange(bp);
   };
 
   const handleInternalBack = () => { setMessages([]); setShowPersonaGrid(true); aqm.stop(); setIsSpeaking(false); };
-
-  const cycleFontSize = () => {
-    const next = fontLevel >= 4 ? 1 : fontLevel + 1;
-    setFontLevel(next); localStorage.setItem('lylo_font_level', String(next));
-  };
-
-  const bailoutTypewriter = () => {
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    setStreamingMsgId(null); setStreamingText('');
-  };
+  const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
+  const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
   const requestMobileAlerts = async () => {
     if (!('Notification' in window)) { alert('Push notifications not supported.'); return; }
@@ -995,10 +735,7 @@ function ChatInterface({
 
   const scheduleMobileReminder = (msg: string, minutes = 30) => {
     if (!notificationsEnabled || Notification.permission !== 'granted') {
-      requestMobileAlerts().then(() => {
-        if (Notification.permission === 'granted')
-          setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/icon-192.png' }), minutes * 60000);
-      });
+      requestMobileAlerts().then(() => { if (Notification.permission === 'granted') setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/icon-192.png' }), minutes * 60000); });
       return;
     }
     setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/icon-192.png' }), minutes * 60000);
@@ -1007,100 +744,62 @@ function ChatInterface({
 
   const handleEmailDispatch = async (content: string) => {
     try {
-      const fd = new FormData();
-      fd.append('user_email', userEmail); fd.append('content', content); fd.append('persona', activePersona.id);
+      const fd = new FormData(); fd.append('user_email', userEmail); fd.append('content', content); fd.append('persona', activePersona.id);
       const res = await fetch(`${API_URL}/dispatch-email`, { method: 'POST', body: fd });
       if (res.ok) { alert('🛡️ Tactical Report dispatched.'); return; }
     } catch {}
     window.open(`mailto:${userEmail}?subject=${encodeURIComponent(`LYLO Report — ${activePersona.name}`)}&body=${encodeURIComponent(content)}`, '_blank');
   };
 
-  const toggleVoice = () => {
-    const next = !isVoiceEnabled;
-    setIsVoiceEnabled(next); localStorage.setItem('lylo_voice_enabled', String(next));
-    if (!next) { aqm.stop(); setIsSpeaking(false); }
-  };
-
+  const toggleVoice = () => { const next = !isVoiceEnabled; setIsVoiceEnabled(next); localStorage.setItem('lylo_voice_enabled', String(next)); if (!next) { aqm.stop(); setIsSpeaking(false); } };
   const handleVibeChange = (v: string) => { setCommunicationStyle(v); localStorage.setItem('lylo_communication_style', v); };
 
-  // ── V30: Save intake answer → localStorage + Pinecone ────────────────────
   const saveIntakeAnswer = async (questionId: string, value: string) => {
     const updated = { ...intakeProfile, [questionId]: value };
     setIntakeProfile(updated);
     localStorage.setItem(`lylo_intake_${userEmail.toLowerCase()}`, JSON.stringify(updated));
     if (questionId === 'vibe') { setCommunicationStyle(value); localStorage.setItem('lylo_communication_style', value); }
-    // Non-blocking POST to backend for Pinecone storage
     try {
-      const fd = new FormData();
-      fd.append('user_email',   userEmail);
-      fd.append('question_id',  questionId);
-      fd.append('value',        value);
-      fd.append('full_profile', JSON.stringify(updated));
+      const fd = new FormData(); fd.append('user_email', userEmail); fd.append('question_id', questionId); fd.append('value', value); fd.append('full_profile', JSON.stringify(updated));
       fetch(`${API_URL}/user-intake`, { method: 'POST', body: fd }).catch(() => {});
     } catch {}
   };
 
-  const completeOnboarding = () => {
-    localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
-    setShowOnboarding(false);
-  };
+  const completeOnboarding = () => { localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true'); setShowOnboarding(false); };
+  const getDynamicFontSize = () => { switch (fontLevel) { case 2: return 'text-lg leading-relaxed'; case 3: return 'text-2xl leading-relaxed tracking-wide'; case 4: return 'text-4xl leading-loose tracking-wide font-black'; default: return 'text-sm leading-normal'; } };
+  const getInputFontSize = () => { switch (fontLevel) { case 2: return 'text-lg'; case 3: return 'text-xl'; case 4: return 'text-2xl'; default: return 'text-sm'; } };
 
-  const getDynamicFontSize = () => {
-    switch (fontLevel) {
-      case 2: return 'text-lg leading-relaxed';
-      case 3: return 'text-2xl leading-relaxed tracking-wide';
-      case 4: return 'text-4xl leading-loose tracking-wide font-black';
-      default: return 'text-sm leading-normal';
-    }
-  };
-
-  const getInputFontSize = () => {
-    switch (fontLevel) { case 2: return 'text-lg'; case 3: return 'text-xl'; case 4: return 'text-2xl'; default: return 'text-sm'; }
-  };
-
-  // ===========================================================================
-  // V30 SYSTEM [3]: TAP-TO-BUILD ONBOARDING
-  // 5 Questions: Occupation → Mission → Roadblock → Relationship → Vibe
-  // Auto-advances 200ms after tap. Skip always available. Progress bar animated.
-  // ===========================================================================
+  // ==========================================================================
+  // ONBOARDING — [FIX 4] IIFE removed; scoped vars hoisted above JSX
+  // ==========================================================================
   if (showOnboarding) {
-    const TOTAL   = INTAKE_QUESTIONS.length;  // 5
-    const isQ     = onboardingStep >= 1 && onboardingStep <= TOTAL;
+    const TOTAL    = INTAKE_QUESTIONS.length;
+    const isQ      = onboardingStep >= 1 && onboardingStep <= TOTAL;
     const currentQ = isQ ? INTAKE_QUESTIONS[onboardingStep - 1] : null;
     const progress = onboardingStep === 0 ? 0 : Math.round((onboardingStep / (TOTAL + 1)) * 100);
+    const qScheme  = currentQ ? (COLOR_MAP[currentQ.accentColor] ?? COLOR_MAP.blue) : COLOR_MAP.blue;
+    const qCurrent = currentQ ? intakeProfile[currentQ.id as keyof IntakeProfile] : undefined;
 
     return (
       <div className="fixed inset-0 bg-[#080808] flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
-
-        {/* Ambient glow */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full bg-blue-600/5 blur-[120px]" />
           <div className="absolute bottom-1/4 left-1/4 w-[250px] h-[250px] rounded-full bg-indigo-600/4 blur-[80px]" />
         </div>
-
         <div className="w-full max-w-md relative z-10">
-
-          {/* Progress bar */}
           <div className="w-full h-[2px] bg-white/5 rounded-full mb-7 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out rounded-full"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${progress}%` }} />
           </div>
 
-          {/* ── Step 0: System Briefing ──────────────────────────────────── */}
           {onboardingStep === 0 && (
             <div className="animate-in fade-in zoom-in-95 duration-300">
               <div className="text-center mb-8">
                 <div className="w-20 h-20 mx-auto mb-5 rounded-3xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.12)]">
                   <Shield className="w-10 h-10 text-blue-400" />
                 </div>
-                <h1 className="text-white font-black text-3xl uppercase tracking-[0.15em] leading-none mb-2">
-                  L<span className="text-blue-400">Y</span>LO OS
-                </h1>
+                <h1 className="text-white font-black text-3xl uppercase tracking-[0.15em] leading-none mb-2">L<span className="text-blue-400">Y</span>LO OS</h1>
                 <p className="text-blue-400/60 text-xs font-bold uppercase tracking-[0.3em]">Security Clearance Granted</p>
               </div>
-
               <div className="space-y-3 mb-8">
                 {[
                   { icon: Brain,       color: 'text-purple-400', label: 'Dual-Brain AI',    desc: 'GPT-4o + Gemini race. You get the fastest, highest-confidence answer.' },
@@ -1110,101 +809,64 @@ function ChatInterface({
                 ].map(({ icon: Icon, color, label, desc }) => (
                   <div key={label} className="flex items-start gap-4 p-4 bg-white/[0.03] border border-white/[0.06] rounded-2xl">
                     <Icon className={`w-5 h-5 ${color} mt-0.5 flex-shrink-0`} />
-                    <div>
-                      <p className="text-white font-bold text-sm leading-none mb-1">{label}</p>
-                      <p className="text-gray-500 text-xs leading-relaxed">{desc}</p>
-                    </div>
+                    <div><p className="text-white font-bold text-sm leading-none mb-1">{label}</p><p className="text-gray-500 text-xs leading-relaxed">{desc}</p></div>
                   </div>
                 ))}
               </div>
-
-              <button
-                onClick={() => setOnboardingStep(1)}
-                className="w-full py-5 bg-blue-600 text-white font-black uppercase rounded-2xl tracking-[0.15em] flex justify-center items-center gap-3 hover:bg-blue-500 transition-all active:scale-[0.98] shadow-[0_0_30px_rgba(59,130,246,0.25)]"
-              >
+              <button onClick={() => setOnboardingStep(1)} className="w-full py-5 bg-blue-600 text-white font-black uppercase rounded-2xl tracking-[0.15em] flex justify-center items-center gap-3 hover:bg-blue-500 transition-all active:scale-[0.98] shadow-[0_0_30px_rgba(59,130,246,0.25)]">
                 Build My Profile <ArrowRight className="w-5 h-5" />
               </button>
               <p className="text-center text-gray-600 text-xs mt-4 uppercase tracking-widest font-bold">5 questions · 30 seconds</p>
             </div>
           )}
 
-          {/* ── Steps 1–5: Tap-to-Build Questions ───────────────────────── */}
-          {isQ && currentQ && (() => {
-            const Icon    = currentQ.icon;
-            const scheme  = COLOR_MAP[currentQ.accentColor] ?? COLOR_MAP.blue;
-            const current = intakeProfile[currentQ.id as keyof IntakeProfile];
-
-            return (
-              <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                <span className={`text-xs font-black uppercase tracking-[0.2em] ${scheme.text}`}>
-                  Question {onboardingStep} of {TOTAL}
-                </span>
-                <h2 className="text-white font-black text-2xl leading-tight mt-1 mb-1">{currentQ.question}</h2>
-                <p className="text-gray-500 text-xs mb-6 leading-relaxed">{currentQ.subtitle}</p>
-
-                                <div className="grid grid-cols-2 gap-2 mb-5">
-                  {currentQ.options.map(opt => {
-                    const isSelected = current === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={async () => {
-                          await saveIntakeAnswer(currentQ.id, opt.value);
-                          setTimeout(() => {
-                            if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
-                            else setTimeout(completeOnboarding, 400);
-                          }, 180);
-                        }}
-                        className={`p-4 rounded-2xl border text-left transition-all duration-100 active:scale-[0.96] ${
-                          isSelected
-                            ? scheme.selected
-                            : `bg-white/[0.03] border-white/[0.08] ${scheme.ring}`
-                        }`}
-                      >
-                        <div className="text-xl mb-2 leading-none">{opt.emoji}</div>
-                        <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-
-                <div className="flex gap-3">
-                  {onboardingStep > 1 && (
+          {/* [FIX 4] Clean conditional — no IIFE, vars hoisted above */}
+          {isQ && currentQ && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+              <span className={`text-xs font-black uppercase tracking-[0.2em] ${qScheme.text}`}>Question {onboardingStep} of {TOTAL}</span>
+              <h2 className="text-white font-black text-2xl leading-tight mt-1 mb-1">{currentQ.question}</h2>
+              <p className="text-gray-500 text-xs mb-6 leading-relaxed">{currentQ.subtitle}</p>
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                {currentQ.options.map(opt => {
+                  const isSelected = qCurrent === opt.value;
+                  return (
                     <button
-                      onClick={() => setOnboardingStep(s => s - 1)}
-                      className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all"
+                      key={opt.value}
+                      onClick={async () => { await saveIntakeAnswer(currentQ.id, opt.value); setTimeout(() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else setTimeout(completeOnboarding, 400); }, 180); }}
+                      className={`p-4 rounded-2xl border text-left transition-all duration-100 active:scale-[0.96] ${isSelected ? qScheme.selected : `bg-white/[0.03] border-white/[0.08] ${qScheme.ring}`}`}
                     >
-                      <ChevronLeft className="w-4 h-4" /> Back
+                      <div className="text-xl mb-2 leading-none">{opt.emoji}</div>
+                      <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
                     </button>
-                  )}
-                  <button
-                    onClick={() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else completeOnboarding(); }}
-                    className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
-                  >
-                    Skip <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+                  );
+                })}
               </div>
-            );
-          })()}
+              <div className="flex gap-3">
+                {onboardingStep > 1 && (
+                  <button onClick={() => setOnboardingStep(s => s - 1)} className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all">
+                    <ChevronLeft className="w-4 h-4" /> Back
+                  </button>
+                )}
+                <button onClick={() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else completeOnboarding(); }} className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all">
+                  Skip <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // ===========================================================================
+  // ==========================================================================
   // INSTALL MODAL
-  // ===========================================================================
+  // ==========================================================================
   const InstallModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[999998] flex items-end justify-center p-4 animate-in fade-in duration-300">
       <div className="bg-[#111] border border-blue-500/40 rounded-3xl w-full max-w-sm p-6 mb-4 shadow-[0_0_60px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 duration-300">
         <div className="flex items-center gap-4 mb-5">
           <div className="p-3 bg-blue-600 rounded-2xl"><Shield className="w-7 h-7 text-white" /></div>
-          <div>
-            <h2 className="text-white font-black text-lg uppercase tracking-widest leading-none">Install LYLO OS</h2>
-            <p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-1">Add to Home Screen</p>
-          </div>
+          <div><h2 className="text-white font-black text-lg uppercase tracking-widest leading-none">Install LYLO OS</h2><p className="text-blue-400 text-[10px] font-bold uppercase tracking-widest mt-1">Add to Home Screen</p></div>
         </div>
         <p className="text-gray-300 text-sm mb-6 leading-relaxed">Install for instant access, offline mode, and the full bodyguard experience — no browser needed.</p>
         <div className="flex gap-3">
@@ -1216,19 +878,17 @@ function ChatInterface({
     </div>
   );
 
-  // ===========================================================================
-  // MAIN OS SHELL
-  // ===========================================================================
+  // ==========================================================================
+  // MAIN SHELL
+  // ==========================================================================
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
 
       {showInstallModal && <InstallModal />}
 
-      {/* ── TOP BAR ─────────────────────────────────────────────────────────── */}
+      {/* TOP BAR */}
       <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
-
-          {/* Left */}
           <div className="relative flex gap-2 z-10">
             {!showPersonaGrid && (
               <button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
@@ -1238,7 +898,6 @@ function ChatInterface({
             <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors">
               <Menu className="w-5 h-5" />
             </button>
-
             {showDropdown && (
               <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
                 <div className="mb-6">
@@ -1273,41 +932,34 @@ function ChatInterface({
             )}
           </div>
 
-          {/* Center: Logo */}
           <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
-            <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">
-              L<span className={getColor(activePersona.color, 'text')}>Y</span>LO
-            </h1>
+            <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">L<span className={getColor(activePersona.color, 'text')}>Y</span>LO</h1>
             <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
           </div>
 
-          {/* Right */}
           <div className="flex items-center gap-2 z-10">
             <div className="flex flex-col items-end justify-center mr-1">
               <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
               <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
             </div>
-            <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'}
-              className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}>
+            <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}>
               <Bell className="w-5 h-5" />
             </button>
-            <button onClick={() => setShowCrisisShield(true)}
-              className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
+            <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all">
               <Shield className="w-5 h-5 fill-current" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── CRISIS SHIELD ────────────────────────────────────────────────────── */}
+      {/* CRISIS SHIELD */}
       {showCrisisShield && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100002] flex items-center justify-center p-4">
           <div className="bg-[#111] border border-red-500/50 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-3">
                 <Shield className="w-8 h-8 text-red-500 fill-current" />
-                <div><h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2>
-                  <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mt-1">Direct Federal & Professional Links</p></div>
+                <div><h2 className="text-white font-black text-xl uppercase tracking-widest">Emergency Hub</h2><p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mt-1">Direct Federal & Professional Links</p></div>
               </div>
               <button onClick={() => setShowCrisisShield(false)} className="p-2 bg-white/5 rounded-full text-white"><X className="w-6 h-6" /></button>
             </div>
@@ -1324,7 +976,7 @@ function ChatInterface({
         </div>
       )}
 
-      {/* ── BESTIE SETUP MODAL ───────────────────────────────────────────────── */}
+      {/* BESTIE SETUP */}
       {showBestieSetup && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100005] flex items-center justify-center p-4">
           <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(236,72,153,0.15)] text-center">
@@ -1358,31 +1010,20 @@ function ChatInterface({
         </div>
       )}
 
-      {/* ── CHAT AREA ────────────────────────────────────────────────────────── */}
+      {/* CHAT AREA */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px' }}>
 
-        {/* V30 System [4]: Persona grid — Seat 9 shows "Adapted" badge when morphed */}
         {showPersonaGrid && (
           <div className="grid grid-cols-2 gap-3">
             {PERSONAS.map(p => {
               const isBase    = BASE_PERSONAS.find(b => b.id === p.id)?.name === p.name;
               const isAdapted = p.id === 'pastor' && !isBase;
               return (
-                <button
-                  key={p.id}
-                  onClick={() => handlePersonaChange(p)}
-                  className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${
-                    activePersona.id === p.id
-                      ? `${getColor(p.color, 'bg')} border-transparent`
-                      : 'bg-white/5 border-white/10 hover:bg-white/8'
-                  }`}
-                >
+                <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
                   <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
                   <div className="text-center">
                     <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight">{p.name}</span>
-                    {isAdapted && (
-                      <span className="text-[8px] text-yellow-400/80 font-bold uppercase tracking-widest mt-1 block">Adapted ✦</span>
-                    )}
+                    {isAdapted && <span className="text-[8px] text-yellow-400/80 font-bold uppercase tracking-widest mt-1 block">Adapted ✦</span>}
                   </div>
                 </button>
               );
@@ -1390,7 +1031,6 @@ function ChatInterface({
           </div>
         )}
 
-        {/* Messages */}
         {messages.map(msg => (
           <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
             {msg.imageUrl && (
@@ -1398,16 +1038,13 @@ function ChatInterface({
                 <img src={msg.imageUrl} alt="Uploaded" className="w-full h-auto object-cover max-h-[300px]" />
               </div>
             )}
-            <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${
-              msg.sender === 'user'
-                ? `${getColor(activePersona.color, 'bg')} text-white font-bold rounded-tr-none`
-                : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'
-            }`}>
+            <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getColor(activePersona.color, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
               {msg.sender === 'bot' && msg.id === streamingMsgId
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
                 : msg.content
               }
-              {msg.sender === 'bot' && msg.confidenceScore && msg.id !== streamingMsgId && (
+              {/* [FIX 4] > 0 guard prevents "0" rendering as truthy string */}
+              {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (
                 <div className="mt-4 pt-4 border-t border-white/10">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1">
                     <span>Confidence</span><span className="text-green-400">{msg.confidenceScore}%</span>
@@ -1418,19 +1055,15 @@ function ChatInterface({
                 </div>
               )}
             </div>
-
-            {/* Action buttons */}
             {msg.sender === 'bot' && (msg as any).actionTrigger && (
               <div className="mt-3 mb-3 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {(msg as any).actionTrigger === 'email_dispatch' && (
-                  <button onClick={() => handleEmailDispatch(msg.content)}
-                    className="w-full py-4 px-6 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]">
+                  <button onClick={() => handleEmailDispatch(msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]">
                     <Shield className="w-4 h-4 fill-current flex-shrink-0" /> Dispatch Tactical Report to Email
                   </button>
                 )}
                 {(msg as any).actionTrigger === 'set_reminder' && (
-                  <button onClick={() => scheduleMobileReminder(msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content)}
-                    className="w-full py-4 px-6 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]">
+                  <button onClick={() => scheduleMobileReminder(msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]">
                     <Bell className="w-4 h-4 flex-shrink-0" /> Set Mobile Reminder — 30 Min
                   </button>
                 )}
@@ -1450,9 +1083,8 @@ function ChatInterface({
         )}
       </div>
 
-      {/* ── BOTTOM INPUT BAR ─────────────────────────────────────────────────── */}
+      {/* BOTTOM BAR */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
-
         {previewUrl && (
           <div className="absolute bottom-[100%] left-0 right-0 flex flex-col items-center pb-4 pointer-events-none">
             <div className="pointer-events-auto flex flex-col items-center gap-3 w-full max-w-md px-4">
@@ -1471,55 +1103,31 @@ function ChatInterface({
         )}
 
         <div className="max-w-md mx-auto space-y-3">
-
-          {/* Row 1: Mic + Mode + Voice */}
           <div className="flex gap-2">
-            <button onClick={handleWalkieTalkieMic} disabled={loading}
-              className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${
-                isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'
-              } ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}>
+            <button onClick={handleWalkieTalkieMic} disabled={loading} className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'} ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}>
               {isRecording ? <><MicOff className="w-5 h-5" /> Tap to Send</> : <><Mic className="w-5 h-5" /> Hold to Speak</>}
             </button>
-
-            {/* Reading mode */}
             <button
               onClick={async () => {
-                if (streamingMsgId) {
-                  bailoutTypewriter();
-                  if (pendingAudioRef.current && isVoiceEnabled) {
-                    const audio = await pendingAudioRef.current;
-                    pendingAudioRef.current = null;
-                    if (audio) playAudioSafely(audio);
-                  }
-                }
+                if (streamingMsgId) { bailoutTypewriter(); if (pendingAudioRef.current && isVoiceEnabled) { const audio = await pendingAudioRef.current; pendingAudioRef.current = null; if (audio) playAudioSafely(audio); } }
                 const next = readingMode === 'sync' ? 'instant' : 'sync';
                 setReadingMode(next); localStorage.setItem('lylo_reading_mode', next);
               }}
               className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]"
-              title={readingMode === 'sync' ? 'Sync mode — tap for Fast' : 'Fast mode — tap for Sync'}
             >
-              {readingMode === 'sync'
-                ? <><Type className="w-4 h-4 text-indigo-400" /><span className="text-indigo-400">Sync</span></>
-                : <><Zap className="w-4 h-4 text-yellow-400" /><span className="text-yellow-400">Fast</span></>
-              }
+              {readingMode === 'sync' ? <><Type className="w-4 h-4 text-indigo-400" /><span className="text-indigo-400">Sync</span></> : <><Zap className="w-4 h-4 text-yellow-400" /><span className="text-yellow-400">Fast</span></>}
             </button>
-
-            {/* Speaker */}
             <button
               onClick={() => { if (streamingMsgId) bailoutTypewriter(); toggleVoice(); }}
-              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${
-                isVoiceEnabled ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-white/10 text-gray-400 border border-white/10'
-              }`}
+              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${isVoiceEnabled ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-white/10 text-gray-400 border border-white/10'}`}
             >
               {isVoiceEnabled ? <><Volume2 className="w-4 h-4" /><span>On</span></> : <><VolumeX className="w-4 h-4" /><span>Off</span></>}
             </button>
           </div>
 
-          {/* Row 2: Camera + Input + Send */}
           <div className="flex gap-2">
             <div className="relative">
-              <button onClick={() => setShowCameraMenu(!showCameraMenu)} disabled={loading}
-                className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50">
+              <button onClick={() => setShowCameraMenu(!showCameraMenu)} disabled={loading} className="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-colors h-full flex items-center disabled:opacity-50">
                 <CameraIcon className="w-6 h-6" />
               </button>
               {showCameraMenu && (
@@ -1535,8 +1143,9 @@ function ChatInterface({
               )}
             </div>
 
-            <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => setSelectedImage(e.target.files?.[0] ?? null)} />
-            <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => setSelectedImage(e.target.files?.[0] ?? null)} />
+            {/* [FIX 1] Both inputs routed through handleImageSelect for canvas compression */}
+            <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
+            <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
 
             <input
               value={input}
@@ -1546,19 +1155,16 @@ function ChatInterface({
               placeholder={`Type to ${activePersona.name}…`}
               className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
             />
-
-            <button onClick={handleSend} disabled={loading}
-              className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50">
+            <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50">
               <ArrowRight className="w-6 h-6" />
             </button>
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest">
               <AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.
             </div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.0</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.1</p>
           </div>
         </div>
       </div>
