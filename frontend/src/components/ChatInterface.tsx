@@ -622,6 +622,8 @@ function ChatInterface({
         // Instant mode: text is visible NOW, audio is partially/fully fetched → near-zero wait
         // Sync mode: typewriter hasn't started → audio arrives before or alongside first char
         const audioToPlay = await audioPrefetch;
+        // Clear ref BEFORE playback starts — prevents any overlap if next message
+        // fires before this one finishes. animateSynced → playAudioSafely runs clean.
         pendingAudioRef.current = null;
         animateSynced(response.answer, botMsgId, audioToPlay);
       }
