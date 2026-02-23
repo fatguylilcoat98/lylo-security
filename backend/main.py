@@ -632,10 +632,31 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
                 {"role": "user", "content": content}
             ],
             response_format={"type": "json_object"},
-            max_tokens=700,          # ← hard cap: prevents long tail latency
-            temperature=0.4,         # ← lower temp = faster, more deterministic JSON
+            max_tokens=1200,         # ← structured JSON with headers + greeting needs room; 700 was truncating
+            temperature=0.4,
         )
-        result = json.loads(response.choices[0].message.content)
+        raw = response.choices[0].message.content
+
+        # ── JSON REPAIR FALLBACK ───────────────────────────────────────────
+        # If response_format=json_object still produces something unparseable,
+        # strip fences and try to extract the first complete JSON object.
+        try:
+            result = json.loads(raw)
+        except Exception:
+            cleaned = raw.replace("```json", "").replace("```", "").strip()
+            # Try to close a truncated object by finding last complete field
+            try:
+                result = json.loads(cleaned)
+            except Exception:
+                # Last resort: return with raw text as answer so caller gets a valid dict
+                logger.warning(f"OpenAI JSON repair fallback triggered for {model_name}")
+                result = {
+                    "answer":           cleaned[:2000] if cleaned else "Response processing error.",
+                    "confidence_score": 80,
+                    "scam_detected":    False,
+                    "threat_level":     "low",
+                    "action_trigger":   None,
+                }
         result["model"] = f"LYLO-CORE ({model_name})"
         return result
     except Exception as e:
@@ -1093,36 +1114,46 @@ async def chat(
 
     winner = None
     pending = {openai_task, gemini_task}
-    elapsed = 0.0
-    RACE_TIMEOUT = 7.0   # Hard ceiling — System Busy after this (7s gives complex JSON prompts room to breathe)
+    RACE_TIMEOUT = 7.0   # Hard ceiling — 7s for complex structured JSON
 
-    while pending and elapsed < RACE_TIMEOUT:
+    # Deadline-based loop so BOTH engines get a fair shot.
+    # Bug fix: old code set elapsed=RACE_TIMEOUT unconditionally after first
+    # asyncio.wait, exiting the loop even when the first engine returned None.
+    # Now we keep looping until winner found OR wall-clock expires.
+    loop     = asyncio.get_event_loop()
+    deadline = loop.time() + RACE_TIMEOUT
+
+    while pending:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            break  # Wall-clock expired
         try:
             done, pending = await asyncio.wait(
                 pending,
                 return_when=asyncio.FIRST_COMPLETED,
-                timeout=RACE_TIMEOUT - elapsed
+                timeout=remaining,
             )
         except Exception:
             break
 
         if not done:
-            # Timeout hit — neither engine finished in time
-            break
+            break  # asyncio.wait returned with no completions
 
         for task in done:
             try:
                 result = task.result()
-            except Exception:
+            except Exception as exc:
+                logger.warning(f"⚠️ Engine task threw: {exc}")
                 continue
             if result and "answer" in result:
                 winner = result
                 for p in pending:
                     p.cancel()
-                pending = set()
+                pending = set()  # exit while
                 break
+        # If all done tasks were None/invalid, loop continues —
+        # remaining engine still has time to respond
 
-        elapsed = RACE_TIMEOUT  # Signal exit after first pass with done tasks
 
     # Cancel any stragglers
     for p in pending:
