@@ -391,7 +391,11 @@ function ChatInterface({
       fd.append('voice', voice || 'onyx');
       const res  = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.audio_b64) return new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
+      if (data.audio_b64) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio_b64}`);
+        audio.preload = 'auto';  // v29.6: hint browser to buffer immediately
+        return audio;
+      }
     } catch (e) { console.error('Audio fetch failed', e); }
     return null;
   };
@@ -409,15 +413,17 @@ function ChatInterface({
     currentlyPlayingAudioRef.current = audioElement;
     setIsSpeaking(true);
     audioElement.onended = () => setIsSpeaking(false);
-    audioElement.play().catch(() => {});
+    audioElement.play().catch((e) => console.warn('Audio play blocked:', e));
   };
 
   // ── SYNCED / INSTANT TYPEWRITER ──────────────────────────────────────────
   // readingMode === 'sync'    → words type out at exactly the pace of the voice
-  // readingMode === 'instant' → full text renders immediately, voice reads after
+  // readingMode === 'instant' → full text + audio fire in the SAME execution tick
   //
-  // SYNC:    streamingMsgId claimed before message added → starts empty, fills as voice speaks
-  // INSTANT: streamingMsgId released immediately → msg.content snaps visible, voice starts ~80ms later
+  // v29.6 LIGHTSPEED: In instant mode, setStreamingMsgId(null) and audio.play()
+  // are called with zero buffer. No requestAnimationFrame, no setTimeout,
+  // no loadedmetadata wait. Base64 URIs have duration available immediately.
+  // Text and voice land on the user in the same browser frame.
   const animateSynced = (
     text: string,
     msgId: string,
@@ -430,20 +436,13 @@ function ChatInterface({
     streamingTextRef.current = '';
     setStreamingText('');
 
-    // ── INSTANT MODE ───────────────────────────────────────────────────────
+    // ── INSTANT MODE (v29.6 LIGHTSPEED) ───────────────────────────────────
     if (readingMode === 'instant') {
-      // Drop the streaming slot — full text renders from msg.content right now
+      // Drop streaming slot → msg.content renders immediately
       setStreamingMsgId(null);
+      // Fire audio in the SAME synchronous tick — zero delay between text and voice
       if (audioElement && isVoiceEnabled) {
-        const playAfterPaint = () => {
-          requestAnimationFrame(() => setTimeout(() => playAudioSafely(audioElement), 80));
-        };
-        if (isFinite(audioElement.duration) && audioElement.duration > 0) {
-          playAfterPaint();
-        } else {
-          audioElement.addEventListener('loadedmetadata', playAfterPaint, { once: true });
-          setTimeout(() => { if (!isSpeaking) audioElement.play().catch(() => {}); }, 1200);
-        }
+        playAudioSafely(audioElement);
       }
       return;
     }
@@ -484,50 +483,120 @@ function ChatInterface({
     }
   };
 
-  // ── Speech recognition ────────────────────────────────────────────────────
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SR = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      const recognition = new SR();
-      recognition.continuous     = false;
-      recognition.interimResults = true;
-      recognition.lang           = 'en-US';
+  // ── Speech recognition handled by buildRecognition() / handleWalkieTalkieMic ─
+  // Old useEffect setup removed in v29.6 — recognition is re-instantiated fresh
+  // on every mic press via buildRecognition(), which handles all events and
+  // auto-restarts. No stale session can survive between presses.
 
-      recognition.onresult = (event: any) => {
-        if (isSpeaking) return;
-        let interim = '', final = '';
-        for (let i = 0; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) final   += event.results[i][0].transcript;
-          else                          interim += event.results[i][0].transcript;
-        }
-        if (final) accumulatedRef.current += final + ' ';
-        const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
-        setInput(fullText);
-        inputTextRef.current = fullText;
-      };
-
-      recognition.onend = () => {
-        if (isRecordingRef.current && !isSpeaking) recognition.start();
-      };
-
-      recognitionRef.current = recognition;
+  // ── v29.6 MIC HARD-RESET ─────────────────────────────────────────────────
+  // Completely rebuilds the SpeechRecognition instance on every press.
+  // Fixes dead mic caused by browser killing the session after errors/aborts.
+  // Logs mic status to console so browser permission blocks are visible.
+  const buildRecognition = (): any | null => {
+    const SR = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SR) {
+      console.warn('[MIC] SpeechRecognition API not available in this browser.');
+      return null;
     }
-  }, [isSpeaking]);
+    console.log('[MIC] Building fresh SpeechRecognition instance...');
+    const rec = new SR();
+    rec.continuous     = false;
+    rec.interimResults = true;
+    rec.lang           = 'en-US';
+
+    rec.onstart = () => {
+      console.log('[MIC] Recognition started — hardware mic is active.');
+    };
+
+    rec.onresult = (event: any) => {
+      if (isSpeaking) return;
+      let interim = '', final = '';
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) final   += event.results[i][0].transcript;
+        else                          interim += event.results[i][0].transcript;
+      }
+      if (final) accumulatedRef.current += final + ' ';
+      const fullText = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
+      setInput(fullText);
+      inputTextRef.current = fullText;
+      console.log(`[MIC] Result — interim: "${interim}" | final: "${final}"`);
+    };
+
+    rec.onerror = (event: any) => {
+      console.error(`[MIC] Error: ${event.error}`, event);
+      if (event.error === 'not-allowed') {
+        console.error('[MIC] BLOCKED — Microphone permission denied by browser. Check site settings.');
+        alert('Microphone blocked. Tap the lock icon in your browser and allow microphone access.');
+        isRecordingRef.current = false;
+        setIsRecording(false);
+      } else if (event.error === 'network') {
+        console.warn('[MIC] Network error — will re-instantiate on next press.');
+        isRecordingRef.current = false;
+        setIsRecording(false);
+      } else {
+        // For aborted/no-speech: auto-restart if still in recording mode
+        if (isRecordingRef.current) {
+          console.log(`[MIC] ${event.error} — auto-restarting recognition...`);
+          setTimeout(() => {
+            if (isRecordingRef.current) {
+              recognitionRef.current = buildRecognition();
+              recognitionRef.current?.start();
+            }
+          }, 150);
+        }
+      }
+    };
+
+    rec.onend = () => {
+      console.log(`[MIC] Session ended. isRecordingRef: ${isRecordingRef.current}`);
+      // Auto-restart if user is still holding the button
+      if (isRecordingRef.current && !isSpeaking) {
+        console.log('[MIC] Restarting — continuous mode active.');
+        recognitionRef.current = buildRecognition();
+        recognitionRef.current?.start();
+      }
+    };
+
+    return rec;
+  };
 
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
+      // ── STOP ──────────────────────────────────────────────────────────────
+      console.log('[MIC] User released — stopping recording.');
       isRecordingRef.current = false;
       setIsRecording(false);
-      recognitionRef.current?.stop();
+      try { recognitionRef.current?.stop(); } catch {}
+      recognitionRef.current = null;
       setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
     } else {
-      if (isSpeaking) return;
+      // ── START ─────────────────────────────────────────────────────────────
+      if (isSpeaking) {
+        console.log('[MIC] Blocked — LYLO is currently speaking. Wait for playback to finish.');
+        return;
+      }
+      console.log('[MIC] User pressed — requesting mic access...');
       setIsRecording(true);
-      isRecordingRef.current  = true;
+      isRecordingRef.current = true;
       setInput('');
-      accumulatedRef.current  = '';
-      inputTextRef.current    = '';
-      recognitionRef.current?.start();
+      accumulatedRef.current = '';
+      inputTextRef.current   = '';
+
+      // Always build a fresh instance — never reuse a dead session
+      recognitionRef.current = buildRecognition();
+      if (!recognitionRef.current) {
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        return;
+      }
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error('[MIC] Failed to start recognition:', e);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        recognitionRef.current = null;
+      }
     }
   };
 
