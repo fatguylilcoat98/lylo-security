@@ -587,13 +587,15 @@ function ChatInterface({
       const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
       const botMsgId   = `bot-${Date.now()}`;
 
-      // ── READING MODE BRANCH ───────────────────────────────────────────────
-      // SYNC:    Claim streamingMsgId FIRST → message renders "" → typewriter fills it
-      // INSTANT: Don't claim → message renders full text immediately → voice reads after
-      if (readingMode === 'sync') {
+      // ── THREE MODE BRANCH ─────────────────────────────────────────────────
+      // MODE 1 — Sync & Speak:    claim slot → empty box → typewriter + audio together
+      // MODE 2 — Instant & Speak: no claim → full text now → audio starts after paint
+      // MODE 3 — Instant & Silent: no claim → full text now → no audio fetch at all
+      if (readingMode === 'sync' && isVoiceEnabled) {
         setStreamingMsgId(botMsgId);
         setStreamingText('');
       }
+      // Modes 2 & 3: streamingMsgId stays null → msg.content renders immediately
 
       setMessages(prev => [...prev, {
         id: botMsgId,
@@ -607,13 +609,12 @@ function ChatInterface({
 
       if (isLockout) { setStreamingMsgId(null); return; }
 
-      // Fetch audio, then fire typewriter + audio in the same tick
       if (isVoiceEnabled) {
+        // Modes 1 & 2 — fetch audio then animate
         const audioToPlay = await fetchAudioSilently(response.answer, voiceToUse);
         animateSynced(response.answer, botMsgId, audioToPlay);
-      } else {
-        animateSynced(response.answer, botMsgId, null);
       }
+      // Mode 3 (voice off): nothing — text is already visible, done.
 
     } catch (e) {
       console.error(e);
@@ -669,9 +670,8 @@ function ChatInterface({
     const hookText = await fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
     const hookMsgId = `hook-${Date.now()}`;
 
-    // SYNC: claim streaming slot before adding message — starts empty, fills with voice
-    // INSTANT: don't claim — text renders fully, voice reads after paint
-    if (readingMode === 'sync') {
+    // THREE MODE BRANCH — same logic as handleSend
+    if (readingMode === 'sync' && isVoiceEnabled) {
       setStreamingMsgId(hookMsgId);
       setStreamingText('');
     }
@@ -684,13 +684,11 @@ function ChatInterface({
     }]);
     setLoading(false);
 
-    // Fetch audio then fire both together
     if (isVoiceEnabled) {
       const audioToPlay = await fetchAudioSilently(hookText, voiceToUse);
       animateSynced(hookText, hookMsgId, audioToPlay);
-    } else {
-      animateSynced(hookText, hookMsgId, null);
     }
+    // Voice off: text is already visible — nothing more to do
   };
 
   const handleBestieSetupComplete = (voiceId: string) => {
@@ -721,6 +719,18 @@ function ChatInterface({
     const next = fontLevel >= 4 ? 1 : fontLevel + 1;
     setFontLevel(next);
     localStorage.setItem('lylo_font_level', next.toString());
+  };
+
+  // ── BAILOUT — mid-stream abort ────────────────────────────────────────────
+  // Called whenever user taps a mode/voice toggle while text is streaming.
+  // Kills the typewriter instantly and snaps to full msg.content.
+  const bailoutTypewriter = () => {
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+    }
+    setStreamingMsgId(null);
+    setStreamingText('');
   };
 
   const toggleVoice = () => {
@@ -1287,9 +1297,10 @@ function ChatInterface({
               }
             </button>
 
-            {/* Reading mode toggle — two-state pill */}
+            {/* Reading mode toggle */}
             <button
               onClick={() => {
+                if (streamingMsgId) bailoutTypewriter();  // ← BAILOUT: snap to full text instantly
                 const next = readingMode === 'sync' ? 'instant' : 'sync';
                 setReadingMode(next);
                 localStorage.setItem('lylo_reading_mode', next);
@@ -1313,6 +1324,7 @@ function ChatInterface({
             {/* Speaker toggle */}
             <button
               onClick={() => {
+                if (streamingMsgId) bailoutTypewriter();  // ← BAILOUT: snap to full text instantly
                 const next = !isVoiceEnabled;
                 setIsVoiceEnabled(next);
                 localStorage.setItem('lylo_voice_enabled', String(next));
