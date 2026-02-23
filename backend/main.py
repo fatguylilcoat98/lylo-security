@@ -83,7 +83,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="28.3.0 - CLEAN HUD: Expert Transition retired | Force trigger | 500ms/800ms timeouts"
+    version="29.0.0 - INSTANT SYNC: Parallel audio fetch | Bailout audio | 4s race timeout | Clean HUD"
 )
 
 app.add_middleware(
@@ -1081,11 +1081,9 @@ async def chat(
     )
     gemini_engine = "gemini-1.5-flash"
 
-    # ── FIRST-WINS RACE MODE ───────────────────────────────────────────────
-    # Both engines fire simultaneously. The FIRST valid JSON response wins
-    # and is returned immediately — we don't wait for the slower engine.
-    # Gemini acts as a hot standby: if OpenAI is slow, Gemini wins the race.
-    # If OpenAI wins (typical), Gemini's task is cancelled — zero wasted time.
+    # ── FIRST-WINS RACE MODE — 4.0s HARD TIMEOUT ─────────────────────────
+    # Both engines fire simultaneously. The FIRST valid JSON response wins.
+    # If neither engine responds within 4.0 seconds, return System Busy.
     openai_task = asyncio.create_task(
         call_openai_bodyguard(full_prompt, image_b64, openai_engine)
     )
@@ -1095,26 +1093,51 @@ async def chat(
 
     winner = None
     pending = {openai_task, gemini_task}
+    elapsed = 0.0
+    RACE_TIMEOUT = 4.0   # Hard ceiling — System Busy after this
 
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+    while pending and elapsed < RACE_TIMEOUT:
+        try:
+            done, pending = await asyncio.wait(
+                pending,
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=RACE_TIMEOUT - elapsed
+            )
+        except Exception:
+            break
+
+        if not done:
+            # Timeout hit — neither engine finished in time
+            break
+
         for task in done:
-            result = task.result()
+            try:
+                result = task.result()
+            except Exception:
+                continue
             if result and "answer" in result:
                 winner = result
-                # Cancel the slower engine — we already have a valid answer
                 for p in pending:
                     p.cancel()
-                pending = set()  # break outer while
+                pending = set()
                 break
 
+        elapsed = RACE_TIMEOUT  # Signal exit after first pass with done tasks
+
+    # Cancel any stragglers
+    for p in pending:
+        p.cancel()
+
     if not winner:
+        logger.warning(f"⚡ Race timeout ({RACE_TIMEOUT}s) — returning System Busy for {user_data['name']}")
         return {
-            "answer": f"{hook} Perimeter secure, but the connection flickered. Can you repeat that?",
+            "answer":           f"{user_data['name']}, the system is under heavy load right now. Give it 10 seconds and resend — your request is queued.",
             "confidence_score": 0,
-            "scam_detected": False,
-            "threat_level": "low",
-            "action_trigger": None,
+            "scam_detected":    False,
+            "threat_level":     "low",
+            "action_trigger":   None,
+            "persona_hook":     hook,
+            "bodyguard_model":  "SYSTEM-BUSY",
         }
 
     # ── POST-RESPONSE TASKS ────────────────────────────────────────────────
