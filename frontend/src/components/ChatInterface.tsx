@@ -234,6 +234,8 @@ function ChatInterface({
   const [communicationStyle, setCommunicationStyle] = useState<string>('standard');
   const [fontLevel, setFontLevel]                   = useState<number>(1);
   const [isVoiceEnabled, setIsVoiceEnabled]         = useState<boolean>(true);
+  // 'sync' = words type out as voice reads | 'instant' = all words appear, then voice reads
+  const [readingMode, setReadingMode]               = useState<'sync' | 'instant'>('sync');
   const [selectedImage, setSelectedImage]           = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]                 = useState<string | null>(null);
   const [showCrisisShield, setShowCrisisShield]     = useState(false);
@@ -339,6 +341,9 @@ function ChatInterface({
     const savedVoiceToggle = localStorage.getItem('lylo_voice_enabled');
     if (savedVoiceToggle !== null) setIsVoiceEnabled(savedVoiceToggle === 'true');
 
+    const savedReadingMode = localStorage.getItem('lylo_reading_mode');
+    if (savedReadingMode === 'sync' || savedReadingMode === 'instant') setReadingMode(savedReadingMode);
+
     const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
     if (!hasOnboarded) setShowOnboarding(true);
   }, [userEmail]);
@@ -414,11 +419,12 @@ function ChatInterface({
     audioElement.play().catch(() => {});
   };
 
-  // ── SYNCED TYPEWRITER ────────────────────────────────────────────────────
-  // THE FIX: streamingMsgId is claimed BEFORE the message is added to state.
-  // Message renders "" from frame 1 — no flash of full text ever.
-  // Base64 audio URIs have duration available immediately (fully buffered).
-  // Both audio.play() and startTyping() fire in the same synchronous tick.
+  // ── SYNCED / INSTANT TYPEWRITER ──────────────────────────────────────────
+  // readingMode === 'sync'    → words type out at exactly the pace of the voice
+  // readingMode === 'instant' → full text renders immediately, voice reads after
+  //
+  // SYNC:    streamingMsgId claimed before message added → starts empty, fills as voice speaks
+  // INSTANT: streamingMsgId released immediately → msg.content snaps visible, voice starts ~80ms later
   const animateSynced = (
     text: string,
     msgId: string,
@@ -431,6 +437,25 @@ function ChatInterface({
     streamingTextRef.current = '';
     setStreamingText('');
 
+    // ── INSTANT MODE ───────────────────────────────────────────────────────
+    if (readingMode === 'instant') {
+      // Drop the streaming slot — full text renders from msg.content right now
+      setStreamingMsgId(null);
+      if (audioElement && isVoiceEnabled) {
+        const playAfterPaint = () => {
+          requestAnimationFrame(() => setTimeout(() => playAudioSafely(audioElement), 80));
+        };
+        if (isFinite(audioElement.duration) && audioElement.duration > 0) {
+          playAfterPaint();
+        } else {
+          audioElement.addEventListener('loadedmetadata', playAfterPaint, { once: true });
+          setTimeout(() => { if (!isSpeaking) audioElement.play().catch(() => {}); }, 1200);
+        }
+      }
+      return;
+    }
+
+    // ── SYNC MODE (default) ────────────────────────────────────────────────
     const startTyping = (msPerChar: number) => {
       let i = 0;
       typewriterRef.current = setInterval(() => {
@@ -450,22 +475,15 @@ function ChatInterface({
     if (audioElement && isVoiceEnabled) {
       const kick = () => {
         const msPerChar = Math.max(18, (audioElement.duration * 1000) / text.length);
-        // Simultaneously — same tick, no gap
         playAudioSafely(audioElement);
         startTyping(msPerChar);
       };
-
-      // Base64 data URIs are fully buffered — duration is available immediately
       if (isFinite(audioElement.duration) && audioElement.duration > 0) {
         kick();
       } else {
         audioElement.addEventListener('loadedmetadata', kick, { once: true });
-        // Safety: if metadata never fires (rare), start at natural pace after 1.2s
         setTimeout(() => {
-          if (streamingTextRef.current === '') {
-            startTyping(28);
-            audioElement.play().catch(() => {});
-          }
+          if (streamingTextRef.current === '') { startTyping(28); audioElement.play().catch(() => {}); }
         }, 1200);
       }
     } else {
@@ -569,13 +587,13 @@ function ChatInterface({
       const voiceToUse = activePersona.id === 'bestie' ? bestieConfig?.voiceId : activePersona.fixedVoice;
       const botMsgId   = `bot-${Date.now()}`;
 
-      // ── THE FIX ───────────────────────────────────────────────────────────
-      // Claim the streaming slot BEFORE adding the message to state.
-      // React will render the new message immediately. Because streamingMsgId
-      // already matches botMsgId, the render shows streamingText ("") — never
-      // the full msg.content. There is no flash.
-      setStreamingMsgId(botMsgId);
-      setStreamingText('');
+      // ── READING MODE BRANCH ───────────────────────────────────────────────
+      // SYNC:    Claim streamingMsgId FIRST → message renders "" → typewriter fills it
+      // INSTANT: Don't claim → message renders full text immediately → voice reads after
+      if (readingMode === 'sync') {
+        setStreamingMsgId(botMsgId);
+        setStreamingText('');
+      }
 
       setMessages(prev => [...prev, {
         id: botMsgId,
@@ -651,9 +669,12 @@ function ChatInterface({
     const hookText = await fetchPersonaHook(persona.id).then(h => h || persona.spokenHook.replace('{userName}', userName));
     const hookMsgId = `hook-${Date.now()}`;
 
-    // ── Claim streaming slot BEFORE adding message — no flash ────────────
-    setStreamingMsgId(hookMsgId);
-    setStreamingText('');
+    // SYNC: claim streaming slot before adding message — starts empty, fills with voice
+    // INSTANT: don't claim — text renders fully, voice reads after paint
+    if (readingMode === 'sync') {
+      setStreamingMsgId(hookMsgId);
+      setStreamingText('');
+    }
 
     setMessages([{
       id: hookMsgId,
@@ -1248,7 +1269,7 @@ function ChatInterface({
 
         <div className="max-w-md mx-auto space-y-3">
 
-          {/* ── Row 1: VOICE (primary) + SPEAKER TOGGLE ──────────────────── */}
+          {/* ── Row 1: VOICE + READING MODE TOGGLE + SPEAKER ───────────── */}
           <div className="flex gap-2">
             {/* Big voice button — primary input method */}
             <button
@@ -1266,7 +1287,30 @@ function ChatInterface({
               }
             </button>
 
-            {/* Speaker toggle — always visible, dead simple */}
+            {/* Reading mode toggle — two-state pill */}
+            <button
+              onClick={() => {
+                const next = readingMode === 'sync' ? 'instant' : 'sync';
+                setReadingMode(next);
+                localStorage.setItem('lylo_reading_mode', next);
+              }}
+              className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]"
+              title={readingMode === 'sync' ? 'Sync mode: words match voice — tap for Instant' : 'Instant mode: all words at once, then voice — tap for Sync'}
+            >
+              {readingMode === 'sync' ? (
+                <>
+                  <Type className="w-4 h-4 text-indigo-400" />
+                  <span className="text-indigo-400">Sync</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 text-yellow-400" />
+                  <span className="text-yellow-400">Fast</span>
+                </>
+              )}
+            </button>
+
+            {/* Speaker toggle */}
             <button
               onClick={() => {
                 const next = !isVoiceEnabled;
@@ -1278,7 +1322,7 @@ function ChatInterface({
                   setIsSpeaking(false);
                 }
               }}
-              className={`px-5 py-5 rounded-[28px] flex items-center gap-2 font-black text-xs uppercase tracking-widest transition-all active:scale-[0.97] ${
+              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${
                 isVoiceEnabled
                   ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]'
                   : 'bg-white/10 text-gray-400 border border-white/10'
@@ -1286,8 +1330,8 @@ function ChatInterface({
               title={isVoiceEnabled ? 'Voice On — tap to mute' : 'Voice Off — tap to enable'}
             >
               {isVoiceEnabled
-                ? <><Volume2 className="w-5 h-5" /><span className="hidden sm:block">ON</span></>
-                : <><VolumeX className="w-5 h-5" /><span className="hidden sm:block">OFF</span></>
+                ? <><Volume2 className="w-4 h-4" /><span>On</span></>
+                : <><VolumeX className="w-4 h-4" /><span>Off</span></>
               }
             </button>
           </div>
