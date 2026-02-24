@@ -1452,15 +1452,18 @@ REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
 # ---------------------------------------------------------
 async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
     """
-    Generates TTS audio for the given text and returns it as a base64 string.
-    Strips markdown formatting before sending to OpenAI.
-    Hard-capped at 3500 chars to keep latency tight.
-    Returns "" on any failure so the caller degrades gracefully.
+    Generates TTS audio. Strips markdown and brackets so the voice engine 
+    doesn't stumble or skip sections.
     """
     if not openai_client or not text.strip():
         return ""
     try:
-        clean = text.replace("**", "").replace("##", "").replace("#", "").replace("[", "").replace("]", "").strip()
+        import re
+        # Wipes out [PROTOCOL], [MOST LIKELY], asterisks, and hashes
+        clean = re.sub(r"\[.*?\]", "", text)
+        clean = clean.replace("**", "").replace("##", "").replace("#", "").replace("-", "").strip()
+        clean = re.sub(r"\s+", " ", clean)
+
         response = await openai_client.audio.speech.create(
             model="tts-1",
             voice=voice,
@@ -1468,7 +1471,7 @@ async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
         )
         return base64.b64encode(response.content).decode("utf-8")
     except Exception as e:
-        logger.warning(f"⚡ Inline TTS failed ({voice}): {e}")
+        logger.warning(f"Inline TTS failed ({voice}): {e}")
         return ""
 
 
