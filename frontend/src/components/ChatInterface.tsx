@@ -15,6 +15,7 @@
 //  [V30.1-4] confidenceScore > 0 guard + onboarding map closes with })
 // ============================================================================
 
+import { useSentinel } from '../lib/useSentinel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import {
@@ -239,6 +240,7 @@ function ChatInterface({
   currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {},
 }: ChatInterfaceProps) {
 
+  const sentinel = useSentinel(userEmail);
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
   const PERSONAS = BASE_PERSONAS.map(p => p.id === 'pastor' ? getPastor(intakeProfile) : p);
   const [activePersona, setActivePersona]               = useState<PersonaConfig>(() => initialPersona ?? PERSONAS[0]);
@@ -525,7 +527,7 @@ function ChatInterface({
   };
 
   // [V30.1-2] HANDLE SEND — SSE getReader() Streaming Parser
-  const handleSend = async () => {
+ const handleSend = async () => {
     const text = inputTextRef.current.trim() || input.trim();
     if (!text && !selectedImage) return;
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
@@ -569,23 +571,7 @@ function ChatInterface({
           if (parsed.type === 'text') {
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             // SYNC: show growing text in streaming slot
-            if (readingMode === 'sync') setStreamingText(fullAnswer);
-            // Always write to msg.content (FAST sees it instantly, SYNC has it ready)
-            setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
-            // Push this sentence's audio immediately — starts playing on sentence 1
-            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
-          } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
-        }
-      }
-      const finalText = fullAnswer.trim();
-      const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
-      setStreamingMsgId(null); setStreamingText('');
-      if (isLockout) { aqm.stop(); return; }
-      // Audio already running from first sentence push. Nothing else to do.
-    } catch (e) { console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false); }
-    finally { setSelectedImage(null); setEmailConsent(false); }
-  };
+            if (readingMode === 'sync') setStreamingText
 
   const getPersonaHook = async (persona: PersonaConfig): Promise<string> => {
     if (hookCacheRef.current[persona.id]) { const hook = hookCacheRef.current[persona.id]; delete hookCacheRef.current[persona.id]; return hook; }
