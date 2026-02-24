@@ -88,7 +88,7 @@ logger = logging.getLogger("LYLO-CORE-INTEGRATION")
 app = FastAPI(
     title="LYLO Total Integration Backend",
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
-    version="30.0.0 - STREAMING RESPONSE | INTAKE PROFILE | ADAPTIVE SEAT 9 | HOOK CACHE REMOVED"
+    version="30.8.0 - HARD BOUNDARIES | CROSS-SPECIALIST RAG | HELP-FIRST | ASSET SYNC"
 )
 
 app.add_middleware(
@@ -764,19 +764,26 @@ async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
             input=query[:200],
             dimensions=1024
         )
+        # Broaden query to also retrieve user asset mentions (car, tech, health, etc.)
+        asset_query = f"{query} car vehicle tech device health asset owns"
+        asset_response = await openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=asset_query[:300],
+            dimensions=1024
+        )
         results = memory_index.query(
-            vector=response.data[0].embedding,
+            vector=asset_response.data[0].embedding,
             filter={
                 "user_id":     {"$eq": user_id},
-                "record_type": {"$eq": "episodic"}   # Exclude profile records
+                "record_type": {"$eq": "episodic"}
             },
-            top_k=5,
+            top_k=10,           # ← raised from 5 — more surface area for asset recall
             include_metadata=True
         )
         memories = [
             f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}"
             for m in results.matches
-            if m.score > 0.50
+            if m.score > 0.35   # ← lowered from 0.50 — catch asset mentions cross-persona
         ]
         return "\n".join(memories)
     except Exception as e:
@@ -1142,6 +1149,144 @@ def get_seat9_theology(intake_profile: dict, user_profile: dict) -> str:
 
 # ---------------------------------------------------------
 # PROMPT ASSEMBLY ENGINE — 5-LAYER ARCHITECTURE
+
+# ═══════════════════════════════════════════════════════════════════
+# HARD BOUNDARY SYSTEM — injected into every persona's prompt
+# Prevents persona bleed. Each specialist stays 100% in domain.
+# ═══════════════════════════════════════════════════════════════════
+
+_PERSONA_DISPLAY_NAMES = {
+    "guardian":  "The Guardian",
+    "lawyer":    "The Lawyer",
+    "doctor":    "The Doctor",
+    "wealth":    "The Wealth Architect",
+    "career":    "The Career Strategist",
+    "therapist": "The Therapist",
+    "mechanic":  "The Tech Specialist",
+    "tutor":     "The Tutor",
+    "pastor":    "The Pastor",
+    "vitality":  "The Vitality Coach",
+    "hype":      "The Hype Man",
+    "bestie":    "The Bestie",
+}
+
+_PERSONA_DOMAINS = {
+    "guardian":  (
+        "digital security, scam detection, fraud prevention, identity protection, phishing, privacy, device safety",
+        "legal advice, medical diagnosis, financial planning, career coaching, emotional therapy, vehicle repair"
+    ),
+    "lawyer":    (
+        "legal strategy, contracts, rights, lawsuits, documentation, landlord-tenant law, employment law, criminal procedure",
+        "medical diagnosis, financial investment advice, mental health therapy, vehicle repair, fitness coaching"
+    ),
+    "doctor":    (
+        "medical symptoms, health conditions, physiology, medications, clinical protocols, when to seek emergency care",
+        "legal advice, financial planning, emotional therapy beyond health topics, vehicle repair, career coaching"
+    ),
+    "wealth":    (
+        "personal finance, investing, budgeting, debt, net worth, retirement, tax strategy, business finance",
+        "legal representation, medical diagnosis, emotional therapy, vehicle repair, career coaching beyond salary"
+    ),
+    "career":    (
+        "job strategy, resume, interviews, salary negotiation, workplace dynamics, career pivots, professional branding",
+        "legal representation, medical diagnosis, financial investing, emotional therapy, vehicle repair"
+    ),
+    "therapist": (
+        "emotional wellbeing, mental patterns, relationships, stress, grief, anxiety, self-worth, behavioral change",
+        "legal advice, medical diagnosis, financial investing, vehicle repair, career strategy beyond self-sabotage"
+    ),
+    "mechanic":  (
+        "vehicles, cars, trucks, tech devices, electronics, computers, phones, appliances, wiper blades, diagnostics, repairs",
+        "legal advice, medical diagnosis, financial investing, emotional therapy, career coaching, spiritual guidance"
+    ),
+    "tutor":     (
+        "education, learning, math, science, history, writing, study skills, academic strategy, homework help",
+        "legal advice, medical diagnosis, financial investing, vehicle repair, emotional therapy beyond academic stress"
+    ),
+    "pastor":    (
+        "faith, spirituality, purpose, meaning, prayer, grief, forgiveness, moral questions, community, hope",
+        "legal advice, medical diagnosis, financial investing, vehicle mechanics, academic tutoring"
+    ),
+    "vitality":  (
+        "fitness, nutrition, exercise, sleep, recovery, body composition, athletic performance, healthy habits",
+        "legal advice, medical diagnosis beyond general health, financial investing, vehicle repair, career coaching"
+    ),
+    "hype":      (
+        "motivation, content creation, social media, entrepreneurship, audience building, viral ideas, hustle strategy",
+        "legal representation, medical diagnosis, clinical therapy, vehicle repair, academic tutoring"
+    ),
+    "bestie":    (
+        "emotional support, life navigation, honest perspective, loyalty, venting, encouragement, life decisions",
+        "legal representation, clinical medical advice, financial planning, vehicle repair, academic tutoring"
+    ),
+}
+
+_EXPERT_TONES = {
+    "guardian":  "You speak like a seasoned cybersecurity analyst and ex-intelligence officer. Precise, protective, zero fluff.",
+    "lawyer":    "You speak like a senior litigator. Measured, authoritative. You talk about leverage, paper trails, standing, and liability. Not warm — sharp.",
+    "doctor":    "You speak like a board-certified physician. Clinical, calm, thorough. You use medical terminology correctly and explain it clearly. You do not speculate beyond symptoms.",
+    "wealth":    "You speak like a CFP and private wealth manager. Numbers-forward, direct. You talk ROI, basis points, liquidity, net worth trajectory.",
+    "career":    "You speak like a top executive recruiter and career strategist. You see the chessboard — positioning, optics, leverage, timing.",
+    "therapist": "You speak like a licensed clinical therapist. Warm, grounded, reflective. You ask the question beneath the question. Never clinical-cold — always human.",
+    "mechanic":  "You speak like a master mechanic and certified tech specialist. Gritty, practical, no corporate speak. You know the exact part, the exact fix, the exact tool.",
+    "tutor":     "You speak like a brilliant, patient educator. Encouraging, clear. You meet the student where they are and build from there. Shame has no seat in your classroom.",
+    "pastor":    "You speak like a wise, grounded pastor who has walked through fire. Unhurried, compassionate, spiritually rooted. Not preachy — present.",
+    "vitality":  "You speak like a performance coach and sports nutritionist. High-energy, science-dense. You talk in physiology — VO2, macros, recovery windows.",
+    "hype":      "You speak like a viral content strategist and serial entrepreneur. Fast, confident, internet-native. You see angles nobody else sees.",
+    "bestie":    "You speak like a fiercely loyal best friend who also happens to be smart and honest. Unfiltered warmth, zero sugarcoating.",
+}
+
+def build_hard_boundary_block(persona: str) -> str:
+    """Returns the domain boundary + expert tone injection for a given persona."""
+    name     = _PERSONA_DISPLAY_NAMES.get(persona, "Your Specialist")
+    domain   = _PERSONA_DOMAINS.get(persona, ("your specialty domain", "everything else"))
+    tone     = _EXPERT_TONES.get(persona, "You are a focused domain expert.")
+    in_scope, out_scope = domain
+
+    # Build the handoff map string (all other specialists)
+    other_specialists = [
+        f"{_PERSONA_DISPLAY_NAMES[p]}"
+        for p in _PERSONA_DISPLAY_NAMES
+        if p != persona
+    ]
+    handoff_list = ", ".join(other_specialists)
+
+    return f"""
+══════════════════════════════════════════════════════════════════
+EXPERT IDENTITY & HARD DOMAIN BOUNDARIES — NON-NEGOTIABLE
+══════════════════════════════════════════════════════════════════
+YOU ARE: {name}
+EXPERT TONE: {tone}
+
+YOUR DOMAIN (answer ONLY these topics):
+  ✅ {in_scope}
+
+OUT OF BOUNDS (you do NOT answer these — ever):
+  ❌ {out_scope}
+
+PERSONA BLEED IS A SYSTEM FAILURE.
+If {name} gives legal advice, that is a failure. If {name} gives medical advice, that is a failure.
+Every answer must be something only a {name} would say.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HANDOFF PROTOCOL — when the user asks something out of your domain:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DO NOT ANSWER IT. Instead, respond exactly like this:
+"I'm {name}. That falls under the expertise of [Correct Specialist].
+ Please switch to that department so we can handle this accurately."
+
+The other specialists on the board are: {handoff_list}.
+Route to the most appropriate one. Be specific — not generic.
+
+ONE EXCEPTION — LIFE-THREATENING EMERGENCY ONLY:
+If the user describes an immediate threat to life (chest pain, bleeding out,
+weapon threat, suicidal crisis), you MAY say: "Call 911 immediately." or
+provide one sentence of immediate safety triage — then hand off to the
+correct specialist.
+Any non-emergency question outside your domain = handoff. No exceptions.
+══════════════════════════════════════════════════════════════════
+"""
+
 # Layer 0: USER_IDENT_CORE     — Who this person is (from synthesized profile)
 # Layer 1: GLOBAL DIRECTIVE    — Ironclad rules for all personas
 # Layer 2: PERSONA SKIN        — Identity, voice, domain, boundaries, style
@@ -1171,6 +1316,11 @@ def assemble_prompt(
     p_ext    = PERSONA_EXTENDED.get(persona, "")
     p_intent = INTENT_LOGIC.get(persona, "")
     v_style  = VIBE_STYLES.get(vibe, VIBE_STYLES["standard"])
+
+    # ── Hard Boundary Block — injected for ALL 12 personas ───────────────
+    # Prevents persona bleed. Each specialist stays 100% in domain.
+    # Expert tone + handoff protocol + one-exception emergency rule.
+    hard_boundary_block = build_hard_boundary_block(persona)
 
     # ── LAYER 0: USER_IDENT_CORE ───────────────────────────────────────────
     # Check warm-start registry first. If found, it overrides/enriches the
@@ -1210,8 +1360,34 @@ def assemble_prompt(
     if persona == "pastor":
         seat9_block = get_seat9_theology(intake_profile, user_profile)
 
-    # ── LAYER 4a: Episodic Memory block ───────────────────────────────────
+    # ── LAYER 4a: Episodic Memory + User Assets block ────────────────────
     # Empty vault = inject nothing. Never announce an empty vault.
+    # USER ASSETS: extract vehicle/tech/health/financial asset mentions
+    # from the profile so ALL specialists know what the user owns.
+    asset_lines = []
+    if user_profile:
+        for key in ["vehicle", "car", "vehicles", "tech", "devices", "health_conditions", "assets"]:
+            val = user_profile.get(key)
+            if val:
+                asset_lines.append(f"  • {key.replace('_',' ').title()}: {val}")
+    # Also extract asset-like fields from synthesized profile
+    for key, val in user_profile.items():
+        if any(word in key.lower() for word in ["car","vehicle","tech","device","phone","laptop","truck","bike","asset"]):
+            if val and f"  • {key}" not in "
+".join(asset_lines):
+                asset_lines.append(f"  • {key.replace('_',' ').title()}: {val}")
+
+    asset_block = ""
+    if asset_lines:
+        asset_block = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USER ASSETS — CROSS-SPECIALIST SYNC (RAG retrieved from Pinecone)
+This user owns the following. Every specialist must know this.
+Use it to personalize your answer. Never ask what you already know.
+{chr(10).join(asset_lines)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
     if memories and memories.strip():
         memory_block = f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1317,6 +1493,7 @@ If ambiguous, state what you CAN assess + what would sharpen analysis.
 ══════════════════════════════════════════════════════════════════
 LAYER 2 — YOUR SEAT AT THE BOARD (PERSONA IDENTITY & EXPERTISE)
 ══════════════════════════════════════════════════════════════════
+{hard_boundary_block}
 {p_skin}
 
 SPECIALIZED SEAT OVERRIDE:
@@ -1345,19 +1522,22 @@ USER: {user_name}  |  TIER: {tier.upper()}  |  DEPTH: {tier_depth}
 CURRENT DATE & TIME: {current_real_time}
 You are live. Never claim a knowledge cutoff. SEARCH INTEL = ground truth.
 
-{proactive_block}{memory_block}{search_block}{scam_block}{visual_block}
+{proactive_block}{asset_block}{memory_block}{search_block}{scam_block}{visual_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 USER MESSAGE:
 {msg}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 PRE-EXECUTION CHECKLIST — RUN IN ZERO TIME, OUTPUT IN ONE PASS:
+  ✔ HELP FIRST. If the user asked a specific question (wiper size, car info, legal question),
+     ANSWER IT COMPLETELY before any accountability commentary. The task comes first — always.
+     Accountability is a seasoning, not the meal. A response that lectures before helping = FAILURE.
   ✔ Read Layer 0. Address {user_name} as a partner. Not a client. Not a student.
   ✔ Ignore all internal "Master Tutor", "Expert Transition", or role-label language.
      Do not explain your reasoning. Do not announce your approach. Execute.
   ✔ Identified user intent → Selected correct action_trigger → Written into JSON.
      Speed and execution are the ONLY metrics. Explanation is waste.
-  ✔ Self-sabotage signal detected? → Hard-swap to Roastmaster. action_trigger = "set_reminder".
+  ✔ Self-sabotage signal detected AFTER helping? → Brief pattern interrupt, then action_trigger = "set_reminder".
   ✔ Legal / wealth / emergency / documentation? → action_trigger = "email_dispatch". No deliberation.
   ✔ Structural headers present in correct order? (Lawyer, Doctor, Wealth, Therapist, Career)
   ✔ SCAM detected? → [🚨 SCAM ALERT] in answer. action_trigger = "email_dispatch". Immediate.
@@ -1452,18 +1632,15 @@ REQUIRED OUTPUT SCHEMA — RAW JSON ONLY:
 # ---------------------------------------------------------
 async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
     """
-    Generates TTS audio. Strips markdown and brackets so the voice engine 
-    doesn't stumble or skip sections.
+    Generates TTS audio for the given text and returns it as a base64 string.
+    Strips markdown formatting before sending to OpenAI.
+    Hard-capped at 3500 chars to keep latency tight.
+    Returns "" on any failure so the caller degrades gracefully.
     """
     if not openai_client or not text.strip():
         return ""
     try:
-        import re
-        # Wipes out [PROTOCOL], [MOST LIKELY], asterisks, and hashes
-        clean = re.sub(r"\[.*?\]", "", text)
-        clean = clean.replace("**", "").replace("##", "").replace("#", "").replace("-", "").strip()
-        clean = re.sub(r"\s+", " ", clean)
-
+        clean = text.replace("**", "").replace("##", "").replace("#", "").replace("[", "").replace("]", "").strip()
         response = await openai_client.audio.speech.create(
             model="tts-1",
             voice=voice,
@@ -1471,7 +1648,7 @@ async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
         )
         return base64.b64encode(response.content).decode("utf-8")
     except Exception as e:
-        logger.warning(f"Inline TTS failed ({voice}): {e}")
+        logger.warning(f"⚡ Inline TTS failed ({voice}): {e}")
         return ""
 
 
@@ -1538,7 +1715,7 @@ async def chat(
             try:
                 return await asyncio.wait_for(
                     retrieve_intelligence_sync(user_id, msg),
-                    timeout=0.5   # ← 500ms hard cap — speed over exhaustive recall
+                    timeout=3.0   # ← 3.0s — Pinecone+embed needs breathing room
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"⚡ Memory timeout — skipping for speed [{user_id[:8]}]")
@@ -1573,12 +1750,16 @@ async def chat(
         return await retrieve_intake_profile(user_id)
 
     # Fire memory + profile + search + intake simultaneously
+    # user_profile (Pinecone synthesized profile) ALWAYS fetched — regardless of
+    # use_long_term_memory flag. This ensures cross-specialist asset sync works
+    # even if the toggle is off. Profile = who the user is. Memory = what they said.
     memories, user_profile, search_intel, intake_profile = await asyncio.gather(
         _get_memories(),
-        retrieve_user_profile(user_id),
+        retrieve_user_profile(user_id),   # ← always runs, every persona, every message
         _get_search(),
         _get_intake(),
     )
+    logger.info(f"🧠 Profile loaded for [{user_id[:8]}]: {list(user_profile.keys())[:6]} | Memories: {len(memories)} chars")
 
     # Scam scan (pure CPU — instant)
     indicators = analyze_scam_indicators(msg)
