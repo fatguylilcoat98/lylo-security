@@ -1,8 +1,14 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.7.0 — ANTI-JUMP ARCHITECTURE
+// Version: 30.8.0 — SENTINEL INTEGRATION
 // ─────────────────────────────────────────────────────────────────────────────
-// V30.2 Changes:
+// V30.8 Changes:
+//  [V30.8-1] SENTINEL IMPORT — useSentinel from ../lib/useSentinel
+//  [V30.8-2] SENTINEL HOOK  — sentinel = useSentinel({ userEmail, deviceId })
+//  [V30.8-3] ENGAGEMENT RESET — sentinel.onEngagement() in handleSend finally
+//  [V30.8-4] PUSH REGISTER   — sentinel.onPermissionGranted() after permission
+// ─────────────────────────────────────────────────────────────────────────────
+// V30.2 Changes (preserved):
 //  [V30.2-1] ZERO-JUMP SCROLL — overflowAnchor: 'auto' on chat container
 //  [V30.2-2] RAF SCROLL — streamingText useEffect uses requestAnimationFrame
 //  [V30.2-3] STICKY SCROLL — only force-scroll if within 150px of bottom
@@ -15,9 +21,9 @@
 //  [V30.1-4] confidenceScore > 0 guard + onboarding map closes with })
 // ============================================================================
 
-import { useSentinel } from '../lib/useSentinel';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
+import { useSentinel } from '../lib/useSentinel'; // [V30.8-1]
 import {
   Shield, Wrench, Gavel, Activity, BookOpen, Laugh,
   Mic, MicOff, Volume2, VolumeX, AlertTriangle, CreditCard,
@@ -79,7 +85,7 @@ const BASE_PERSONAS: PersonaConfig[] = [
 ];
 
 const PHILOSOPHER_PERSONA: PersonaConfig = { id: 'pastor', name: 'The Philosopher', serviceLabel: 'WISDOM ARCHITECT', description: 'Socratic Guide', protectiveJob: 'Philosophy Lead', spokenHook: 'Every great decision starts with the right question. Let us reason together.', briefing: 'Socratic dialogue and philosophical frameworks.', color: 'gold', requiredTier: 'pro', icon: Compass, capabilities: ['Critical thinking', 'Ethical frameworks'], fixedVoice: 'onyx' };
-const SCHOLAR_PERSONA: PersonaConfig = { id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR', description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead', spokenHook: 'Faith takes many forms. I honor yours. What truth are you seeking today?', briefing: 'Multiple faith traditions with depth and respect.', color: 'gold', requiredTier: 'pro', icon: Star, capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx' };
+const SCHOLAR_PERSONA: PersonaConfig    = { id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR', description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead', spokenHook: 'Faith takes many forms. I honor yours. What truth are you seeking today?', briefing: 'Multiple faith traditions with depth and respect.', color: 'gold', requiredTier: 'pro', icon: Star, capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx' };
 
 const getPastor = (intake: Partial<IntakeProfile>): PersonaConfig => {
   if (intake.vibe === 'academic') return SCHOLAR_PERSONA;
@@ -120,7 +126,10 @@ const getColor = (color: string, key: string) => COLOR_MAP[color]?.[key] ?? COLO
 
 const getDeviceId = () => {
   let id = localStorage.getItem('lylo_device_id');
-  if (!id) { id = crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + Math.random().toString(36).slice(2); localStorage.setItem('lylo_device_id', id); }
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + Math.random().toString(36).slice(2);
+    localStorage.setItem('lylo_device_id', id);
+  }
   return id;
 };
 
@@ -201,8 +210,6 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     }
   }, [stop, playNext]);
 
-  // push: add one sentence to the queue without resetting it.
-  // Starts playback immediately if not already playing.
   const push = useCallback(async (sentence: string, voice: string, inlineAudioB64?: string) => {
     if (!isVoiceRef.current) return;
     const entry: AudioQueueEntry = { sentence, audio: null, status: 'fetching' };
@@ -240,7 +247,6 @@ function ChatInterface({
   currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {},
 }: ChatInterfaceProps) {
 
-  const sentinel = useSentinel(userEmail);
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
   const PERSONAS = BASE_PERSONAS.map(p => p.id === 'pastor' ? getPastor(intakeProfile) : p);
   const [activePersona, setActivePersona]               = useState<PersonaConfig>(() => initialPersona ?? PERSONAS[0]);
@@ -270,7 +276,6 @@ function ChatInterface({
   const [onboardingStep, setOnboardingStep]             = useState(0);
   const [deviceId]                                      = useState(() => getDeviceId());
   const [emailConsent, setEmailConsent]                 = useState(false);
-  // [V30.2-4] streamingMsgId is the SOLE source of truth. isStreaming fully removed.
   const [streamingMsgId, setStreamingMsgId]             = useState<string | null>(null);
   const [streamingText, setStreamingText]               = useState('');
   const [deferredPrompt, setDeferredPrompt]             = useState<any>(null);
@@ -290,15 +295,16 @@ function ChatInterface({
   const pendingAudioRef  = useRef<Promise<HTMLAudioElement | null> | null>(null);
   const hookCacheRef     = useRef<Record<string, string>>({});
   const hooksFetchedRef  = useRef(false);
-  const rafScrollRef     = useRef<number | null>(null); // [V30.2-2] RAF handle
-  // [V30.3] Track message COUNT so hard-scroll only fires on new messages,
-  // NOT on SSE content updates to existing messages (which caused the jump-up bug).
+  const rafScrollRef     = useRef<number | null>(null);
   const msgCountRef      = useRef(0);
 
   const handleSpeakingChange = useCallback((v: boolean) => setIsSpeaking(v), []);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
 
-  // PWA
+  // [V30.8-2] SENTINEL HOOK — wired to existing userEmail + deviceId state
+  const sentinel = useSentinel({ userEmail, deviceId });
+
+  // PWA install prompt
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in window.navigator && (window.navigator as any).standalone === true);
     if (isStandalone) return;
@@ -320,6 +326,7 @@ function ChatInterface({
     else alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots in Chrome.\n2. Tap "Install app".');
   };
 
+  // Restore persisted settings on mount
   useEffect(() => {
     const emailRaw = userEmail.toLowerCase();
     const storedName = localStorage.getItem('userName'); const storedTier = localStorage.getItem('userTier') as any;
@@ -337,6 +344,7 @@ function ChatInterface({
     const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`); if (!hasOnboarded) setShowOnboarding(true);
   }, [userEmail]);
 
+  // Prefetch persona hooks
   useEffect(() => {
     if (!userEmail || hooksFetchedRef.current) return;
     hooksFetchedRef.current = true;
@@ -352,6 +360,7 @@ function ChatInterface({
     const timer = setTimeout(prefetchAll, 800); return () => clearTimeout(timer);
   }, [userEmail]);
 
+  // Back-button / unload guard
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; return ''; };
     const lock = () => window.history.pushState(null, '', window.location.href);
@@ -368,7 +377,7 @@ function ChatInterface({
     return () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('popstate', onPop); };
   }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
-  // Stop audio when user backgrounds the app or switches tabs
+  // Stop audio when app is backgrounded
   useEffect(() => {
     const stopOnHide = () => { aqm.stop(); setIsSpeaking(false); };
     const onVisibility = () => { if (document.hidden) stopOnHide(); };
@@ -380,9 +389,7 @@ function ChatInterface({
     };
   }, []);
 
-  // [V30.3] Hard-scroll ONLY when message count increases (new message added).
-  // SSE updates via setMessages(prev => prev.map(...)) do NOT change count,
-  // so they no longer trigger hard-scroll here — that was the jump-up bug.
+  // [V30.3] Hard-scroll ONLY when message count increases
   useEffect(() => {
     const newCount = messages.length;
     const isNewMsg = newCount > msgCountRef.current;
@@ -401,8 +408,7 @@ function ChatInterface({
     requestAnimationFrame(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; });
   }, [messages, streamingMsgId]);
 
-  // [V30.2-2 + V30.2-3] RAF-based sticky scroll during live SSE stream.
-  // scrollIfNearBottom only fires if user is within 150px of bottom.
+  // [V30.2-2 + V30.2-3] RAF-based sticky scroll during SSE stream
   useEffect(() => {
     if (!streamingText || !chatContainerRef.current) return;
     const el = chatContainerRef.current;
@@ -411,27 +417,22 @@ function ChatInterface({
     return () => { if (rafScrollRef.current !== null) { cancelAnimationFrame(rafScrollRef.current); rafScrollRef.current = null; } };
   }, [streamingText]);
 
+  // Image preview URL lifecycle
   useEffect(() => {
     if (!selectedImage) { setPreviewUrl(null); return; }
     const url = URL.createObjectURL(selectedImage); setPreviewUrl(url); return () => URL.revokeObjectURL(url);
   }, [selectedImage]);
 
-  // Route ALL audio through aqm so aqm.stop() always kills it cleanly.
   const playAudioSafely = (audio: HTMLAudioElement) => {
     aqm.stop();
-    // Store in aqm's currentAudioRef so stop() can reach it
     aqm.currentAudioRef.current = audio;
     setIsSpeaking(true);
     audio.onended = () => { aqm.currentAudioRef.current = null; setIsSpeaking(false); };
     audio.play().catch(e => { console.warn('[AUDIO] Blocked:', e); setIsSpeaking(false); });
   };
 
-  // animateSynced — used ONLY for persona hook messages (fresh bubble, no prior SSE text).
-  // For chat responses, text is already locked in the bubble from SSE streaming.
-  // We never call this for chat responses anymore — audio is played directly.
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    // Activate streaming slot so the bubble renders via typewriter path
     streamingTextRef.current = '';
     setStreamingText('');
     setStreamingMsgId(msgId);
@@ -527,7 +528,7 @@ function ChatInterface({
   };
 
   // [V30.1-2] HANDLE SEND — SSE getReader() Streaming Parser
- const handleSend = async () => {
+  const handleSend = async () => {
     const text = inputTextRef.current.trim() || input.trim();
     if (!text && !selectedImage) return;
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
@@ -547,17 +548,10 @@ function ChatInterface({
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
-      // ── V30.7 READING ENGINE ─────────────────────────────────────────────
-      // Audio fires THE MOMENT each sentence arrives from SSE — no end-of-stream wait.
-      // SYNC: bubble shows growing text via streamingText (sentence-by-sentence feel).
-      // FAST: msg.content updates instantly each sentence — all text always visible.
-      // Voice OFF: text only, zero audio.
-      // aqm.push() adds to queue without resetting — plays first sentence immediately.
-      // ─────────────────────────────────────────────────────────────────────
       setMessages(prev => [...prev, { id: botMsgId, content: '', sender: 'bot' as const, timestamp: new Date(), confidenceScore: 0, scamDetected: false, actionTrigger: null }]);
       if (readingMode === 'sync') setStreamingMsgId(botMsgId);
       setStreamingText(''); setLoading(false);
-      aqm.stop(); // clear any previous audio
+      aqm.stop();
       const reader = apiRes.body!.getReader(); const decoder = new TextDecoder();
       let buffer = ''; let fullAnswer = ''; let metaData: any = null;
       outer: while (true) {
@@ -570,8 +564,25 @@ function ChatInterface({
           let parsed: any; try { parsed = JSON.parse(raw); } catch { continue; }
           if (parsed.type === 'text') {
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
-            // SYNC: show growing text in streaming slot
-            if (readingMode === 'sync') setStreamingText
+            if (readingMode === 'sync') setStreamingText(fullAnswer);
+            setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
+            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
+          } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
+        }
+      }
+      const finalText = fullAnswer.trim();
+      const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
+      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
+      setStreamingMsgId(null); setStreamingText('');
+      if (isLockout) { aqm.stop(); return; }
+    } catch (e) {
+      console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
+    } finally {
+      setSelectedImage(null);
+      setEmailConsent(false);
+      sentinel.onEngagement(); // [V30.8-3] Reset Sentinel consecutive_ignored counter
+    }
+  };
 
   const getPersonaHook = async (persona: PersonaConfig): Promise<string> => {
     if (hookCacheRef.current[persona.id]) { const hook = hookCacheRef.current[persona.id]; delete hookCacheRef.current[persona.id]; return hook; }
@@ -615,21 +626,27 @@ function ChatInterface({
   const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
   const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
+  // [V30.8-4] PUSH PERMISSION — registers VAPID subscription with Sentinel backend
   const requestMobileAlerts = async () => {
     if (!('Notification' in window)) { alert('Push notifications not supported.'); return; }
     if (Notification.permission === 'granted') { setNotificationsEnabled(true); return; }
     const p = await Notification.requestPermission();
-    if (p === 'granted') { setNotificationsEnabled(true); new Notification('LYLO Alerts Active 🛡️', { body: 'Mission reminders enabled.', icon: '/icon-192.png' }); }
-    else setNotificationsEnabled(false);
+    if (p === 'granted') {
+      setNotificationsEnabled(true);
+      new Notification('LYLO Alerts Active 🛡️', { body: 'Mission reminders enabled.', icon: '/logo.png' });
+      sentinel.onPermissionGranted(); // [V30.8-4] Register VAPID push subscription
+    } else {
+      setNotificationsEnabled(false);
+    }
   };
 
   const scheduleMobileReminder = (msg: string, minutes = 30) => {
     if (!notificationsEnabled || Notification.permission !== 'granted') {
-      requestMobileAlerts().then(() => { if (Notification.permission === 'granted') setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/icon-192.png' }), minutes * 60000); });
+      requestMobileAlerts().then(() => { if (Notification.permission === 'granted') setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/logo.png' }), minutes * 60000); });
       return;
     }
-    setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/icon-192.png' }), minutes * 60000);
-    new Notification(`✅ Reminder Set — ${minutes} min`, { body: `"${msg.slice(0, 80)}..."`, icon: '/icon-192.png' });
+    setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/logo.png' }), minutes * 60000);
+    new Notification(`✅ Reminder Set — ${minutes} min`, { body: `"${msg.slice(0, 80)}..."`, icon: '/logo.png' });
   };
 
   const handleEmailDispatch = async (content: string) => {
@@ -658,7 +675,7 @@ function ChatInterface({
   const getInputFontSize = () => { switch (fontLevel) { case 2: return 'text-lg'; case 3: return 'text-xl'; case 4: return 'text-2xl'; default: return 'text-sm'; } };
 
   // ==========================================================================
-  // ONBOARDING — vars hoisted, map closes with })
+  // ONBOARDING
   // ==========================================================================
   if (showOnboarding) {
     const TOTAL = INTAKE_QUESTIONS.length;
@@ -734,6 +751,9 @@ function ChatInterface({
     );
   }
 
+  // ==========================================================================
+  // INSTALL MODAL
+  // ==========================================================================
   const InstallModal = () => (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[999998] flex items-end justify-center p-4 animate-in fade-in duration-300">
       <div className="bg-[#111] border border-blue-500/40 rounded-3xl w-full max-w-sm p-6 mb-4 shadow-[0_0_60px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 duration-300">
@@ -751,6 +771,9 @@ function ChatInterface({
     </div>
   );
 
+  // ==========================================================================
+  // MAIN RENDER
+  // ==========================================================================
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
@@ -761,7 +784,6 @@ function ChatInterface({
           <div className="relative flex items-center gap-2 z-10">
             {!showPersonaGrid && (<button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>)}
             <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><Menu className="w-5 h-5" /></button>
-            {/* Name + tier — only shown on home screen, hidden inside persona to avoid crowding */}
             {showPersonaGrid && (
               <div className="flex flex-col justify-center ml-1">
                 <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
@@ -834,8 +856,7 @@ function ChatInterface({
       )}
 
       {/* CHAT AREA
-          [V30.2-1] overflowAnchor: 'auto' — pins scroll to bottom content,
-          prevents jumps when new nodes are inserted above the viewport. */}
+          [V30.2-1] overflowAnchor: 'auto' — pins scroll to bottom content */}
       <div
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto relative p-4 space-y-6"
@@ -867,12 +888,10 @@ function ChatInterface({
               </div>
             )}
             <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getColor(activePersona.color, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
-              {/* [V30.2-4] streamingMsgId only — isStreaming variable does not exist */}
               {msg.sender === 'bot' && msg.id === streamingMsgId
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
                 : msg.content
               }
-              {/* [V30.1-4] Confidence > 0 guard */}
               {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (
                 <div className="mt-4 pt-4 border-t border-white/10">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1"><span>Confidence</span><span className="text-green-400">{msg.confidenceScore}%</span></div>
@@ -951,7 +970,6 @@ function ChatInterface({
                 </div>
               )}
             </div>
-            {/* Both inputs route through handleImageSelect for Shrink-Ray compression */}
             <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input
@@ -965,7 +983,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.7</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.8</p>
           </div>
         </div>
       </div>
