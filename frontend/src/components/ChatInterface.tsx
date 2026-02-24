@@ -235,7 +235,7 @@ const getDeviceId = () => {
 };
 
 const splitIntoSentences = (text: string): string[] => {
-  const clean = text.replace(/\*\*/g, '').replace(/#{1,6}\s/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+  const clean = text.replace(/\*\*/g, '').replace(/#{1,6}\s?/g, '').replace(/\[.*?\]/g, '').trim();
   const parts = clean.match(/[^.!?\n]+(?:[.!?]+["']?(?:\s|$)|\n|$)/g) ?? [clean];
   return parts.map(s => s.trim()).filter(s => s.length > 3);
 };
@@ -299,8 +299,9 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     queueRef.current[0].status = 'fetching';
     if (inlineAudioB64) {
       const audio = new Audio(`data:audio/mp3;base64,${inlineAudioB64}`); audio.preload = 'auto';
-      queueRef.current[0].audio = audio; queueRef.current[0].status = 'ready';
+      queueRef.current = [{ sentence: 'full', audio: audio, status: 'ready' as const }];
       playNext();
+      return; // <-- THIS STOPS IT FROM JUMPING AND DOUBLE-FIRING
     } else {
       fetchSentenceAudio(sentences[0], voice).then(audio => {
         if (queueRef.current[0]) { queueRef.current[0].audio = audio; queueRef.current[0].status = 'ready'; playNext(); }
