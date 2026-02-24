@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.2.0 — ANTI-JUMP ARCHITECTURE
+// Version: 30.5.0 — ANTI-JUMP ARCHITECTURE
 // ─────────────────────────────────────────────────────────────────────────────
 // V30.2 Changes:
 //  [V30.2-1] ZERO-JUMP SCROLL — overflowAnchor: 'auto' on chat container
@@ -385,14 +385,12 @@ function ChatInterface({
     audio.play().catch(e => console.warn('[AUDIO] Blocked:', e));
   };
 
+  // animateSynced — used ONLY for persona hook messages (fresh bubble, no prior SSE text).
+  // For chat responses, text is already locked in the bubble from SSE streaming.
+  // We never call this for chat responses anymore — audio is played directly.
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    if (readingMode === 'fast') {
-      // FAST MODE: text already shown by SSE. Nothing to animate.
-      // Audio is handled by aqm.enqueue() called separately in handleSend.
-      return;
-    }
-    // SYNC MODE: re-activate streamingMsgId so bubble renders via typewriter path.
+    // Activate streaming slot so the bubble renders via typewriter path
     streamingTextRef.current = '';
     setStreamingText('');
     setStreamingMsgId(msgId);
@@ -420,11 +418,10 @@ function ChatInterface({
       if (isFinite(audioEl.duration) && audioEl.duration > 0) { kick(); }
       else {
         audioEl.addEventListener('loadedmetadata', kick, { once: true });
-        // Fallback: start typing at default speed if audio metadata is slow
         setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200);
       }
     } else {
-      startTyping(28);
+      startTyping(readingMode === 'fast' ? 0 : 28);
     }
   };
 
@@ -537,45 +534,38 @@ function ChatInterface({
       setStreamingMsgId(null); setStreamingText('');
       if (isLockout) return;
 
-      // ── V30.4 READING ENGINE ──────────────────────────────────────────────
-      // SYNC (default): typewriter reveals text char-by-char.
-      //   Voice ON  → fetch full-response TTS, play it, type text in sync.
-      //   Voice OFF → typewriter only, no audio.
-      // FAST: all text drops instantly (no typewriter).
-      //   Voice ON  → fetch full-response TTS and play it.
-      //   Voice OFF → text appears, silence.
+      // ── V30.5 READING ENGINE ──────────────────────────────────────────────
+      // Text is ALREADY in the bubble from SSE streaming. NEVER hide it again.
+      // streamingMsgId stays null from here. We only control audio.
+      //
+      // SYNC (default): SSE already typed text word-by-word during stream.
+      //   Voice ON  → speak the full response now. Text stays locked.
+      //   Voice OFF → text already visible. Nothing to do.
+      // FAST: SSE dumped all text. Same result — text already there.
+      //   Voice ON  → speak the full response now. Text stays locked.
+      //   Voice OFF → text already visible. Nothing to do.
+      //
+      // In both modes with voice ON: fetch TTS for the full text, play it.
       // ─────────────────────────────────────────────────────────────────────
-      if (readingMode === 'fast') {
-        // FAST MODE — text is already visible from SSE stream.
-        // If voice is on, speak the complete response now.
-        if (isVoiceEnabled) {
-          aqm.enqueue(finalText, voiceToUse);
-        }
-        // Voice OFF: text is already shown. Nothing else to do.
-      } else {
-        // SYNC MODE (default) — run typewriter. Fetch TTS for audio sync.
-        if (isVoiceEnabled) {
-          // Fetch a single TTS clip for the full response, then type in sync.
-          (async () => {
-            try {
-              const fd2 = new FormData();
-              fd2.append('text', finalText); fd2.append('voice', voiceToUse);
-              const res2 = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd2 });
-              const data2 = await res2.json();
-              if (data2.audio_b64) {
-                const audio = new Audio(`data:audio/mp3;base64,${data2.audio_b64}`);
-                audio.preload = 'auto';
-                animateSynced(finalText, botMsgId, audio);
-              } else {
-                animateSynced(finalText, botMsgId, null);
-              }
-            } catch { animateSynced(finalText, botMsgId, null); }
-          })();
-        } else {
-          // Voice OFF — typewriter with no audio.
-          animateSynced(finalText, botMsgId, null);
-        }
+      if (isVoiceEnabled) {
+        // Fetch a single TTS clip for the complete response and play it.
+        // Text stays exactly as-is in the bubble — no hiding, no re-animation.
+        (async () => {
+          try {
+            const fd2 = new FormData();
+            fd2.append('text', finalText);
+            fd2.append('voice', voiceToUse);
+            const res2 = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd2 });
+            const data2 = await res2.json();
+            if (data2.audio_b64) {
+              const audio = new Audio(`data:audio/mp3;base64,${data2.audio_b64}`);
+              audio.preload = 'auto';
+              playAudioSafely(audio);
+            }
+          } catch (e) { console.warn('[TTS] fetch failed:', e); }
+        })();
       }
+      // Voice OFF: text is already locked in the bubble. Nothing else to do.
     } catch (e) { console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false); }
     finally { setSelectedImage(null); setEmailConsent(false); }
   };
@@ -768,11 +758,13 @@ function ChatInterface({
           <div className="relative flex items-center gap-2 z-10">
             {!showPersonaGrid && (<button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>)}
             <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><Menu className="w-5 h-5" /></button>
-            {/* Name + tier moved here — no longer hidden behind LYLO title */}
-            <div className="flex flex-col justify-center ml-1">
-              <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
-              <p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p>
-            </div>
+            {/* Name + tier — only shown on home screen, hidden inside persona to avoid crowding */}
+            {showPersonaGrid && (
+              <div className="flex flex-col justify-center ml-1">
+                <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
+                <p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p>
+              </div>
+            )}
             {showDropdown && (
               <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
                 <div className="mb-6">
@@ -970,7 +962,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.4</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.5</p>
           </div>
         </div>
       </div>
