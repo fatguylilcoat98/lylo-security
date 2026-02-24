@@ -235,13 +235,14 @@ const getDeviceId = () => {
 };
 
 const splitIntoSentences = (text: string): string[] => {
+  // Strips out brackets like [MOST LIKELY] so the AI voice doesn't read them
   const clean = text.replace(/\*\*/g, '').replace(/#{1,6}\s?/g, '').replace(/\[.*?\]/g, '').trim();
   const parts = clean.match(/[^.!?\n]+(?:[.!?]+["']?(?:\s|$)|\n|$)/g) ?? [clean];
   return parts.map(s => s.trim()).filter(s => s.length > 3);
 };
 
 // ============================================================================
-// AUDIO QUEUE MANAGER
+// AUDIO QUEUE MANAGER (STRICT SEQUENTIAL FIX)
 // ============================================================================
 function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boolean) => void) {
   const queueRef        = useRef<AudioQueueEntry[]>([]);
@@ -265,22 +266,35 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
 
   const playNext = useCallback(() => {
     if (!isVoiceRef.current) return;
-    const nextReady = queueRef.current.find(e => e.status === 'ready');
-    if (!nextReady) {
-      const stillFetching = queueRef.current.some(e => e.status === 'fetching' || e.status === 'pending');
-      if (!stillFetching) { isPlayingRef.current = false; speakingCbRef.current(false); }
-      else setTimeout(playNext, 100);
+    
+    // STRICT ORDER: Find the exact next sentence that needs to play
+    const nextIndex = queueRef.current.findIndex(e => e.status !== 'played');
+    
+    if (nextIndex === -1) {
+      isPlayingRef.current = false;
+      speakingCbRef.current(false);
       return;
     }
-    nextReady.status = 'played';
-    const audio = nextReady.audio;
-    if (!audio) { playNext(); return; }
-    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; }
-    currentAudioRef.current = audio;
-    isPlayingRef.current = true;
-    speakingCbRef.current(true);
-    audio.onended = () => playNext();
-    audio.play().catch(() => playNext());
+
+    const target = queueRef.current[nextIndex];
+
+    if (target.status === 'ready' && target.audio) {
+      target.status = 'played';
+      if (currentAudioRef.current) { 
+        currentAudioRef.current.pause(); 
+        currentAudioRef.current.currentTime = 0; 
+      }
+      currentAudioRef.current = target.audio;
+      isPlayingRef.current = true;
+      speakingCbRef.current(true);
+      
+      target.audio.onended = () => playNext();
+      target.audio.play().catch(() => playNext());
+    } else {
+      // The exact next sentence is still downloading. STOP and WAIT.
+      // Do not skip ahead just because a later sentence finished faster.
+      isPlayingRef.current = false;
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -293,26 +307,30 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
   const enqueue = useCallback(async (fullText: string, voice: string, inlineAudioB64?: string) => {
     if (!isVoiceRef.current) return;
     stop();
-    const sentences = splitIntoSentences(fullText);
-    if (!sentences.length) return;
-    queueRef.current = sentences.map(s => ({ sentence: s, audio: null, status: 'pending' as const }));
-    queueRef.current[0].status = 'fetching';
+
+    // If the server sent a single complete audio file, just play it.
     if (inlineAudioB64) {
       const audio = new Audio(`data:audio/mp3;base64,${inlineAudioB64}`); audio.preload = 'auto';
       queueRef.current = [{ sentence: 'full', audio: audio, status: 'ready' as const }];
       playNext();
-      return; // <-- THIS STOPS IT FROM JUMPING AND DOUBLE-FIRING
-    } else {
-      fetchSentenceAudio(sentences[0], voice).then(audio => {
-        if (queueRef.current[0]) { queueRef.current[0].audio = audio; queueRef.current[0].status = 'ready'; playNext(); }
-      });
+      return;
     }
-    for (let i = 1; i < sentences.length; i++) {
+
+    // Fallback: Queue up sentences sequentially 
+    const sentences = splitIntoSentences(fullText);
+    if (!sentences.length) return;
+    
+    queueRef.current = sentences.map(s => ({ sentence: s, audio: null, status: 'pending' as const }));
+    
+    for (let i = 0; i < sentences.length; i++) {
       const idx = i;
-      if (!queueRef.current[idx]) break;
       queueRef.current[idx].status = 'fetching';
       fetchSentenceAudio(sentences[idx], voice).then(audio => {
-        if (queueRef.current[idx]) { queueRef.current[idx].audio = audio; queueRef.current[idx].status = 'ready'; if (!isPlayingRef.current) playNext(); }
+        if (queueRef.current[idx]) { 
+          queueRef.current[idx].audio = audio; 
+          queueRef.current[idx].status = 'ready'; 
+          if (!isPlayingRef.current) playNext(); 
+        }
       });
     }
   }, [stop, playNext]);
