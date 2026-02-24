@@ -702,9 +702,14 @@ function ChatInterface({
       {/* TOP BAR */}
       <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
-          <div className="relative flex gap-2 z-10">
+          <div className="relative flex items-center gap-2 z-10">
             {!showPersonaGrid && (<button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>)}
             <button onClick={() => setShowDropdown(!showDropdown)} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><Menu className="w-5 h-5" /></button>
+            {/* Name + tier moved here — no longer hidden behind LYLO title */}
+            <div className="flex flex-col justify-center ml-1">
+              <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
+              <p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p>
+            </div>
             {showDropdown && (
               <div className="absolute top-14 left-0 bg-black/95 border border-white/10 rounded-2xl p-5 min-w-[280px] shadow-2xl z-[100001] max-h-[80vh] overflow-y-auto">
                 <div className="mb-6">
@@ -728,10 +733,6 @@ function ChatInterface({
             <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
           </div>
           <div className="flex items-center gap-2 z-10">
-            <div className="flex flex-col items-end justify-center mr-1">
-              <p className="text-white font-black text-[10px] uppercase leading-none max-w-[70px] truncate">{userName}</p>
-              <p className="text-[8px] text-green-500 font-black mt-1 uppercase tracking-widest">{userTier}</p>
-            </div>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
