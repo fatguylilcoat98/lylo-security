@@ -267,6 +267,9 @@ function ChatInterface({
   const hookCacheRef     = useRef<Record<string, string>>({});
   const hooksFetchedRef  = useRef(false);
   const rafScrollRef     = useRef<number | null>(null); // [V30.2-2] RAF handle
+  // [V30.3] Track message COUNT so hard-scroll only fires on new messages,
+  // NOT on SSE content updates to existing messages (which caused the jump-up bug).
+  const msgCountRef      = useRef(0);
 
   const handleSpeakingChange = useCallback((v: boolean) => setIsSpeaking(v), []);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
@@ -341,8 +344,19 @@ function ChatInterface({
     return () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('popstate', onPop); };
   }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
-  // Hard scroll on new complete messages
-  useEffect(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; }, [messages, previewUrl]);
+  // [V30.3] Hard-scroll ONLY when message count increases (new message added).
+  // SSE updates via setMessages(prev => prev.map(...)) do NOT change count,
+  // so they no longer trigger hard-scroll here — that was the jump-up bug.
+  useEffect(() => {
+    const newCount = messages.length;
+    const isNewMsg = newCount > msgCountRef.current;
+    msgCountRef.current = newCount;
+    if ((isNewMsg || previewUrl) && chatContainerRef.current) {
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      });
+    }
+  }, [messages, previewUrl]);
 
   // Hard scroll when action-trigger button appears
   useEffect(() => {
