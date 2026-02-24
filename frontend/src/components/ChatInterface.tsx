@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.5.0 — ANTI-JUMP ARCHITECTURE
+// Version: 30.7.0 — ANTI-JUMP ARCHITECTURE
 // ─────────────────────────────────────────────────────────────────────────────
 // V30.2 Changes:
 //  [V30.2-1] ZERO-JUMP SCROLL — overflowAnchor: 'auto' on chat container
@@ -200,7 +200,29 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     }
   }, [stop, playNext]);
 
-  return { enqueue, stop, currentAudioRef };
+  // push: add one sentence to the queue without resetting it.
+  // Starts playback immediately if not already playing.
+  const push = useCallback(async (sentence: string, voice: string, inlineAudioB64?: string) => {
+    if (!isVoiceRef.current) return;
+    const entry: AudioQueueEntry = { sentence, audio: null, status: 'fetching' };
+    queueRef.current.push(entry);
+    const idx = queueRef.current.length - 1;
+    if (inlineAudioB64) {
+      const audio = new Audio(`data:audio/mp3;base64,${inlineAudioB64}`);
+      audio.preload = 'auto';
+      queueRef.current[idx].audio = audio;
+      queueRef.current[idx].status = 'ready';
+    } else {
+      const audio = await fetchSentenceAudio(sentence, voice);
+      if (queueRef.current[idx]) {
+        queueRef.current[idx].audio = audio;
+        queueRef.current[idx].status = 'ready';
+      }
+    }
+    if (!isPlayingRef.current) playNext();
+  }, [playNext]);
+
+  return { enqueue, push, stop, currentAudioRef };
 }
 
 // [V30.2-3] STICKY SCROLL: only scrolls if user is within threshold px of bottom
@@ -344,6 +366,18 @@ function ChatInterface({
     return () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('popstate', onPop); };
   }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
 
+  // Stop audio when user backgrounds the app or switches tabs
+  useEffect(() => {
+    const stopOnHide = () => { aqm.stop(); setIsSpeaking(false); };
+    const onVisibility = () => { if (document.hidden) stopOnHide(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', stopOnHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', stopOnHide);
+    };
+  }, []);
+
   // [V30.3] Hard-scroll ONLY when message count increases (new message added).
   // SSE updates via setMessages(prev => prev.map(...)) do NOT change count,
   // so they no longer trigger hard-scroll here — that was the jump-up bug.
@@ -380,9 +414,14 @@ function ChatInterface({
     const url = URL.createObjectURL(selectedImage); setPreviewUrl(url); return () => URL.revokeObjectURL(url);
   }, [selectedImage]);
 
+  // Route ALL audio through aqm so aqm.stop() always kills it cleanly.
   const playAudioSafely = (audio: HTMLAudioElement) => {
-    aqm.stop(); setIsSpeaking(true); audio.onended = () => setIsSpeaking(false);
-    audio.play().catch(e => console.warn('[AUDIO] Blocked:', e));
+    aqm.stop();
+    // Store in aqm's currentAudioRef so stop() can reach it
+    aqm.currentAudioRef.current = audio;
+    setIsSpeaking(true);
+    audio.onended = () => { aqm.currentAudioRef.current = null; setIsSpeaking(false); };
+    audio.play().catch(e => { console.warn('[AUDIO] Blocked:', e); setIsSpeaking(false); });
   };
 
   // animateSynced — used ONLY for persona hook messages (fresh bubble, no prior SSE text).
@@ -506,9 +545,17 @@ function ChatInterface({
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
+      // ── V30.7 READING ENGINE ─────────────────────────────────────────────
+      // Audio fires THE MOMENT each sentence arrives from SSE — no end-of-stream wait.
+      // SYNC: bubble shows growing text via streamingText (sentence-by-sentence feel).
+      // FAST: msg.content updates instantly each sentence — all text always visible.
+      // Voice OFF: text only, zero audio.
+      // aqm.push() adds to queue without resetting — plays first sentence immediately.
+      // ─────────────────────────────────────────────────────────────────────
       setMessages(prev => [...prev, { id: botMsgId, content: '', sender: 'bot' as const, timestamp: new Date(), confidenceScore: 0, scamDetected: false, actionTrigger: null }]);
-      setStreamingMsgId(botMsgId); // [V30.2-4]
+      if (readingMode === 'sync') setStreamingMsgId(botMsgId);
       setStreamingText(''); setLoading(false);
+      aqm.stop(); // clear any previous audio
       const reader = apiRes.body!.getReader(); const decoder = new TextDecoder();
       let buffer = ''; let fullAnswer = ''; let metaData: any = null;
       outer: while (true) {
@@ -521,10 +568,12 @@ function ChatInterface({
           let parsed: any; try { parsed = JSON.parse(raw); } catch { continue; }
           if (parsed.type === 'text') {
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
-            setStreamingText(fullAnswer);
+            // SYNC: show growing text in streaming slot
+            if (readingMode === 'sync') setStreamingText(fullAnswer);
+            // Always write to msg.content (FAST sees it instantly, SYNC has it ready)
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
-            // Audio is NOT dispatched per-sentence here anymore.
-            // We speak the full response after streaming completes (see below).
+            // Push this sentence's audio immediately — starts playing on sentence 1
+            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
           } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
         }
       }
@@ -532,40 +581,8 @@ function ChatInterface({
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
       setStreamingMsgId(null); setStreamingText('');
-      if (isLockout) return;
-
-      // ── V30.5 READING ENGINE ──────────────────────────────────────────────
-      // Text is ALREADY in the bubble from SSE streaming. NEVER hide it again.
-      // streamingMsgId stays null from here. We only control audio.
-      //
-      // SYNC (default): SSE already typed text word-by-word during stream.
-      //   Voice ON  → speak the full response now. Text stays locked.
-      //   Voice OFF → text already visible. Nothing to do.
-      // FAST: SSE dumped all text. Same result — text already there.
-      //   Voice ON  → speak the full response now. Text stays locked.
-      //   Voice OFF → text already visible. Nothing to do.
-      //
-      // In both modes with voice ON: fetch TTS for the full text, play it.
-      // ─────────────────────────────────────────────────────────────────────
-      if (isVoiceEnabled) {
-        // Fetch a single TTS clip for the complete response and play it.
-        // Text stays exactly as-is in the bubble — no hiding, no re-animation.
-        (async () => {
-          try {
-            const fd2 = new FormData();
-            fd2.append('text', finalText);
-            fd2.append('voice', voiceToUse);
-            const res2 = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd2 });
-            const data2 = await res2.json();
-            if (data2.audio_b64) {
-              const audio = new Audio(`data:audio/mp3;base64,${data2.audio_b64}`);
-              audio.preload = 'auto';
-              playAudioSafely(audio);
-            }
-          } catch (e) { console.warn('[TTS] fetch failed:', e); }
-        })();
-      }
-      // Voice OFF: text is already locked in the bubble. Nothing else to do.
+      if (isLockout) { aqm.stop(); return; }
+      // Audio already running from first sentence push. Nothing else to do.
     } catch (e) { console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false); }
     finally { setSelectedImage(null); setEmailConsent(false); }
   };
@@ -962,7 +979,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.5</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.7</p>
           </div>
         </div>
       </div>
