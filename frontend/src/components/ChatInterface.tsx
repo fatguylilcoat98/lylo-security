@@ -236,7 +236,7 @@ function ChatInterface({
   const [communicationStyle, setCommunicationStyle]     = useState('standard');
   const [fontLevel, setFontLevel]                       = useState(1);
   const [isVoiceEnabled, setIsVoiceEnabled]             = useState(true);
-  const [readingMode, setReadingMode]                   = useState<'sync' | 'instant'>('sync');
+  const [readingMode, setReadingMode]                   = useState<'sync' | 'fast'>('sync');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [selectedImage, setSelectedImage]               = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]                     = useState<string | null>(null);
@@ -306,7 +306,7 @@ function ChatInterface({
     if (rawStyle) { const migrated = LEGACY_VIBE_MAP[rawStyle] ?? rawStyle; if (migrated !== rawStyle) localStorage.setItem('lylo_communication_style', migrated); setCommunicationStyle(migrated); }
     const savedFont = localStorage.getItem('lylo_font_level'); if (savedFont) setFontLevel(parseInt(savedFont, 10));
     const savedVoice = localStorage.getItem('lylo_voice_enabled'); if (savedVoice !== null) setIsVoiceEnabled(savedVoice === 'true');
-    const savedMode = localStorage.getItem('lylo_reading_mode'); if (savedMode === 'sync' || savedMode === 'instant') setReadingMode(savedMode as any);
+    const savedMode = localStorage.getItem('lylo_reading_mode'); if (savedMode === 'sync' || savedMode === 'fast') setReadingMode(savedMode as any);
     if ('Notification' in window && Notification.permission === 'granted') setNotificationsEnabled(true);
     const savedIntake = localStorage.getItem(`lylo_intake_${emailRaw}`);
     if (savedIntake) { const parsed: Partial<IntakeProfile> = JSON.parse(savedIntake); setIntakeProfile(parsed); if (parsed.vibe) setCommunicationStyle(parsed.vibe); }
@@ -387,20 +387,45 @@ function ChatInterface({
 
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    streamingTextRef.current = ''; setStreamingText('');
-    if (readingMode === 'instant') { setStreamingMsgId(null); if (audioEl && isVoiceEnabled) playAudioSafely(audioEl); return; }
+    if (readingMode === 'fast') {
+      // FAST MODE: text already shown by SSE. Nothing to animate.
+      // Audio is handled by aqm.enqueue() called separately in handleSend.
+      return;
+    }
+    // SYNC MODE: re-activate streamingMsgId so bubble renders via typewriter path.
+    streamingTextRef.current = '';
+    setStreamingText('');
+    setStreamingMsgId(msgId);
     const startTyping = (msPerChar: number) => {
       let i = 0;
       typewriterRef.current = setInterval(() => {
-        i++; const slice = text.slice(0, i); streamingTextRef.current = slice; setStreamingText(slice);
-        if (i >= text.length) { clearInterval(typewriterRef.current!); typewriterRef.current = null; setStreamingMsgId(null); setStreamingText(''); }
+        i++;
+        const slice = text.slice(0, i);
+        streamingTextRef.current = slice;
+        setStreamingText(slice);
+        if (i >= text.length) {
+          clearInterval(typewriterRef.current!);
+          typewriterRef.current = null;
+          setStreamingMsgId(null);
+          setStreamingText('');
+        }
       }, msPerChar);
     };
     if (audioEl && isVoiceEnabled) {
-      const kick = () => { const ms = Math.max(18, (audioEl.duration * 1000) / text.length); playAudioSafely(audioEl); startTyping(ms); };
+      const kick = () => {
+        const ms = Math.max(18, (audioEl.duration * 1000) / text.length);
+        playAudioSafely(audioEl);
+        startTyping(ms);
+      };
       if (isFinite(audioEl.duration) && audioEl.duration > 0) { kick(); }
-      else { audioEl.addEventListener('loadedmetadata', kick, { once: true }); setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200); }
-    } else { startTyping(28); }
+      else {
+        audioEl.addEventListener('loadedmetadata', kick, { once: true });
+        // Fallback: start typing at default speed if audio metadata is slow
+        setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200);
+      }
+    } else {
+      startTyping(28);
+    }
   };
 
   const buildRecognition = (): any => {
@@ -501,8 +526,8 @@ function ChatInterface({
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
-            // [V30.1-3] INSTANT AUDIO per sentence
-            if (isVoiceEnabled && parsed.audio_b64) { aqm.enqueue(parsed.content, voiceToUse, parsed.audio_b64); }
+            // Audio is NOT dispatched per-sentence here anymore.
+            // We speak the full response after streaming completes (see below).
           } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
         }
       }
@@ -511,8 +536,46 @@ function ChatInterface({
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
       setStreamingMsgId(null); setStreamingText('');
       if (isLockout) return;
-      // Audio already fired per-sentence. animateSynced handles sync-mode typewriter only.
-      if (isVoiceEnabled && readingMode === 'sync') { animateSynced(finalText, botMsgId, null); }
+
+      // ── V30.4 READING ENGINE ──────────────────────────────────────────────
+      // SYNC (default): typewriter reveals text char-by-char.
+      //   Voice ON  → fetch full-response TTS, play it, type text in sync.
+      //   Voice OFF → typewriter only, no audio.
+      // FAST: all text drops instantly (no typewriter).
+      //   Voice ON  → fetch full-response TTS and play it.
+      //   Voice OFF → text appears, silence.
+      // ─────────────────────────────────────────────────────────────────────
+      if (readingMode === 'fast') {
+        // FAST MODE — text is already visible from SSE stream.
+        // If voice is on, speak the complete response now.
+        if (isVoiceEnabled) {
+          aqm.enqueue(finalText, voiceToUse);
+        }
+        // Voice OFF: text is already shown. Nothing else to do.
+      } else {
+        // SYNC MODE (default) — run typewriter. Fetch TTS for audio sync.
+        if (isVoiceEnabled) {
+          // Fetch a single TTS clip for the full response, then type in sync.
+          (async () => {
+            try {
+              const fd2 = new FormData();
+              fd2.append('text', finalText); fd2.append('voice', voiceToUse);
+              const res2 = await fetch(`${API_URL}/generate-audio`, { method: 'POST', body: fd2 });
+              const data2 = await res2.json();
+              if (data2.audio_b64) {
+                const audio = new Audio(`data:audio/mp3;base64,${data2.audio_b64}`);
+                audio.preload = 'auto';
+                animateSynced(finalText, botMsgId, audio);
+              } else {
+                animateSynced(finalText, botMsgId, null);
+              }
+            } catch { animateSynced(finalText, botMsgId, null); }
+          })();
+        } else {
+          // Voice OFF — typewriter with no audio.
+          animateSynced(finalText, botMsgId, null);
+        }
+      }
     } catch (e) { console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false); }
     finally { setSelectedImage(null); setEmailConsent(false); }
   };
@@ -537,7 +600,7 @@ function ChatInterface({
     if (readingMode === 'sync' && isVoiceEnabled) { setStreamingMsgId(hookMsgId); setStreamingText(''); }
     setMessages([{ id: hookMsgId, content: hookText, sender: 'bot' as const, timestamp: new Date() }]); setLoading(false);
     if (isVoiceEnabled) {
-      if (readingMode === 'instant') { setStreamingMsgId(null); await aqm.enqueue(hookText, voiceToUse); }
+      if (readingMode === 'fast') { setStreamingMsgId(null); await aqm.enqueue(hookText, voiceToUse); }
       else {
         try {
           const fd = new FormData(); fd.append('text', hookText); fd.append('voice', voiceToUse);
@@ -871,7 +934,7 @@ function ChatInterface({
             <button
               onClick={async () => {
                 if (streamingMsgId) { bailoutTypewriter(); if (pendingAudioRef.current && isVoiceEnabled) { const audio = await pendingAudioRef.current; pendingAudioRef.current = null; if (audio) playAudioSafely(audio); } }
-                const next = readingMode === 'sync' ? 'instant' : 'sync'; setReadingMode(next); localStorage.setItem('lylo_reading_mode', next);
+                const next = readingMode === 'sync' ? 'fast' : 'sync'; setReadingMode(next); localStorage.setItem('lylo_reading_mode', next);
               }}
               className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]"
             >
@@ -907,7 +970,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.2</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.4</p>
           </div>
         </div>
       </div>
