@@ -1037,7 +1037,7 @@ function ChatInterface({
         style={{ 
           paddingBottom: previewUrl ? '420px' : '320px', 
           overflowAnchor: 'auto',
-          scrollBehavior: isStreaming ? 'auto' : 'smooth'
+          scrollBehavior: streamingMsgId ? 'auto' : 'smooth'
         }}
       >
 
