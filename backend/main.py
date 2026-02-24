@@ -1373,8 +1373,7 @@ def assemble_prompt(
     # Also extract asset-like fields from synthesized profile
     for key, val in user_profile.items():
         if any(word in key.lower() for word in ["car","vehicle","tech","device","phone","laptop","truck","bike","asset"]):
-            if val and f"  • {key}" not in "
-".join(asset_lines):
+            if val and f"  • {key}" not in "\n".join(asset_lines):
                 asset_lines.append(f"  • {key.replace('_',' ').title()}: {val}")
 
     asset_block = ""
