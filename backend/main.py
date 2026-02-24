@@ -9,6 +9,7 @@ import base64
 import stripe
 import logging
 import smtplib
+from sentinel_routes import sentinel_router
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -90,6 +91,8 @@ app = FastAPI(
     description="Proactive Digital Bodyguard & Recursive Intelligence Engine",
     version="30.8.0 - HARD BOUNDARIES | CROSS-SPECIALIST RAG | HELP-FIRST | ASSET SYNC"
 )
+
+app.include_router(sentinel_router)
 
 app.add_middleware(
     CORSMiddleware,
