@@ -184,23 +184,11 @@ if OPENAI_API_KEY:
         logger.error(f"❌ OpenAI Setup Failed: {e}")
 
 # ---------------------------------------------------------
-# BETA USER DATABASE
+# BETA USER DATABASE (Cleaned for Production)
 # ---------------------------------------------------------
 ELITE_USERS = {
     "stangman9898@gmail.com":       {"tier": "max", "name": "Christopher"},
-    "mylylo.ai@gmail.com":          {"tier": "max", "name": "LYLO Admin"},
-    "paintonmynails80@gmail.com":   {"tier": "max", "name": "Aubrey"},
-    "tiffani.hughes@yahoo.com":     {"tier": "max", "name": "Tiffani"},
-    "jcdabearman@gmail.com":        {"tier": "max", "name": "Jeff"},
-    "birdznbloomz2b@gmail.com":     {"tier": "max", "name": "Sandy"},
-    "chris.betatester6@gmail.com":  {"tier": "max", "name": "Ron"},
-    "chris.betatester7@gmail.com":  {"tier": "max", "name": "Marilyn"},
-    "plabane916@gmail.com":         {"tier": "max", "name": "Paul"},
-    "nemeses1298@gmail.com":        {"tier": "max", "name": "Eric"},
-    "bearjcameron@icloud.com":      {"tier": "max", "name": "Bear"},
-    "jcgcbear@gmail.com":           {"tier": "max", "name": "Gloria"},
-    "laura@startupsac.org":         {"tier": "max", "name": "Laura"},
-    "cmlabane@gmail.com":           {"tier": "max", "name": "Corie"}
+    "mylylo.ai@gmail.com":          {"tier": "max", "name": "LYLO Admin"}
 }
 
 def create_user_id(email: str) -> str:
