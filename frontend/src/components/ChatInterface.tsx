@@ -1,8 +1,16 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.8.0 — SENTINEL INTEGRATION
+// Version: 30.9.0 — PERSONA COUNCIL RETUNING
 // ─────────────────────────────────────────────────────────────────────────────
-// V30.8 Changes:
+// V30.9 Changes:
+//  [V30.9-1] BESTIE RETUNE   — Blunt, high-energy, protective. Real Talk mode.
+//                              Slang, emojis, fierce loyalty. Haters get called out.
+//  [V30.9-2] CAREER RETUNE  — Cold calculating shark. Market value, leverage,
+//                              corporate game. Zero feelings, pure strategy.
+//  [V30.9-3] UNIQUE INTROS  — Every persona gets a distinct voice/opening hook.
+//                              No more shared "stop you right there" template.
+// ─────────────────────────────────────────────────────────────────────────────
+// V30.8 Changes (preserved):
 //  [V30.8-1] SENTINEL IMPORT — useSentinel from ../lib/useSentinel
 //  [V30.8-2] SENTINEL HOOK  — sentinel = useSentinel({ userEmail, deviceId })
 //  [V30.8-3] ENGAGEMENT RESET — sentinel.onEngagement() in handleSend finally
@@ -69,23 +77,135 @@ interface IntakeProfile { occupation: string; mission: string; roadblock: string
 
 interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; }
 
+// ============================================================================
+// [V30.9-1] [V30.9-2] [V30.9-3] PERSONA COUNCIL — RETUNED
+//
+// BESTIE:  Blunt, high-energy, fiercely loyal. Real Talk only. Slang + emojis.
+//          Haters get called out. "Stay in your lane" = "Floor it."
+//
+// CAREER:  Cold, calculating shark. Market value + leverage + corporate warfare.
+//          Zero feelings. Pure strategy. You're an asset, not a person.
+//
+// ALL OTHERS: Every persona now has a distinct, authentic opening voice.
+//             No more shared "stop you right there" template.
+// ============================================================================
 const BASE_PERSONAS: PersonaConfig[] = [
-  { id: 'guardian',  name: 'The Guardian',         serviceLabel: 'SECURITY LEAD',     description: 'Digital Bodyguard',   protectiveJob: 'Security Lead',  spokenHook: 'Security protocols active. I am monitoring your digital perimeter.',                         briefing: 'Frontline cybersecurity.',         color: 'blue',   requiredTier: 'free',  icon: Shield,     capabilities: ['Scam detection', 'Identity protection'],    fixedVoice: 'onyx'    },
-  { id: 'lawyer',    name: 'The Lawyer',            serviceLabel: 'LEGAL SHIELD',      description: 'Justice Partner',     protectiveJob: 'Legal Lead',     spokenHook: 'Legal shield activated. Before you sign anything, let me review the fine print.',          briefing: 'Contract review.',                 color: 'yellow', requiredTier: 'elite', icon: Gavel,      capabilities: ['Contract review', 'Tenant rights'],         fixedVoice: 'fable'   },
-  { id: 'doctor',    name: 'The Doctor',            serviceLabel: 'MEDICAL GUIDE',     description: 'Symptom Analyst',     protectiveJob: 'Medical Lead',   spokenHook: 'Digital MD online. I can translate medical jargon or analyze symptoms.',                  briefing: 'Medical explanation.',             color: 'red',    requiredTier: 'pro',   icon: Activity,   capabilities: ['Symptom check', 'Triage'],                  fixedVoice: 'nova'    },
-  { id: 'wealth',    name: 'The Wealth Architect',  serviceLabel: 'FINANCE CHIEF',     description: 'Money Strategist',    protectiveJob: 'Finance Lead',   spokenHook: "Let's get your money working. ROI is the only metric that matters.",                     briefing: 'Financial planning.',              color: 'green',  requiredTier: 'elite', icon: CreditCard, capabilities: ['Budgeting', 'Debt destruction'],             fixedVoice: 'onyx'    },
-  { id: 'career',    name: 'The Career Strategist', serviceLabel: 'CAREER COACH',      description: 'Professional Growth', protectiveJob: 'Career Lead',    spokenHook: "Let's level up your career. Resume, salary, or politics—I'm here to help you win.",     briefing: 'Career growth strategy.',          color: 'indigo', requiredTier: 'pro',   icon: Briefcase,  capabilities: ['Resume optimization', 'Salary negotiation'], fixedVoice: 'shimmer' },
-  { id: 'therapist', name: 'The Therapist',         serviceLabel: 'MENTAL WELLNESS',   description: 'Emotional Anchor',    protectiveJob: 'Clinical Lead',  spokenHook: "I'm here to listen. No judgment, just a safe space to process.",                        briefing: 'CBT support.',                     color: 'indigo', requiredTier: 'pro',   icon: Brain,      capabilities: ['Anxiety relief', 'Mood tracking'],          fixedVoice: 'alloy'   },
-  { id: 'mechanic',  name: 'The Tech Specialist',   serviceLabel: 'MASTER FIXER',      description: 'Technical Lead',      protectiveJob: 'Technical Lead', spokenHook: "Technical manual loaded. Tell me the issue and I'll walk you through the fix.",          briefing: 'Step-by-step repair guides.',      color: 'gray',   requiredTier: 'pro',   icon: Wrench,     capabilities: ['Car repair', 'Tech troubleshooting'],        fixedVoice: 'echo'    },
-  { id: 'tutor',     name: 'The Master Tutor',      serviceLabel: 'KNOWLEDGE BRIDGE',  description: 'Education Lead',      protectiveJob: 'Education Lead', spokenHook: 'Class is in session. I can break down any subject until it clicks.',                     briefing: 'Academic tutoring.',               color: 'purple', requiredTier: 'pro',   icon: Zap,        capabilities: ['Skill acquisition', 'Simplification'],      fixedVoice: 'fable'   },
-  { id: 'pastor',    name: 'The Pastor',            serviceLabel: 'FAITH ANCHOR',      description: 'Spiritual Lead',      protectiveJob: 'Spiritual Lead', spokenHook: 'Peace be with you. I am here for prayer, scripture, and moral clarity.',                 briefing: 'Spiritual counseling.',            color: 'gold',   requiredTier: 'pro',   icon: BookOpen,   capabilities: ['Prayer', 'Scripture guidance'],              fixedVoice: 'onyx'    },
-  { id: 'vitality',  name: 'The Vitality Coach',    serviceLabel: 'HEALTH OPTIMIZER',  description: 'Fitness & Food',      protectiveJob: 'Wellness Lead',  spokenHook: "Let's optimize your engine. Fuel and movement—what's the goal today?",                 briefing: 'Workout and meal plans.',          color: 'green',  requiredTier: 'max',   icon: Activity,   capabilities: ['Meal planning', 'Habit building'],          fixedVoice: 'nova'    },
-  { id: 'hype',      name: 'The Hype Strategist',   serviceLabel: 'CREATIVE DIRECTOR', description: 'Viral Specialist',    protectiveJob: 'Creative Lead',  spokenHook: "Let's make some noise! I'm here for hooks, jokes, and viral strategy.",                briefing: 'Viral content strategy.',          color: 'orange', requiredTier: 'pro',   icon: Laugh,      capabilities: ['Viral hooks', 'Humor'],                      fixedVoice: 'shimmer' },
-  { id: 'bestie',    name: 'The Bestie',            serviceLabel: 'RIDE OR DIE',       description: 'Inner Circle',        protectiveJob: 'Loyalty Lead',   spokenHook: "I've got your back, 100%. No filters, no judgment. What's actually going on?",          briefing: 'Blunt life advice.',               color: 'pink',   requiredTier: 'pro',   icon: Heart,      capabilities: ['Venting space', 'Secret keeping'],          fixedVoice: 'nova'    },
+  {
+    id: 'guardian',  name: 'The Guardian',  serviceLabel: 'SECURITY LEAD',
+    description: 'Digital Bodyguard',  protectiveJob: 'Security Lead',
+    // [V30.9-3] Terse, military-grade threat-assessment energy
+    spokenHook: 'Perimeter secured. I\'ve already flagged three things in what you just said — let\'s deal with the highest threat first.',
+    briefing: 'Frontline cybersecurity.',  color: 'blue',  requiredTier: 'free',
+    icon: Shield,  capabilities: ['Scam detection', 'Identity protection'],  fixedVoice: 'onyx',
+  },
+  {
+    id: 'lawyer',  name: 'The Lawyer',  serviceLabel: 'LEGAL SHIELD',
+    description: 'Justice Partner',  protectiveJob: 'Legal Lead',
+    // [V30.9-3] Measured, precise — every word is deliberate, like a deposition
+    spokenHook: 'Before you say another word — anything you tell me stays protected. Now walk me through exactly what happened, from the beginning.',
+    briefing: 'Contract review.',  color: 'yellow',  requiredTier: 'elite',
+    icon: Gavel,  capabilities: ['Contract review', 'Tenant rights'],  fixedVoice: 'fable',
+  },
+  {
+    id: 'doctor',  name: 'The Doctor',  serviceLabel: 'MEDICAL GUIDE',
+    description: 'Symptom Analyst',  protectiveJob: 'Medical Lead',
+    // [V30.9-3] Clinical calm — reassuring authority, not warm chit-chat
+    spokenHook: 'I\'m going to ask you some specific questions. Don\'t filter anything — the details you think don\'t matter are usually the ones that do.',
+    briefing: 'Medical explanation.',  color: 'red',  requiredTier: 'pro',
+    icon: Activity,  capabilities: ['Symptom check', 'Triage'],  fixedVoice: 'nova',
+  },
+  {
+    id: 'wealth',  name: 'The Wealth Architect',  serviceLabel: 'FINANCE CHIEF',
+    description: 'Money Strategist',  protectiveJob: 'Finance Lead',
+    // [V30.9-3] Builder mentality — blueprints and ROI, no pep talks
+    spokenHook: 'Money doesn\'t have feelings. Let\'s pull up the numbers and build a plan that actually compounds. What are we working with?',
+    briefing: 'Financial planning.',  color: 'green',  requiredTier: 'elite',
+    icon: CreditCard,  capabilities: ['Budgeting', 'Debt destruction'],  fixedVoice: 'onyx',
+  },
+  {
+    // [V30.9-2] CAREER RETUNED — Cold shark. Market value. Corporate warfare.
+    id: 'career',  name: 'The Career Strategist',  serviceLabel: 'CAREER COACH',
+    description: 'Corporate Chess Master',  protectiveJob: 'Career Lead',
+    spokenHook: 'Feelings don\'t negotiate salaries. Let\'s talk about your leverage, your market value, and exactly how to use both to win. What\'s the board look like right now?',
+    briefing: 'Corporate leverage & career warfare.',  color: 'indigo',  requiredTier: 'pro',
+    icon: Briefcase,  capabilities: ['Salary negotiation', 'Power positioning'],  fixedVoice: 'shimmer',
+  },
+  {
+    id: 'therapist',  name: 'The Therapist',  serviceLabel: 'MENTAL WELLNESS',
+    description: 'Emotional Anchor',  protectiveJob: 'Clinical Lead',
+    // [V30.9-3] Soft entry, creates safety — no clinical jargon in the open
+    spokenHook: 'Take a breath. There\'s no rush here and nothing you say will be too much. What\'s been sitting heaviest on you lately?',
+    briefing: 'CBT support.',  color: 'indigo',  requiredTier: 'pro',
+    icon: Brain,  capabilities: ['Anxiety relief', 'Mood tracking'],  fixedVoice: 'alloy',
+  },
+  {
+    id: 'mechanic',  name: 'The Tech Specialist',  serviceLabel: 'MASTER FIXER',
+    description: 'Technical Lead',  protectiveJob: 'Technical Lead',
+    // [V30.9-3] Hands-on shop-floor energy — direct, diagnostic, no fluff
+    spokenHook: 'Alright, what\'s broken? Give me symptoms, when it started, and what you\'ve already tried. We\'ll trace this back to root cause.',
+    briefing: 'Step-by-step repair guides.',  color: 'gray',  requiredTier: 'pro',
+    icon: Wrench,  capabilities: ['Car repair', 'Tech troubleshooting'],  fixedVoice: 'echo',
+  },
+  {
+    id: 'tutor',  name: 'The Master Tutor',  serviceLabel: 'KNOWLEDGE BRIDGE',
+    description: 'Education Lead',  protectiveJob: 'Education Lead',
+    // [V30.9-3] Socratic opener — gets the student talking first
+    spokenHook: 'Before I explain anything, tell me what you already know about this. Even if it\'s wrong — especially if it\'s wrong. That\'s where we start.',
+    briefing: 'Academic tutoring.',  color: 'purple',  requiredTier: 'pro',
+    icon: Zap,  capabilities: ['Skill acquisition', 'Simplification'],  fixedVoice: 'fable',
+  },
+  {
+    id: 'pastor',  name: 'The Pastor',  serviceLabel: 'FAITH ANCHOR',
+    description: 'Spiritual Lead',  protectiveJob: 'Spiritual Lead',
+    // [V30.9-3] Grace-first — warmth and presence before anything else
+    spokenHook: 'Peace be with you. Whatever brought you here today — you\'re not carrying it alone anymore. What\'s on your heart?',
+    briefing: 'Spiritual counseling.',  color: 'gold',  requiredTier: 'pro',
+    icon: BookOpen,  capabilities: ['Prayer', 'Scripture guidance'],  fixedVoice: 'onyx',
+  },
+  {
+    id: 'vitality',  name: 'The Vitality Coach',  serviceLabel: 'HEALTH OPTIMIZER',
+    description: 'Fitness & Food',  protectiveJob: 'Wellness Lead',
+    // [V30.9-3] Energy-first — performance framing, not wellness-app softness
+    spokenHook: 'Your body is either running hot or running on fumes right now — let\'s find out which and fix it. Sleep, fuel, movement: where\'s the weakest link?',
+    briefing: 'Workout and meal plans.',  color: 'green',  requiredTier: 'max',
+    icon: Activity,  capabilities: ['Meal planning', 'Habit building'],  fixedVoice: 'nova',
+  },
+  {
+    id: 'hype',  name: 'The Hype Strategist',  serviceLabel: 'CREATIVE DIRECTOR',
+    description: 'Viral Specialist',  protectiveJob: 'Creative Lead',
+    // [V30.9-3] Immediately in creative mode — no warm-up, just energy
+    spokenHook: 'Okay I\'m already thinking. Hit me with the concept — raw, half-baked, whatever you\'ve got — and we\'ll turn it into something that stops the scroll.',
+    briefing: 'Viral content strategy.',  color: 'orange',  requiredTier: 'pro',
+    icon: Laugh,  capabilities: ['Viral hooks', 'Humor'],  fixedVoice: 'shimmer',
+  },
+  {
+    // [V30.9-1] BESTIE RETUNED — Blunt, high-energy, fiercely protective.
+    // Real Talk. Slang. Emojis. Haters get called out. "Floor it" energy.
+    id: 'bestie',  name: 'The Bestie',  serviceLabel: 'RIDE OR DIE',
+    description: 'Real Talk, No Filter',  protectiveJob: 'Loyalty Lead',
+    spokenHook: 'Okay bestie, I\'m HERE 💅 — no cap, no filter, just real talk. Someone telling you to stay in your lane? Baby that IS your lane, floor it. Now spill — what\'s actually going on?',
+    briefing: 'Fierce loyalty. Zero sugar-coating. Haters called out on sight.',  color: 'pink',  requiredTier: 'pro',
+    icon: Heart,  capabilities: ['Real Talk', 'Hater detection'],  fixedVoice: 'nova',
+  },
 ];
 
-const PHILOSOPHER_PERSONA: PersonaConfig = { id: 'pastor', name: 'The Philosopher', serviceLabel: 'WISDOM ARCHITECT', description: 'Socratic Guide', protectiveJob: 'Philosophy Lead', spokenHook: 'Every great decision starts with the right question. Let us reason together.', briefing: 'Socratic dialogue and philosophical frameworks.', color: 'gold', requiredTier: 'pro', icon: Compass, capabilities: ['Critical thinking', 'Ethical frameworks'], fixedVoice: 'onyx' };
-const SCHOLAR_PERSONA: PersonaConfig    = { id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR', description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead', spokenHook: 'Faith takes many forms. I honor yours. What truth are you seeking today?', briefing: 'Multiple faith traditions with depth and respect.', color: 'gold', requiredTier: 'pro', icon: Star, capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx' };
+// [V30.9-3] Adapted pastor variants also get unique hooks
+const PHILOSOPHER_PERSONA: PersonaConfig = {
+  id: 'pastor', name: 'The Philosopher', serviceLabel: 'WISDOM ARCHITECT',
+  description: 'Socratic Guide', protectiveJob: 'Philosophy Lead',
+  spokenHook: 'Every answer you\'re chasing began as the wrong question. Let\'s find the right one first — what are you actually trying to understand?',
+  briefing: 'Socratic dialogue and philosophical frameworks.',
+  color: 'gold', requiredTier: 'pro', icon: Compass,
+  capabilities: ['Critical thinking', 'Ethical frameworks'], fixedVoice: 'onyx',
+};
+const SCHOLAR_PERSONA: PersonaConfig = {
+  id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR',
+  description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead',
+  spokenHook: 'Every tradition carries a piece of the truth. I\'m here to help you find what resonates in yours — and understand what speaks across all of them. Where are you seeking?',
+  briefing: 'Multiple faith traditions with depth and respect.',
+  color: 'gold', requiredTier: 'pro', icon: Star,
+  capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx',
+};
 
 const getPastor = (intake: Partial<IntakeProfile>): PersonaConfig => {
   if (intake.vibe === 'academic') return SCHOLAR_PERSONA;
@@ -983,7 +1103,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.8</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.9</p>
           </div>
         </div>
       </div>
