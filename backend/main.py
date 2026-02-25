@@ -33,8 +33,7 @@ from email import encoders
 
 from tavily import TavilyClient
 from pinecone import Pinecone, ServerlessSpec
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
 from google.oauth2 import service_account
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -198,32 +197,31 @@ if PINECONE_API_KEY:
         logger.error(f"❌ Sync Index Failed: {e}")
 
 gemini_ready = False
-gemini_model = None
+gemini_client = None
 
-# ── Vertex AI via Secret File (uses your $1,000 GCP credit balance) ──────────
-# Render Secret File is mounted at /etc/secrets/google_credentials.json
+# ── Vertex AI via Secret File — google.genai SDK ──────────────────────────────
 if os.path.exists(GOOGLE_CREDENTIALS_FILE):
     try:
+        import json as _json
         _credentials = service_account.Credentials.from_service_account_file(
             GOOGLE_CREDENTIALS_FILE,
             scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
-        import json as _json
         with open(GOOGLE_CREDENTIALS_FILE) as _f:
             _creds_dict = _json.load(_f)
         _project = VERTEX_PROJECT or _creds_dict.get("project_id", "")
-        vertexai.init(
+        gemini_client = genai.Client(
+            vertexai=True,
             project=_project,
             location=VERTEX_LOCATION,
             credentials=_credentials,
         )
-        gemini_model = GenerativeModel("gemini-1.5-flash-002")
         gemini_ready = True
-        logger.info(f"✅ Gemini Vision Ready — Vertex AI (project={_project}, location={VERTEX_LOCATION})")
+        logger.info(f"✅ Gemini Ready — Vertex AI google.genai SDK (project={_project})")
     except Exception as e:
         logger.error(f"❌ Vertex AI Setup Failed: {e}")
 else:
-    logger.warning("⚠️ No Vertex AI credentials found at /etc/secrets/google_credentials.json")
+    logger.warning("⚠️ No credentials at /etc/secrets/google_credentials.json")
 
 openai_client = None
 if OPENAI_API_KEY:
@@ -834,50 +832,48 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # =============================================================================
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash-002"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash-lite"):
     """
-    Bulletproof Gemini call via Vertex AI Secret File credentials.
-    Returns None immediately on ANY failure — never blocks the race.
-    OpenAI wins cleanly if this fails.
+    Bulletproof Gemini call — google.genai SDK via Vertex AI.
+    Returns None on ANY failure. Never blocks the race.
     """
-    if not gemini_ready or not gemini_model:
+    if not gemini_ready or not gemini_client:
         return None
     try:
         parts = [prompt]
         if image_b64:
             try:
-                parts.append(Part.from_data(
+                from google.genai import types as genai_types
+                parts.append(genai_types.Part.from_bytes(
                     data=base64.b64decode(image_b64),
                     mime_type="image/jpeg"
                 ))
             except Exception:
-                pass  # Image decode failure — proceed with text only
+                pass
 
         def _sync_call():
-            resp = gemini_model.generate_content(
-                parts,
-                generation_config={"response_mime_type": "application/json"}
+            return gemini_client.models.generate_content(
+                model=model_name,
+                contents=parts,
+                config={"response_mime_type": "application/json"}
             )
-            return resp.text
 
-        text = await asyncio.to_thread(_sync_call)
-        text = text.replace("```json","").replace("```","").strip()
+        resp = await asyncio.to_thread(_sync_call)
+        text = resp.text.replace("```json","").replace("```","").strip()
         try:
             parsed = json.loads(text)
-            parsed["model"] = "LYLO-VISION (gemini-1.5-flash-002/vertex)"
+            parsed["model"] = f"LYLO-VISION ({model_name}/vertex)"
             return parsed
         except Exception:
-            return {"answer": text, "confidence_score": 85,
-                    "model": "LYLO-VISION (gemini-1.5-flash-002/vertex)"}
+            return {"answer": resp.text, "confidence_score": 85,
+                    "model": f"LYLO-VISION ({model_name}/vertex)"}
 
     except Exception as e:
         err_str = str(e)
         if "404" in err_str:
-            logger.warning("⚡ Gemini Vertex 404 — model unavailable")
+            logger.warning(f"⚡ Gemini 404 — {model_name} unavailable")
         elif "403" in err_str:
-            logger.warning("⚡ Gemini Vertex 403 — check service account permissions")
-        elif "quota" in err_str.lower():
-            logger.warning("⚡ Gemini Vertex quota exceeded")
+            logger.warning("⚡ Gemini 403 — check service account permissions")
         else:
             logger.warning(f"⚡ Gemini fast-fail: {err_str[:120]}")
         return None
@@ -1957,7 +1953,7 @@ async def chat(
             return None
 
     openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-1.5-flash-002"))
+    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-2.0-flash-lite"))
 
     winner      = None
     pending     = {openai_task, gemini_task}
@@ -2002,6 +1998,15 @@ async def chat(
         except Exception as e:
             logger.warning(f"Fallback rescue failed: {e}")
 
+    if not winner:
+        try:
+            if openai_task.done() and not openai_task.cancelled():
+                fallback = openai_task.result()
+                if fallback and isinstance(fallback, dict) and "answer" in fallback:
+                    winner = fallback
+                    logger.info(f"✅ OpenAI rescue for {user_data['name']}")
+        except Exception:
+            pass
     if not winner:
         logger.warning(f"⚡ Race timeout ({RACE_TIMEOUT}s) for {user_data['name']}")
         busy_msg = f"{user_data['name']}, system is under load. Give it 10 seconds and resend."
