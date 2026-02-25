@@ -1,4 +1,10 @@
+import sys
 import os
+# ── Render.com path fix ───────────────────────────────────────────────────────
+# Ensures Python finds lylo_kernel, tactical_vault, vault_routes, sentinel_routes
+# regardless of which directory Render launches uvicorn from.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# ─────────────────────────────────────────────────────────────────────────────
 import re
 import time
 import uvicorn
