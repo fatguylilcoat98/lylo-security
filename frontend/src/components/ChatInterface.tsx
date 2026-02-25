@@ -599,6 +599,17 @@ function ChatInterface({
       const finalText = fullAnswer.trim();
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
+
+      // ── Emergency Auto-Switch — update UI to the persona that handled the emergency ──
+      if (metaData?.emergency && metaData?.persona_switched && metaData?.switched_persona) {
+        const emergencyPersona = PERSONAS.find(p => p.id === metaData.switched_persona);
+        if (emergencyPersona) {
+          setActivePersona(emergencyPersona);
+          localStorage.setItem('lylo_selected_persona', emergencyPersona.id);
+          onPersonaChange(emergencyPersona);
+        }
+      }
+
       setStreamingMsgId(null); setStreamingText('');
       if (isLockout) { aqm.stop(); return; }
     } catch (e) {
