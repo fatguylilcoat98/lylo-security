@@ -217,7 +217,7 @@ if os.path.exists(GOOGLE_CREDENTIALS_FILE):
             location=VERTEX_LOCATION,
             credentials=_credentials,
         )
-        gemini_model = GenerativeModel("gemini-3-flash-preview")
+        gemini_model = GenerativeModel("gemini-1.5-flash-002")
         gemini_ready = True
         logger.info(f"✅ Gemini Vision Ready — Vertex AI (project={_project}, location={VERTEX_LOCATION})")
     except Exception as e:
@@ -834,7 +834,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # =============================================================================
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-3-flash-preview"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-1.5-flash-002"):
     """
     Bulletproof Gemini call via Vertex AI Secret File credentials.
     Returns None immediately on ANY failure — never blocks the race.
@@ -864,11 +864,11 @@ async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str
         text = text.replace("```json","").replace("```","").strip()
         try:
             parsed = json.loads(text)
-            parsed["model"] = "LYLO-VISION (gemini-3-flash-preview/vertex)"
+            parsed["model"] = "LYLO-VISION (gemini-1.5-flash-002/vertex)"
             return parsed
         except Exception:
             return {"answer": text, "confidence_score": 85,
-                    "model": "LYLO-VISION (gemini-3-flash-preview/vertex)"}
+                    "model": "LYLO-VISION (gemini-1.5-flash-002/vertex)"}
 
     except Exception as e:
         err_str = str(e)
@@ -1957,7 +1957,7 @@ async def chat(
             return None
 
     openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-3-flash-preview"))
+    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-1.5-flash-002"))
 
     winner      = None
     pending     = {openai_task, gemini_task}
