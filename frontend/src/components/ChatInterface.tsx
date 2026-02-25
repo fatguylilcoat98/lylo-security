@@ -32,6 +32,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import { useSentinel } from '../lib/useSentinel'; // [V30.8-1]
+import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
   Shield, Wrench, Gavel, Activity, BookOpen, Laugh,
   Mic, MicOff, Volume2, VolumeX, AlertTriangle, CreditCard,
@@ -89,7 +90,8 @@ interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; st
 // ALL OTHERS: Every persona now has a distinct, authentic opening voice.
 //             No more shared "stop you right there" template.
 // ============================================================================
-const BASE_PERSONAS: PersonaConfig[] = [
+// BASE_PERSONAS removed — using IMPORTED_PERSONAS from data/personas.ts (single source of truth)
+= [
   {
     id: 'guardian',  name: 'The Guardian',  serviceLabel: 'SECURITY LEAD',
     description: 'Digital Bodyguard',  protectiveJob: 'Security Lead',
@@ -190,28 +192,7 @@ const BASE_PERSONAS: PersonaConfig[] = [
 ];
 
 // [V30.9-3] Adapted pastor variants also get unique hooks
-const PHILOSOPHER_PERSONA: PersonaConfig = {
-  id: 'pastor', name: 'The Philosopher', serviceLabel: 'WISDOM ARCHITECT',
-  description: 'Socratic Guide', protectiveJob: 'Philosophy Lead',
-  spokenHook: 'Every answer you\'re chasing began as the wrong question. Let\'s find the right one first — what are you actually trying to understand?',
-  briefing: 'Socratic dialogue and philosophical frameworks.',
-  color: 'gold', requiredTier: 'pro', icon: Compass,
-  capabilities: ['Critical thinking', 'Ethical frameworks'], fixedVoice: 'onyx',
-};
-const SCHOLAR_PERSONA: PersonaConfig = {
-  id: 'pastor', name: 'The Faith Scholar', serviceLabel: 'MULTI-FAITH ANCHOR',
-  description: 'Interfaith Guide', protectiveJob: 'Spiritual Lead',
-  spokenHook: 'Every tradition carries a piece of the truth. I\'m here to help you find what resonates in yours — and understand what speaks across all of them. Where are you seeking?',
-  briefing: 'Multiple faith traditions with depth and respect.',
-  color: 'gold', requiredTier: 'pro', icon: Star,
-  capabilities: ['Interfaith dialogue', 'Sacred texts'], fixedVoice: 'onyx',
-};
 
-const getPastor = (intake: Partial<IntakeProfile>): PersonaConfig => {
-  if (intake.vibe === 'academic') return SCHOLAR_PERSONA;
-  if (intake.mission === 'personal_growth' || intake.roadblock === 'knowledge' || intake.occupation === 'student') return PHILOSOPHER_PERSONA;
-  return BASE_PERSONAS.find(p => p.id === 'pastor')!;
-};
 
 const VIBE_OPTIONS = [
   { value: 'standard', label: 'Standard' }, { value: 'chill', label: 'Chill' },
@@ -368,12 +349,30 @@ function ChatInterface({
 }: ChatInterfaceProps) {
 
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
-  const PERSONAS = BASE_PERSONAS.map(p => p.id === 'pastor' ? getPastor(intakeProfile) : p);
-  const [activePersona, setActivePersona]               = useState<PersonaConfig>(() => initialPersona ?? PERSONAS[0]);
-  // Sync parent persona prop into internal state when it changes
+
+  // ── SINGLE SOURCE OF TRUTH: always use IMPORTED_PERSONAS from data/personas.ts ──
+  // This is the same list Dashboard and Layout use — no more two separate lists getting out of sync.
+  const PERSONAS = IMPORTED_PERSONAS;
+
+  // Read active persona from localStorage so Dashboard, Layout, and ChatInterface are always in sync
+  const getPersonaFromStorage = (): PersonaConfig => {
+    const saved = localStorage.getItem('lylo_selected_persona');
+    if (saved) {
+      const found = PERSONAS.find(p => p.id === saved);
+      if (found) return found;
+    }
+    return initialPersona ?? PERSONAS[0];
+  };
+
+  const [activePersona, setActivePersona] = useState<PersonaConfig>(getPersonaFromStorage);
+
+  // Re-sync whenever parent prop changes (user clicks a seat in the sidebar)
   useEffect(() => {
-    if (initialPersona && initialPersona.id !== activePersona.id) {
-      setActivePersona(initialPersona);
+    const saved = localStorage.getItem('lylo_selected_persona');
+    const target = saved ? PERSONAS.find(p => p.id === saved) : null;
+    const desired = target ?? initialPersona ?? PERSONAS[0];
+    if (desired.id !== activePersona.id) {
+      setActivePersona(desired);
     }
   }, [initialPersona?.id]);
   const [messages, setMessages]                         = useState<Message[]>([]);
@@ -475,7 +474,7 @@ function ChatInterface({
     if (!userEmail || hooksFetchedRef.current) return;
     hooksFetchedRef.current = true;
     const prefetchAll = async () => {
-      await Promise.allSettled(BASE_PERSONAS.map(async persona => {
+      await Promise.allSettled(PERSONAS.map(async persona => {
         try {
           const fd = new FormData(); fd.append('persona', persona.id); fd.append('user_email', userEmail);
           const res = await Promise.race([fetch(`${API_URL}/persona-hook`, { method: 'POST', body: fd }), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]) as Response;
@@ -664,7 +663,7 @@ function ChatInterface({
     setMessages(prev => [...prev, userMsg]);
     try {
       const botMsgId = `bot-${Date.now()}`;
-      const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : activePersona.fixedVoice;
+      const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : (activePersona.fixedVoice ?? 'onyx');
       const fd = new FormData();
       fd.append('msg', text); fd.append('history', JSON.stringify(messages.slice(-6)));
       fd.append('persona', activePersona.id); fd.append('user_email', userEmail);
@@ -724,8 +723,8 @@ function ChatInterface({
     if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
     aqm.stop();
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
-    setActivePersona(persona); onPersonaChange(persona); setShowDropdown(false); setShowPersonaGrid(false); setLoading(true);
-    const voiceToUse = persona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : persona.fixedVoice;
+    setActivePersona(persona); localStorage.setItem('lylo_selected_persona', persona.id); onPersonaChange(persona); setShowDropdown(false); setShowPersonaGrid(false); setLoading(true);
+    const voiceToUse = persona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : (persona.fixedVoice ?? 'onyx');
     const hookText = await getPersonaHook(persona); const hookMsgId = `hook-${Date.now()}`;
     if (readingMode === 'sync' && isVoiceEnabled) { setStreamingMsgId(hookMsgId); setStreamingText(''); }
     setMessages([{ id: hookMsgId, content: hookText, sender: 'bot' as const, timestamp: new Date() }]); setLoading(false);
@@ -991,7 +990,7 @@ function ChatInterface({
         {showPersonaGrid && (
           <div className="grid grid-cols-2 gap-3">
             {PERSONAS.map(p => {
-              const isBase = BASE_PERSONAS.find(b => b.id === p.id)?.name === p.name;
+              const isBase = true; // all personas from single source
               const isAdapted = p.id === 'pastor' && !isBase;
               return (
                 <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
