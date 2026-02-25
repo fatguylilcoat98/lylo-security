@@ -1489,6 +1489,96 @@ async def chat(
     )
     logger.info(f"🧠 Profile [{user_id[:8]}]: {list(user_profile.keys())[:6]} | Mem: {len(memories)}c")
 
+    # ── HARD DOMAIN INTERCEPT (fires before LLM, zero bleed) ─────────────
+    # Maps persona → (out-of-domain keyword triggers, correct specialist, handoff voice)
+    _DOMAIN_INTERCEPTS = {
+        "mechanic": {
+            "triggers": [
+                "burning","pain when","hurts when","pee","urine","infection","uti","symptom",
+                "fever","nausea","vomit","bleeding","rash","swollen","dizzy","chest pain",
+                "headache","stomach","bowel","diarrhea","constipation","gas","fart","prescription",
+                "medication","dose","diagnosis","doctor","urgent care","hospital","blood pressure",
+                "anxiety","depression","mental health","therapy","sue","lawsuit","legal","contract",
+                "court","attorney","rights","eviction","custody","divorce","settlement","invest",
+                "stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget","salary",
+            ],
+            "specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Mechanic. I work on machines — not bodies, not courts, not portfolios. What you're describing sounds like a {domain} issue. Switch to {specialist}. I'm not giving you bad intel on something this serious.",
+        },
+        "doctor": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","coolant","battery","alternator",
+                "suspension","steering","exhaust","catalytic","obd","check engine","car","truck","vehicle",
+                "lawsuit","sue","legal","contract","court","attorney","rights","eviction","landlord",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Doctor. {topic} isn't a medical question — that's {specialist} territory. Switch seats. I won't give you bad intel outside my lane.",
+        },
+        "lawyer": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle",
+                "symptom","burning","fever","nausea","diagnosis","medication","hospital","urgent care",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Lawyer. {topic} falls outside my jurisdiction. That's {specialist} territory. Switch seats before we go further.",
+        },
+        "wealth": {
+            "triggers": [
+                "brakes","tire","wheel","engine","car","truck","vehicle",
+                "symptom","burning","fever","diagnosis","medication","hospital",
+                "lawsuit","sue","legal","contract","court","attorney","rights","eviction",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "voice": "I'm the Wealth Architect. {topic} isn't a money problem — that's {specialist} territory. Switch seats. Bad advice here costs real money.",
+        },
+    }
+
+    msg_lower = msg.lower()
+    intercept = _DOMAIN_INTERCEPTS.get(persona)
+    if intercept:
+        triggered_topic = None
+        for kw in intercept["triggers"]:
+            if kw in msg_lower:
+                triggered_topic = kw
+                break
+        if triggered_topic:
+            # Route to correct specialist based on topic
+            if any(w in msg_lower for w in ["symptom","burning","pain","pee","urine","fever","nausea","vomit","rash","dizzy","stomach","bowel","diarrhea","gas","fart","medication","diagnosis","hospital","bleeding","swollen","headache","chest","anxiety","depression","mental"]):
+                correct = intercept.get("medical_specialist", intercept.get("specialist", "The Doctor"))
+                domain  = "medical"
+            elif any(w in msg_lower for w in ["sue","lawsuit","legal","contract","court","attorney","rights","eviction","custody","divorce","settlement"]):
+                correct = intercept.get("legal_specialist", "The Lawyer")
+                domain  = "legal"
+            elif any(w in msg_lower for w in ["invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget","salary","money"]):
+                correct = intercept.get("financial_specialist", "The Wealth Architect")
+                domain  = "financial"
+            else:
+                correct = intercept.get("specialist", "The Tech Specialist")
+                domain  = "technical"
+
+            persona_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
+            handoff = intercept["voice"].format(topic=triggered_topic, domain=domain, specialist=correct)
+
+            async def _stream_intercept():
+                payload = json.dumps({"type": "text",  "content": handoff})
+                meta    = json.dumps({"type": "meta",  "confidence_score": 99, "scam_detected": False, "threat_level": "low", "action_trigger": None, "full_answer": handoff})
+                yield f"data: {payload}\n\n"
+                yield f"data: {meta}\n\n"
+
+            logger.info(f"🚫 Domain intercept [{persona}] blocked '{triggered_topic}' → routed to {correct}")
+            return StreamingResponse(_stream_intercept(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    # ── END DOMAIN INTERCEPT ──────────────────────────────────────────────
+
     # ── Scam scan ────────────────────────────────────────────────────────
     indicators = analyze_scam_indicators(msg)
 
