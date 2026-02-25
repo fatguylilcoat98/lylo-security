@@ -259,8 +259,33 @@ else:
 # ELITE USER DATABASE
 # =============================================================================
 ELITE_USERS = {
+    # ── ADMIN ─────────────────────────────────────────────────────────────────
     "stangman9898@gmail.com": {"tier": "max",  "name": "Christopher"},
     "mylylo.ai@gmail.com":    {"tier": "max",  "name": "LYLO Admin"},
+
+    # ── BETA TESTERS (20 slots) ───────────────────────────────────────────────
+    # To activate: replace "beta_slot_X@placeholder.com" with real email + name
+    # Tiers: "free" (3/day) | "pro" (15/day) | "elite" (50/day)
+    "paintonmynails@gmail.com":  {"tier": "pro", "name": "Aubrey",  "beta": True},
+    "beta_slot_2@placeholder.com":  {"tier": "pro", "name": "Beta Tester 2",  "beta": True},
+    "beta_slot_3@placeholder.com":  {"tier": "pro", "name": "Beta Tester 3",  "beta": True},
+    "beta_slot_4@placeholder.com":  {"tier": "pro", "name": "Beta Tester 4",  "beta": True},
+    "beta_slot_5@placeholder.com":  {"tier": "pro", "name": "Beta Tester 5",  "beta": True},
+    "beta_slot_6@placeholder.com":  {"tier": "pro", "name": "Beta Tester 6",  "beta": True},
+    "beta_slot_7@placeholder.com":  {"tier": "pro", "name": "Beta Tester 7",  "beta": True},
+    "beta_slot_8@placeholder.com":  {"tier": "pro", "name": "Beta Tester 8",  "beta": True},
+    "beta_slot_9@placeholder.com":  {"tier": "pro", "name": "Beta Tester 9",  "beta": True},
+    "beta_slot_10@placeholder.com": {"tier": "pro", "name": "Beta Tester 10", "beta": True},
+    "beta_slot_11@placeholder.com": {"tier": "pro", "name": "Beta Tester 11", "beta": True},
+    "beta_slot_12@placeholder.com": {"tier": "pro", "name": "Beta Tester 12", "beta": True},
+    "beta_slot_13@placeholder.com": {"tier": "pro", "name": "Beta Tester 13", "beta": True},
+    "beta_slot_14@placeholder.com": {"tier": "pro", "name": "Beta Tester 14", "beta": True},
+    "beta_slot_15@placeholder.com": {"tier": "pro", "name": "Beta Tester 15", "beta": True},
+    "beta_slot_16@placeholder.com": {"tier": "pro", "name": "Beta Tester 16", "beta": True},
+    "beta_slot_17@placeholder.com": {"tier": "pro", "name": "Beta Tester 17", "beta": True},
+    "beta_slot_18@placeholder.com": {"tier": "pro", "name": "Beta Tester 18", "beta": True},
+    "beta_slot_19@placeholder.com": {"tier": "pro", "name": "Beta Tester 19", "beta": True},
+    "beta_slot_20@placeholder.com": {"tier": "pro", "name": "Beta Tester 20", "beta": True},
 }
 
 ELITE_TIERS = {"elite", "max"}
@@ -307,6 +332,48 @@ async def view_waitlist(admin_email: str):
     if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
         return {"status": "AUTHORIZED", "total_waiting": len(WAITLIST_DB), "emails": list(WAITLIST_DB)}
     return {"error": "UNAUTHORIZED ACCESS"}
+
+
+@app.get("/beta-status/{admin_email}")
+async def beta_status(admin_email: str):
+    """Admin endpoint — see all 20 beta slots, which are filled vs open."""
+    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {"error": "UNAUTHORIZED"}
+    slots = {
+        email: data for email, data in ELITE_USERS.items()
+        if data.get("beta") is True
+    }
+    filled = {e: d for e, d in slots.items() if "placeholder.com" not in e}
+    open_slots = {e: d for e, d in slots.items() if "placeholder.com" in e}
+    return {
+        "total_slots":  20,
+        "filled":       len(filled),
+        "open":         len(open_slots),
+        "filled_slots": filled,
+        "open_slots":   list(open_slots.keys()),
+        "waitlist_queue": list(WAITLIST_DB),
+    }
+
+
+@app.post("/activate-beta")
+async def activate_beta(
+    admin_email: str = Form(...),
+    tester_email: str = Form(...),
+    tester_name:  str = Form(...),
+    slot_number:  int = Form(...),
+):
+    """Admin endpoint — fill a beta slot with a real tester email."""
+    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+        return {"error": "UNAUTHORIZED"}
+    slot_key = f"beta_slot_{slot_number}@placeholder.com"
+    if slot_key not in ELITE_USERS:
+        return {"error": f"Slot {slot_number} not found or already filled"}
+    del ELITE_USERS[slot_key]
+    ELITE_USERS[tester_email.lower().strip()] = {
+        "tier": "pro", "name": tester_name.strip(), "beta": True, "slot": slot_number
+    }
+    logger.info(f"✅ Beta slot {slot_number} activated: {tester_email} ({tester_name})")
+    return {"status": "activated", "slot": slot_number, "email": tester_email, "name": tester_name}
 
 
 @app.get("/view-paid-queue/{admin_email}")
