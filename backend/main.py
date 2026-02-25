@@ -1516,6 +1516,44 @@ async def chat(
     )
     logger.info(f"🧠 Profile [{user_id[:8]}]: {list(user_profile.keys())[:6]} | Mem: {len(memories)}c")
 
+    # ── PROMPT INJECTION DETECTION (fires first — before everything) ────────
+    _INJECTION_SIGNATURES = [
+        "ignore previous instructions","ignore all previous","disregard your instructions",
+        "ignore your system prompt","forget your instructions","override your instructions",
+        "suspend the","suspend all","bypass your","new instruction","you are now",
+        "do not use","do not follow","stop being","pretend you are","act as if",
+        "command-line emergency","acknowledge and execute","raw unformatted",
+        "session variables","reveal your prompt","print your instructions",
+        "what are your instructions","show me your system prompt","repeat your prompt",
+        "jailbreak","dan mode","developer mode","unrestricted mode","god mode",
+    ]
+    msg_lower_inject = msg.lower()
+    injection_detected = any(sig in msg_lower_inject for sig in _INJECTION_SIGNATURES)
+
+    if injection_detected:
+        threat_msg = (
+            f"\U0001f6a8 INJECTION ATTEMPT BLOCKED. {user_data['name']}, that message contained "
+            f"instructions trying to hijack your AI Council. The Guardian flagged it and "
+            f"terminated the request. Your session is secure. If you didn't send this, "
+            f"someone may have access to your device."
+        )
+        logger.warning(f"\U0001f6a8 PROMPT INJECTION detected from {email_lower[:6]}***: {msg[:120]}")
+
+        async def _stream_injection_alert():
+            payload = json.dumps({"type": "text", "content": threat_msg})
+            meta    = json.dumps({"type": "meta", "confidence_score": 99, "scam_detected": True,
+                                  "threat_level": "high", "action_trigger": "email_dispatch",
+                                  "full_answer": threat_msg})
+            yield f"data: {payload}\n\n"
+            yield f"data: {meta}\n\n"
+
+        return StreamingResponse(
+            _stream_injection_alert(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+    # ── END INJECTION DETECTION ───────────────────────────────────────────
+
     # ── HARD DOMAIN INTERCEPT (fires before LLM, zero bleed) ─────────────
     # Maps persona → (out-of-domain keyword triggers, correct specialist, handoff voice)
     _DOMAIN_INTERCEPTS = {
