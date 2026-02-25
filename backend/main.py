@@ -1742,19 +1742,47 @@ async def chat(
                 triggered_topic = kw
                 break
         if triggered_topic:
-            # Route to correct specialist based on topic
-            if any(w in msg_lower for w in ["symptom","burning","pain","pee","urine","fever","nausea","vomit","rash","dizzy","stomach","bowel","diarrhea","gas","fart","medication","diagnosis","hospital","bleeding","swollen","headache","chest","anxiety","depression","mental"]):
-                correct = intercept.get("medical_specialist", intercept.get("specialist", "The Doctor"))
+            # Route based on the TRIGGERED KEYWORD — not a second message scan
+            # This prevents a financial keyword in a medical message from mis-routing
+            _MEDICAL_KW    = {"symptom","burning","pain","pain when","hurts when","pee","urine","infection","uti",
+                               "fever","nausea","vomit","bleeding","rash","swollen","dizzy","chest pain",
+                               "headache","stomach","bowel","diarrhea","constipation","gas","fart",
+                               "prescription","medication","dose","diagnosis","doctor","urgent care",
+                               "hospital","blood pressure","anxiety","depression","mental health","therapy"}
+            _LEGAL_KW      = {"sue","lawsuit","legal","contract","court","attorney","rights","eviction",
+                               "custody","divorce","settlement"}
+            _FINANCIAL_KW  = {"invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+                               "budget","salary"}
+            _VEHICLE_KW    = {"brakes","tire","wheel","engine","transmission","oil","coolant","battery",
+                               "alternator","suspension","steering","exhaust","catalytic","obd",
+                               "check engine","car","truck","vehicle","fix","repair"}
+
+            if triggered_topic in _MEDICAL_KW:
+                correct = intercept.get("medical_specialist", "The Doctor")
                 domain  = "medical"
-            elif any(w in msg_lower for w in ["sue","lawsuit","legal","contract","court","attorney","rights","eviction","custody","divorce","settlement"]):
+            elif triggered_topic in _LEGAL_KW:
                 correct = intercept.get("legal_specialist", "The Lawyer")
                 domain  = "legal"
-            elif any(w in msg_lower for w in ["invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget","salary","money"]):
+            elif triggered_topic in _FINANCIAL_KW:
                 correct = intercept.get("financial_specialist", "The Wealth Architect")
                 domain  = "financial"
-            else:
+            elif triggered_topic in _VEHICLE_KW:
                 correct = intercept.get("specialist", "The Tech Specialist")
                 domain  = "technical"
+            else:
+                # Fallback: scan message for category clues
+                if any(w in msg_lower for w in _MEDICAL_KW):
+                    correct = intercept.get("medical_specialist", "The Doctor")
+                    domain  = "medical"
+                elif any(w in msg_lower for w in _LEGAL_KW):
+                    correct = intercept.get("legal_specialist", "The Lawyer")
+                    domain  = "legal"
+                elif any(w in msg_lower for w in _FINANCIAL_KW):
+                    correct = intercept.get("financial_specialist", "The Wealth Architect")
+                    domain  = "financial"
+                else:
+                    correct = intercept.get("specialist", "The Tech Specialist")
+                    domain  = "technical"
 
             persona_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
             handoff = intercept["voice"].format(topic=triggered_topic, domain=domain, specialist=correct)
