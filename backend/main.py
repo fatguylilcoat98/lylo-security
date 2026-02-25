@@ -266,8 +266,8 @@ ELITE_USERS = {
     # ── BETA TESTERS (20 slots) ───────────────────────────────────────────────
     # To activate: replace "beta_slot_X@placeholder.com" with real email + name
     # Tiers: "free" (3/day) | "pro" (15/day) | "elite" (50/day)
-    "bearjcameron@icloud.com":  {"tier": "pro", "name": "Beta Tester 1",  "beta": True},
-    "beta_slot_2@placeholder.com":  {"tier": "pro", "name": "Bear",  "beta": True},
+    "bearjcameron@icloud.com":  {"tier": "pro", "name": "Bear",  "beta": True},
+    "paintonmynails80@gmail.com":  {"tier": "pro", "name": "Aubrey",  "beta": True},
     "beta_slot_3@placeholder.com":  {"tier": "pro", "name": "Beta Tester 3",  "beta": True},
     "beta_slot_4@placeholder.com":  {"tier": "pro", "name": "Beta Tester 4",  "beta": True},
     "beta_slot_5@placeholder.com":  {"tier": "pro", "name": "Beta Tester 5",  "beta": True},
