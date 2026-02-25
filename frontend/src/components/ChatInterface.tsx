@@ -740,10 +740,10 @@ function ChatInterface({
               </div>
               <div className="space-y-3 mb-8">
                 {[
-                  { icon: Brain, color: 'text-purple-400', label: 'Dual-Brain AI', desc: 'GPT-4o + Gemini race. You get the fastest, highest-confidence answer.' },
+                  { icon: Brain, color: 'text-purple-400', label: 'Triple Engine AI', desc: 'OpenAI + Gemini + Claude race simultaneously. Fastest, most accurate answer wins.' },
                   { icon: CheckCircle, color: 'text-green-400', label: 'Truth Protocol', desc: 'LYLO will not fabricate. Tactical truth or we ask for more intel.' },
                   { icon: Lock, color: 'text-blue-400', label: 'Ironclad Privacy', desc: 'Cryptographically hashed. Never sold. Never used to train public AI.' },
-                  { icon: Users, color: 'text-orange-400', label: '12-Seat Council', desc: 'Legal. Medical. Financial. Spiritual. One OS. No subscriptions per seat.' },
+                  { icon: Users, color: 'text-orange-400', label: '12-Seat Council', desc: 'Legal. Medical. Financial. Spiritual. One OS. Auto-switches in emergencies.' },
                 ].map(({ icon: Icon, color, label, desc }) => (
                   <div key={label} className="flex items-start gap-4 p-4 bg-white/[0.03] border border-white/[0.06] rounded-2xl">
                     <Icon className={`w-5 h-5 ${color} mt-0.5 flex-shrink-0`} />
