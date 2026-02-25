@@ -810,7 +810,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # =============================================================================
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash-001"):
     if not gemini_ready:
         return None
     try:
@@ -1807,7 +1807,7 @@ async def chat(
 
     # ── First-wins race — OpenAI (kernel-wrapped) vs Gemini ─────────────
     openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_vision(full_prompt, image_b64, "gemini-2.0-flash"))
+    gemini_task = asyncio.create_task(call_gemini_vision(full_prompt, image_b64, "gemini-2.0-flash-001"))
 
     winner      = None
     pending     = {openai_task, gemini_task}
