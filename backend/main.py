@@ -33,7 +33,7 @@ from email import encoders
 
 from tavily import TavilyClient
 from pinecone import Pinecone, ServerlessSpec
-import google.generativeai as genai
+from google import genai
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
@@ -193,11 +193,12 @@ if PINECONE_API_KEY:
         logger.error(f"❌ Sync Index Failed: {e}")
 
 gemini_ready = False
+gemini_client = None
 if GEMINI_API_KEY:
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
         gemini_ready = True
-        logger.info("✅ Gemini Vision Analysis Ready")
+        logger.info("✅ Gemini Vision Analysis Ready (google.genai SDK)")
     except Exception as e:
         logger.error(f"❌ Gemini Setup Failed: {e}")
 
@@ -810,17 +811,24 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # =============================================================================
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash-001"):
-    if not gemini_ready:
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash"):
+    if not gemini_ready or not gemini_client:
         return None
     try:
-        model  = genai.GenerativeModel(model_name)
-        parts  = [prompt]
+        parts = [prompt]
         if image_b64:
             import PIL.Image
             parts.append(PIL.Image.open(BytesIO(base64.b64decode(image_b64))))
-        resp   = await asyncio.to_thread(model.generate_content, parts)
-        text   = resp.text.replace("```json","").replace("```","").strip()
+
+        def _sync_call():
+            return gemini_client.models.generate_content(
+                model=model_name,
+                contents=parts,
+                config={"response_mime_type": "application/json"}
+            )
+
+        resp = await asyncio.to_thread(_sync_call)
+        text = resp.text.replace("```json","").replace("```","").strip()
         try:
             parsed = json.loads(text)
             parsed["model"] = f"LYLO-VISION ({model_name})"
@@ -1894,8 +1902,19 @@ async def chat(
             return None
 
     # ── First-wins race — OpenAI (kernel-wrapped) vs Gemini ─────────────
+    # Gemini wrapped with hard 5s timeout so a slow 404 never blocks OpenAI from winning
+    async def call_gemini_with_timeout(prompt, image_b64, model):
+        try:
+            return await asyncio.wait_for(
+                call_gemini_vision(prompt, image_b64, model),
+                timeout=5.0
+            )
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"⚡ Gemini fast-fail: {e}")
+            return None
+
     openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_vision(full_prompt, image_b64, "gemini-2.0-flash-001"))
+    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-2.0-flash"))
 
     winner      = None
     pending     = {openai_task, gemini_task}
