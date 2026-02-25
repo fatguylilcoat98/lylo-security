@@ -22,7 +22,7 @@ from typing import Dict, Any, List, Optional
 
 from fastapi import FastAPI, Form, HTTPException, File, UploadFile, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse
 from fastapi.background import BackgroundTasks
 from pydantic import BaseModel
 
@@ -258,35 +258,43 @@ else:
 # =============================================================================
 # ELITE USER DATABASE
 # =============================================================================
-ELITE_USERS = {
-    # ── ADMIN ─────────────────────────────────────────────────────────────────
-    "stangman9898@gmail.com": {"tier": "max",  "name": "Christopher"},
-    "mylylo.ai@gmail.com":    {"tier": "max",  "name": "LYLO Admin"},
+# ── BETA USERS — loaded from persistent file, never from code ────────────────
+BETA_USERS_FILE = "/etc/secrets/beta_users.json"  # Render persistent disk
+# Fallback path if secrets not mounted
+if not os.path.exists(BETA_USERS_FILE):
+    BETA_USERS_FILE = os.path.join(os.path.dirname(__file__), "beta_users.json")
 
-    # ── BETA TESTERS (20 slots) ───────────────────────────────────────────────
-    # To activate: replace "beta_slot_X@placeholder.com" with real email + name
-    # Tiers: "free" (3/day) | "pro" (15/day) | "elite" (50/day)
-    "bearjcameron@icloud.com":  {"tier": "pro", "name": "Bear",  "beta": True},
-    "paintonmynails80@gmail.com":  {"tier": "pro", "name": "Aubrey",  "beta": True},
-    "beta_slot_3@placeholder.com":  {"tier": "pro", "name": "Beta Tester 3",  "beta": True},
-    "beta_slot_4@placeholder.com":  {"tier": "pro", "name": "Beta Tester 4",  "beta": True},
-    "beta_slot_5@placeholder.com":  {"tier": "pro", "name": "Beta Tester 5",  "beta": True},
-    "beta_slot_6@placeholder.com":  {"tier": "pro", "name": "Beta Tester 6",  "beta": True},
-    "beta_slot_7@placeholder.com":  {"tier": "pro", "name": "Beta Tester 7",  "beta": True},
-    "beta_slot_8@placeholder.com":  {"tier": "pro", "name": "Beta Tester 8",  "beta": True},
-    "beta_slot_9@placeholder.com":  {"tier": "pro", "name": "Beta Tester 9",  "beta": True},
-    "beta_slot_10@placeholder.com": {"tier": "pro", "name": "Beta Tester 10", "beta": True},
-    "beta_slot_11@placeholder.com": {"tier": "pro", "name": "Beta Tester 11", "beta": True},
-    "beta_slot_12@placeholder.com": {"tier": "pro", "name": "Beta Tester 12", "beta": True},
-    "beta_slot_13@placeholder.com": {"tier": "pro", "name": "Beta Tester 13", "beta": True},
-    "beta_slot_14@placeholder.com": {"tier": "pro", "name": "Beta Tester 14", "beta": True},
-    "beta_slot_15@placeholder.com": {"tier": "pro", "name": "Beta Tester 15", "beta": True},
-    "beta_slot_16@placeholder.com": {"tier": "pro", "name": "Beta Tester 16", "beta": True},
-    "beta_slot_17@placeholder.com": {"tier": "pro", "name": "Beta Tester 17", "beta": True},
-    "beta_slot_18@placeholder.com": {"tier": "pro", "name": "Beta Tester 18", "beta": True},
-    "beta_slot_19@placeholder.com": {"tier": "pro", "name": "Beta Tester 19", "beta": True},
-    "beta_slot_20@placeholder.com": {"tier": "pro", "name": "Beta Tester 20", "beta": True},
+def _load_beta_users() -> dict:
+    """Load beta users from persistent JSON file. Never wiped by redeploy."""
+    try:
+        if os.path.exists(BETA_USERS_FILE):
+            with open(BETA_USERS_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load beta_users.json: {e}")
+    return {}
+
+def _save_beta_users(data: dict):
+    """Save beta users back to persistent file."""
+    try:
+        os.makedirs(os.path.dirname(BETA_USERS_FILE), exist_ok=True)
+        with open(BETA_USERS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Could not save beta_users.json: {e}")
+
+# ADMIN accounts — always in code, never wiped
+ADMIN_USERS = {
+    "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
+    "mylylo.ai@gmail.com":    {"tier": "max", "name": "LYLO Admin"},
 }
+
+# Beta testers — loaded from file, survives all redeploys
+_BETA_USERS_DB = _load_beta_users()
+
+# ELITE_USERS merges admin + beta at runtime
+ELITE_USERS = {**ADMIN_USERS, **_BETA_USERS_DB}
+
 
 ELITE_TIERS = {"elite", "max"}
 
@@ -398,11 +406,15 @@ async def activate_beta(
     if slot_key not in ELITE_USERS:
         return {"error": f"Slot {slot_number} not found or already filled"}
     del ELITE_USERS[slot_key]
-    ELITE_USERS[tester_email.lower().strip()] = {
-        "tier": "pro", "name": tester_name.strip(), "beta": True, "slot": slot_number
-    }
-    logger.info(f"✅ Beta slot {slot_number} activated: {tester_email} ({tester_name})")
-    return {"status": "activated", "slot": slot_number, "email": tester_email, "name": tester_name}
+    clean_email = tester_email.lower().strip()
+    clean_name  = tester_name.strip()
+    # Save to persistent file — survives ALL redeploys
+    _BETA_USERS_DB[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
+    _save_beta_users(_BETA_USERS_DB)
+    # Update runtime immediately
+    ELITE_USERS[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
+    logger.info(f"✅ Beta slot {slot_number} activated → {clean_email} persisted to beta_users.json")
+    return {"status": "activated", "slot": slot_number, "email": clean_email, "name": clean_name}
 
 
 @app.get("/view-paid-queue/{admin_email}")
@@ -3126,7 +3138,11 @@ async def get_stats(user_email: str):
 
 @app.post("/check-beta-access")
 async def check_beta(data: dict):
-    user = ELITE_USERS.get(data.get("email", "").lower().strip())
+    email = data.get("email", "").lower().strip()
+    # Reload from persistent file every check — catches newly activated testers
+    fresh = _load_beta_users()
+    ELITE_USERS.update(fresh)
+    user = ELITE_USERS.get(email)
     if user:
         return {"access": True, "tier": user["tier"], "name": user["name"]}
     return {"access": False, "tier": "free"}
@@ -3202,6 +3218,16 @@ async def health_check():
         "beta_slots_filled": sum(1 for e, d in ELITE_USERS.items() if d.get("beta") and "placeholder.com" not in e),
         "waitlist_count":    len(WAITLIST_DB),
     }
+
+@app.get("/obd2")
+async def serve_obd2_schematic():
+    """Serve the OBDLink integration schematic — shareable link for partners."""
+    schematic_path = os.path.join(os.path.dirname(__file__), "lylo_obd2_schematic.html")
+    if os.path.exists(schematic_path):
+        with open(schematic_path, "r") as f:
+            html = f.read()
+        return HTMLResponse(content=html)
+    return HTMLResponse(content="<h1>Schematic not found</h1>", status_code=404)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
