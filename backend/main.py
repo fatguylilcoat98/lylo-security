@@ -1893,11 +1893,7 @@ async def chat(
     )
 
     # ── Engine selection ─────────────────────────────────────────────────
-    openai_engine = (
-        "gpt-4o"
-        if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
-        else "gpt-4o-mini"
-    )
+    openai_engine = "gpt-4o-mini"
 
     # ── V31.0: Inject kernel as system message into OpenAI call ─────────
     # The kernel_system_prompt from lylo_kernel.py is the FIRST system message.
