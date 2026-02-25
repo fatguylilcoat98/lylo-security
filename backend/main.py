@@ -9,6 +9,7 @@ import base64
 import stripe
 import logging
 import smtplib
+from lylo_kernel import build_system_prompt, fetch_memory_pins, upsert_memory_pin
 from sentinel_routes import sentinel_router
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
