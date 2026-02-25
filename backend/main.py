@@ -33,7 +33,9 @@ from email import encoders
 
 from tavily import TavilyClient
 from pinecone import Pinecone, ServerlessSpec
-from google import genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
+from google.oauth2 import service_account
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
@@ -132,7 +134,10 @@ app.add_middleware(
 # =============================================================================
 TAVILY_API_KEY    = os.getenv("TAVILY_API_KEY",    "").strip()
 PINECONE_API_KEY  = os.getenv("PINECONE_API_KEY",  "").strip()
-GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY",    "").strip()
+GEMINI_API_KEY           = os.getenv("GEMINI_API_KEY",           "").strip()
+VERTEX_PROJECT           = os.getenv("VERTEX_PROJECT",           "").strip()
+VERTEX_LOCATION          = os.getenv("VERTEX_LOCATION",          "us-central1").strip()
+GOOGLE_CREDENTIALS_FILE  = "/etc/secrets/google_credentials.json"  # Render Secret File
 OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",    "").strip()
 
 stripe.api_key        = os.getenv("STRIPE_SECRET_KEY",    "").strip()
@@ -193,14 +198,32 @@ if PINECONE_API_KEY:
         logger.error(f"❌ Sync Index Failed: {e}")
 
 gemini_ready = False
-gemini_client = None
-if GEMINI_API_KEY:
+gemini_model = None
+
+# ── Vertex AI via Secret File (uses your $1,000 GCP credit balance) ──────────
+# Render Secret File is mounted at /etc/secrets/google_credentials.json
+if os.path.exists(GOOGLE_CREDENTIALS_FILE):
     try:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        _credentials = service_account.Credentials.from_service_account_file(
+            GOOGLE_CREDENTIALS_FILE,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        import json as _json
+        with open(GOOGLE_CREDENTIALS_FILE) as _f:
+            _creds_dict = _json.load(_f)
+        _project = VERTEX_PROJECT or _creds_dict.get("project_id", "")
+        vertexai.init(
+            project=_project,
+            location=VERTEX_LOCATION,
+            credentials=_credentials,
+        )
+        gemini_model = GenerativeModel("gemini-3-flash-preview")
         gemini_ready = True
-        logger.info("✅ Gemini Vision Analysis Ready (google.genai SDK)")
+        logger.info(f"✅ Gemini Vision Ready — Vertex AI (project={_project}, location={VERTEX_LOCATION})")
     except Exception as e:
-        logger.error(f"❌ Gemini Setup Failed: {e}")
+        logger.error(f"❌ Vertex AI Setup Failed: {e}")
+else:
+    logger.warning("⚠️ No Vertex AI credentials found at /etc/secrets/google_credentials.json")
 
 openai_client = None
 if OPENAI_API_KEY:
@@ -812,31 +835,51 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
 async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-3-flash-preview"):
-    if not gemini_ready or not gemini_client:
+    """
+    Bulletproof Gemini call via Vertex AI Secret File credentials.
+    Returns None immediately on ANY failure — never blocks the race.
+    OpenAI wins cleanly if this fails.
+    """
+    if not gemini_ready or not gemini_model:
         return None
     try:
         parts = [prompt]
         if image_b64:
-            import PIL.Image
-            parts.append(PIL.Image.open(BytesIO(base64.b64decode(image_b64))))
+            try:
+                parts.append(Part.from_data(
+                    data=base64.b64decode(image_b64),
+                    mime_type="image/jpeg"
+                ))
+            except Exception:
+                pass  # Image decode failure — proceed with text only
 
         def _sync_call():
-            return gemini_client.models.generate_content(
-                model=model_name,
-                contents=parts,
-                config={"response_mime_type": "application/json"}
+            resp = gemini_model.generate_content(
+                parts,
+                generation_config={"response_mime_type": "application/json"}
             )
+            return resp.text
 
-        resp = await asyncio.to_thread(_sync_call)
-        text = resp.text.replace("```json","").replace("```","").strip()
+        text = await asyncio.to_thread(_sync_call)
+        text = text.replace("```json","").replace("```","").strip()
         try:
             parsed = json.loads(text)
-            parsed["model"] = f"LYLO-VISION ({model_name})"
+            parsed["model"] = "LYLO-VISION (gemini-3-flash-preview/vertex)"
             return parsed
         except Exception:
-            return {"answer": resp.text, "confidence_score": 85, "model": f"LYLO-VISION ({model_name})"}
+            return {"answer": text, "confidence_score": 85,
+                    "model": "LYLO-VISION (gemini-3-flash-preview/vertex)"}
+
     except Exception as e:
-        logger.error(f"Gemini Brain Error: {e}")
+        err_str = str(e)
+        if "404" in err_str:
+            logger.warning("⚡ Gemini Vertex 404 — model unavailable")
+        elif "403" in err_str:
+            logger.warning("⚡ Gemini Vertex 403 — check service account permissions")
+        elif "quota" in err_str.lower():
+            logger.warning("⚡ Gemini Vertex quota exceeded")
+        else:
+            logger.warning(f"⚡ Gemini fast-fail: {err_str[:120]}")
         return None
 
 
