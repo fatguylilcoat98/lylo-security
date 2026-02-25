@@ -138,6 +138,7 @@ VERTEX_PROJECT           = os.getenv("VERTEX_PROJECT",           "").strip()
 VERTEX_LOCATION          = os.getenv("VERTEX_LOCATION",          "us-central1").strip()
 GOOGLE_CREDENTIALS_FILE  = "/etc/secrets/google_credentials.json"  # Render Secret File
 OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY",    "").strip()
+CLAUDE_API_KEY    = os.getenv("CLAUDE_API_KEY",    "").strip()
 
 stripe.api_key        = os.getenv("STRIPE_SECRET_KEY",    "").strip()
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
@@ -230,6 +231,29 @@ if OPENAI_API_KEY:
         logger.info("✅ OpenAI Digital Bodyguard Ready")
     except Exception as e:
         logger.error(f"❌ OpenAI Setup Failed: {e}")
+
+# ── Claude Validator — Anthropic API ─────────────────────────────────────────
+claude_client = None
+if CLAUDE_API_KEY:
+    try:
+        import anthropic
+        claude_client = anthropic.AsyncAnthropic(api_key=CLAUDE_API_KEY)
+        logger.info("✅ Claude Validator Ready — Persona Lane Enforcement Active")
+    except Exception as e:
+        logger.error(f"❌ Claude Validator Setup Failed: {e}")
+
+# ── Claude Lane Enforcer (Anthropic) ─────────────────────────────────────────
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+anthropic_client  = None
+if ANTHROPIC_API_KEY:
+    try:
+        import anthropic as _anthropic
+        anthropic_client = _anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        logger.info("✅ Claude Lane Enforcer Ready")
+    except Exception as e:
+        logger.error(f"❌ Claude Lane Enforcer Setup Failed: {e}")
+else:
+    logger.warning("⚠️ No ANTHROPIC_API_KEY — Lane Enforcer disabled")
 
 # =============================================================================
 # ELITE USER DATABASE
@@ -1475,6 +1499,88 @@ async def obd_handshake(
         },
     }
 
+
+# =============================================================================
+# CLAUDE VALIDATOR — PERSONA LANE ENFORCEMENT
+# Only fires when the winner response contains structural headers.
+# Lightweight check: does NOT rewrite simple greetings or short answers.
+# =============================================================================
+
+_STRUCTURAL_HEADERS = [
+    "[DIAGNOSIS]", "[FIX PROTOCOL]", "[ANALYSIS]", "[RISK]",
+    "[MOST LIKELY]", "[PROTOCOL]", "[ESCALATE WHEN]", "[TACTICAL MOVE]",
+    "[CURRENT STATE]", "[BLEEDING POINT]", "[60-DAY PLAN]", "[REFLECT]",
+    "[IDENTIFY]", "[REFRAME]", "[EXPERIMENT]", "[SITUATION READ]",
+    "[LEVERAGE POINTS]", "[EXACT PLAY]", "[ROOT CAUSE]", "[COST INTEL]",
+]
+
+async def validate_with_claude(
+    persona: str,
+    user_msg: str,
+    winner_answer: str,
+    user_name: str,
+) -> dict:
+    """
+    Claude validates the race winner ONLY when structural headers are present.
+    - If answer is in-lane: returns it unchanged (fast pass-through)
+    - If answer is out-of-lane: Claude rewrites as a proper persona-voiced handoff
+    - If Claude times out or errors: original winner passes through untouched
+    """
+    if not claude_client:
+        return {"answer": winner_answer, "claude_validated": False}
+
+    # Only validate if structural headers are present — skip simple greetings
+    has_headers = any(h in winner_answer for h in _STRUCTURAL_HEADERS)
+    if not has_headers:
+        return {"answer": winner_answer, "claude_validated": False, "skipped": True}
+
+    name_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
+    in_scope, out_scope = _PERSONA_DOMAINS.get(persona, ("your specialty", "everything else"))
+
+    validation_prompt = f"""You are the LYLO Persona Lane Validator. Your ONLY job is to check if an AI response stays within its assigned specialist domain.
+
+SPECIALIST: {name_display}
+ALLOWED DOMAIN: {in_scope}
+FORBIDDEN DOMAIN: {out_scope}
+
+USER MESSAGE: {user_msg}
+
+AI RESPONSE TO VALIDATE:
+{winner_answer}
+
+YOUR TASK:
+1. Does this response answer questions OUTSIDE the allowed domain? (giving medical advice as The Mechanic, legal advice as The Doctor, etc.)
+2. If YES — rewrite ONLY the problematic parts as a proper handoff. Use {name_display}'s voice. Be brief. Route to the correct specialist.
+3. If NO — return the response EXACTLY as-is. Do not change a single word.
+
+CRITICAL RULES:
+- If the response is in-lane: copy it EXACTLY, no edits, no improvements
+- If out-of-lane: replace out-of-domain content with: "[Name] here. That's [specialist] territory — not mine. Switch seats."
+- NEVER add commentary about your validation process
+- NEVER say "I've reviewed" or "As the validator"
+- Output ONLY the final response text, nothing else"""
+
+    try:
+        result = await asyncio.wait_for(
+            claude_client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1200,
+                messages=[{"role": "user", "content": validation_prompt}]
+            ),
+            timeout=5.0
+        )
+        validated_text = result.content[0].text.strip()
+        if validated_text and len(validated_text) > 20:
+            logger.info(f"✅ Claude validated [{persona}] — {len(validated_text)} chars")
+            return {"answer": validated_text, "claude_validated": True}
+        return {"answer": winner_answer, "claude_validated": False}
+    except asyncio.TimeoutError:
+        logger.warning(f"⚡ Claude validator timeout [{persona}] — passing winner through")
+        return {"answer": winner_answer, "claude_validated": False}
+    except Exception as e:
+        logger.warning(f"⚡ Claude validator error: {e} — passing winner through")
+        return {"answer": winner_answer, "claude_validated": False}
+
 # =============================================================================
 # MAIN CHAT GATEWAY — 12-SEAT BOARD (V31.0)
 # =============================================================================
@@ -1628,13 +1734,27 @@ async def chat(
     _DOMAIN_INTERCEPTS = {
         "mechanic": {
             "triggers": [
-                "burning","pain when","hurts when","pee","urine","infection","uti","symptom",
-                "fever","nausea","vomit","bleeding","rash","swollen","dizzy","chest pain",
-                "headache","stomach","bowel","diarrhea","constipation","gas","fart","prescription",
-                "medication","dose","diagnosis","doctor","urgent care","hospital","blood pressure",
-                "anxiety","depression","mental health","therapy","sue","lawsuit","legal","contract",
-                "court","attorney","rights","eviction","custody","divorce","settlement","invest",
-                "stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget","salary",
+                # Body parts
+                "wrist","elbow","shoulder","knee","ankle","back","neck","hip","foot","feet",
+                "finger","thumb","hand","arm","leg","chest","stomach","head","eye","ear","nose",
+                "throat","spine","muscle","joint","tendon","ligament","bone","nerve",
+                # Symptoms
+                "hurts","hurt","hurting","pain","painful","ache","aching","sore","soreness",
+                "swollen","swelling","inflammation","inflamed","stiff","stiffness","numb","numbness",
+                "tingling","burning","pain when","hurts when","cramp","cramping","spasm",
+                "bruised","bruise","pulled","strain","sprain","torn","fracture","broken bone",
+                # Medical conditions
+                "pee","urine","infection","uti","symptom","fever","nausea","vomit","bleeding",
+                "rash","dizzy","dizziness","headache","migraine","bowel","diarrhea","constipation",
+                "blood pressure","anxiety","depression","mental health","therapy","fatigue","tired",
+                "prescription","medication","dose","diagnosis","doctor","urgent care","hospital",
+                "carpal tunnel","tendonitis","repetitive strain","rsi","arthritis",
+                # Legal
+                "sue","lawsuit","legal","contract","court","attorney","rights","eviction",
+                "custody","divorce","settlement","lawyer","legal advice",
+                # Financial
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+                "budget","salary","financial","money advice",
             ],
             "specialist": "The Doctor",
             "legal_specialist": "The Lawyer",
@@ -1643,10 +1763,16 @@ async def chat(
         },
         "doctor": {
             "triggers": [
+                # Vehicle/mechanical
                 "brakes","tire","wheel","engine","transmission","oil","coolant","battery","alternator",
                 "suspension","steering","exhaust","catalytic","obd","check engine","car","truck","vehicle",
+                "horsepower","torque","rpm","carburetor","fuel pump","spark plug","radiator",
+                "oil change","tire pressure","wheel alignment","timing belt","head gasket",
+                # Legal
                 "lawsuit","sue","legal","contract","court","attorney","rights","eviction","landlord",
-                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+                "custody","divorce","settlement","lawyer","legal advice",
+                # Financial
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
             ],
             "specialist": "The Tech Specialist",
             "legal_specialist": "The Lawyer",
@@ -1655,8 +1781,14 @@ async def chat(
         },
         "lawyer": {
             "triggers": [
+                # Vehicle
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle",
-                "symptom","burning","fever","nausea","diagnosis","medication","hospital","urgent care",
+                "horsepower","carburetor","spark plug","radiator","oil change",
+                # Medical
+                "symptom","wrist","elbow","shoulder","knee","ankle","back pain","neck pain",
+                "hurts","hurt","pain","ache","sore","swollen","fever","nausea","diagnosis",
+                "medication","hospital","urgent care","doctor","blood pressure","infection",
+                # Financial
                 "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
             ],
             "specialist": "The Tech Specialist",
@@ -1667,8 +1799,12 @@ async def chat(
         "wealth": {
             "triggers": [
                 "brakes","tire","wheel","engine","car","truck","vehicle",
-                "symptom","burning","fever","diagnosis","medication","hospital",
+                "spark plug","radiator","carburetor","oil change","transmission",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain",
+                "ache","sore","swollen","burning","fever","diagnosis","medication","hospital",
+                "urgent care","rash","dizzy","infection","blood pressure",
                 "lawsuit","sue","legal","contract","court","attorney","rights","eviction",
+                "custody","divorce","settlement","lawyer",
             ],
             "specialist": "The Tech Specialist",
             "medical_specialist": "The Doctor",
@@ -1677,10 +1813,18 @@ async def chat(
         },
         "pastor": {
             "triggers": [
+                # Vehicle
                 "brakes","tire","wheel","engine","transmission","oil","coolant","battery","alternator",
                 "suspension","steering","exhaust","obd","check engine","car","truck","vehicle","fix","repair",
-                "symptom","burning","fever","nausea","diagnosis","medication","hospital","urgent care","pee","urine",
-                "lawsuit","sue","legal","contract","court","attorney","eviction","custody","divorce","settlement",
+                "spark plug","radiator","carburetor","horsepower",
+                # Medical
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache",
+                "sore","swollen","fever","nausea","diagnosis","medication","hospital","urgent care",
+                "pee","urine","infection","blood pressure","burning","rash","dizzy",
+                # Legal
+                "lawsuit","sue","legal","contract","court","attorney","eviction","custody","wrist pain","elbow pain","knee pain","fracture","broken bone","surgery","diagnosis","medication","hospital","urgent care",
+                "divorce","settlement","lawyer","legal advice",
+                # Financial
                 "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
             ],
             "specialist": "The Tech Specialist",
@@ -1692,7 +1836,7 @@ async def chat(
         "therapist": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","fever","nausea","diagnosis","medication","hospital","urgent care","blood pressure",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","fever","nausea","diagnosis","medication","hospital","urgent care","blood pressure","burning","rash","dizzy","infection",
                 "lawsuit","sue","legal","contract","court","attorney","eviction","custody","divorce","settlement",
                 "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
             ],
@@ -1705,7 +1849,7 @@ async def chat(
         "career": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine","rash","dizzy","infection",
                 "lawsuit","sue","legal","contract","court","attorney","eviction","custody",
                 "invest","stocks","crypto","401k","mortgage","tax","irs",
             ],
@@ -1718,7 +1862,7 @@ async def chat(
         "tutor": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","burning","fever","diagnosis","medication","hospital","urgent care",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","burning","fever","diagnosis","medication","hospital","urgent care","rash","dizzy","infection",
                 "lawsuit","sue","legal","contract","court","attorney","eviction",
                 "invest","stocks","crypto","401k","mortgage","tax","irs",
             ],
@@ -1742,7 +1886,7 @@ async def chat(
         "hype": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","burning","fever","diagnosis","medication","hospital","urgent care",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","burning","fever","diagnosis","medication","hospital","urgent care","rash","dizzy","infection",
                 "lawsuit","sue","legal","contract","court","attorney","eviction",
                 "invest","stocks","crypto","401k","mortgage","tax","irs",
             ],
@@ -1755,7 +1899,7 @@ async def chat(
         "bestie": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","fever","diagnosis","medication","hospital","urgent care",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","fever","diagnosis","medication","hospital","urgent care","rash","dizzy","infection","burning",
                 "lawsuit","sue","legal","contract","court","attorney","eviction",
                 "invest","stocks","crypto","401k","mortgage","tax","irs",
             ],
@@ -1768,7 +1912,7 @@ async def chat(
         "guardian": {
             "triggers": [
                 "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine",
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine","rash","dizzy","infection",
                 "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
                 "anxiety","depression","therapy","grief","emotional","mental health",
             ],
@@ -1795,7 +1939,13 @@ async def chat(
                                "fever","nausea","vomit","bleeding","rash","swollen","dizzy","chest pain",
                                "headache","stomach","bowel","diarrhea","constipation","gas","fart",
                                "prescription","medication","dose","diagnosis","doctor","urgent care",
-                               "hospital","blood pressure","anxiety","depression","mental health","therapy"}
+                               "hospital","blood pressure","anxiety","depression","mental health","therapy",
+                               "wrist","elbow","shoulder","knee","ankle","back","neck","hip","foot","feet",
+                               "finger","thumb","hand","arm","leg","eye","ear","throat","spine","muscle",
+                               "joint","tendon","ligament","bone","nerve","hurts","hurt","hurting","ache",
+                               "aching","sore","soreness","inflammation","inflamed","stiff","numb","numbness",
+                               "tingling","cramp","cramping","spasm","bruised","bruise","pulled","strain",
+                               "sprain","torn","fracture","carpal tunnel","tendonitis","repetitive strain"}
             _LEGAL_KW      = {"sue","lawsuit","legal","contract","court","attorney","rights","eviction",
                                "custody","divorce","settlement"}
             _FINANCIAL_KW  = {"invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
@@ -2010,6 +2160,85 @@ async def chat(
             yield f"data: {json.dumps({'type':'text','content':busy_msg})}\n\n"
             yield f"data: {json.dumps({'type':'meta','confidence_score':0,'scam_detected':False,'threat_level':'low','action_trigger':None,'audio_b64':'','full_answer':busy_msg})}\n\n"
         return StreamingResponse(_busy(), media_type="text/event-stream")
+
+    # ── CLAUDE LANE ENFORCER — validates winner before streaming ────────
+    # Only fires when answer contains structural headers (skips simple greetings)
+    _STRUCTURAL_HEADERS = [
+        "[DIAGNOSIS]","[FIX PROTOCOL]","[ANALYSIS]","[RISK]","[TACTICAL MOVE]",
+        "[MOST LIKELY]","[PROTOCOL]","[ESCALATE WHEN]","[CURRENT STATE]",
+        "[BLEEDING POINT]","[60-DAY PLAN]","[REFLECT]","[IDENTIFY]","[REFRAME]",
+        "[EXPERIMENT]","[SITUATION READ]","[LEVERAGE POINTS]","[EXACT PLAY]",
+        "[ROOT CAUSE]","[COST INTEL]","[PARTS &","[SHOP ALERT]",
+    ]
+    _PERSONA_LANE_SUMMARY = {
+        "guardian":  "digital security, scam detection, fraud, phishing, identity protection, privacy",
+        "lawyer":    "legal strategy, contracts, rights, lawsuits, employment law, landlord-tenant law",
+        "doctor":    "medical symptoms, health conditions, medications, clinical protocols, physiology",
+        "wealth":    "personal finance, investing, budgeting, debt, retirement, tax strategy",
+        "career":    "job strategy, resume, interviews, salary, workplace dynamics, career pivots",
+        "therapist": "emotional wellbeing, mental health, relationships, stress, grief, anxiety",
+        "mechanic":  "vehicles, cars, trucks, electronics, computers, phones, appliances, OBD-II codes",
+        "tutor":     "education, math, science, history, writing, study skills, homework help",
+        "pastor":    "faith, spirituality, purpose, prayer, grief, forgiveness, moral questions",
+        "vitality":  "fitness, nutrition, exercise, sleep, recovery, body composition",
+        "hype":      "motivation, content creation, social media, entrepreneurship, viral ideas",
+        "bestie":    "emotional support, life navigation, honest perspective, encouragement",
+    }
+
+    answer_has_headers = any(h in winner.get("answer","") for h in _STRUCTURAL_HEADERS)
+
+    if answer_has_headers and anthropic_client:
+        try:
+            lane = _PERSONA_LANE_SUMMARY.get(persona, "your specialty domain")
+            persona_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
+            validation_prompt = f"""You are the LYLO Lane Enforcer. Your ONLY job is to validate that a specialist's answer stays in their lane.
+
+SPECIALIST: {persona_display}
+THEIR LANE: {lane}
+USER MESSAGE: {msg}
+SPECIALIST ANSWER: {winner.get("answer","")}
+
+DECISION:
+1. Does this answer give advice OUTSIDE the specialist's lane? (medical advice from mechanic, legal advice from doctor, etc.)
+2. If YES — rewrite ONLY the out-of-lane portions as a proper handoff. Keep any in-lane content.
+3. If NO — return the answer EXACTLY as-is, word for word.
+
+Respond ONLY with valid JSON:
+{{"answer": "the answer or corrected answer", "was_corrected": true/false, "reason": "brief reason if corrected"}}"""
+
+            validation = await asyncio.wait_for(
+                anthropic_client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1200,
+                    messages=[{"role": "user", "content": validation_prompt}]
+                ),
+                timeout=4.0
+            )
+            raw_validation = validation.content[0].text.strip()
+            raw_validation = raw_validation.replace("```json","").replace("```","").strip()
+            validated = json.loads(raw_validation)
+            if validated.get("was_corrected"):
+                logger.info(f"🛡️ Lane Enforcer corrected [{persona}]: {validated.get('reason','')[:80]}")
+                winner["answer"] = validated["answer"]
+            else:
+                logger.info(f"✅ Lane Enforcer passed [{persona}] — answer in lane")
+        except asyncio.TimeoutError:
+            logger.warning("⚡ Lane Enforcer timeout — passing original answer through")
+        except Exception as e:
+            logger.warning(f"⚡ Lane Enforcer error — passing original: {e}")
+    # ── END LANE ENFORCER ─────────────────────────────────────────────────
+
+    # ── Claude Validator — lane enforcement on race winner ───────────────
+    if winner:
+        validation = await validate_with_claude(
+            persona      = persona,
+            user_msg     = msg,
+            winner_answer = winner["answer"],
+            user_name    = user_data["name"],
+        )
+        winner["answer"] = validation["answer"]
+        if validation.get("claude_validated"):
+            logger.info(f"🛡️ Claude lane-check passed [{persona}] for {user_data['name']}")
 
     # ── V30 Streaming response ────────────────────────────────────────────
     async def stream_response():
