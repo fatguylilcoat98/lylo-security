@@ -317,13 +317,42 @@ except Exception:
 
 @app.post("/join-waitlist")
 async def join_waitlist(request: WaitlistRequest):
-    email = request.email.lower().strip()
-    WAITLIST_DB.add(email)
+    email_clean = request.email.lower().strip()
+    WAITLIST_DB.add(email_clean)
     try:
         with open(WAITLIST_FILE, "w") as f:
             json.dump(list(WAITLIST_DB), f)
     except Exception as e:
         logger.error(f"Failed to save waitlist: {e}")
+
+    # ── Notify Chris every time someone joins ─────────────────────────────
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        smtp_user = os.getenv("SMTP_USERNAME", "")
+        smtp_pass = os.getenv("SMTP_PASSWORD", "")
+        if smtp_user and smtp_pass:
+            msg = MIMEText(
+                f"New waitlist signup: {email_clean}\n\n"
+                f"Total on waitlist: {len(WAITLIST_DB)}\n\n"
+                f"To activate as beta tester reply or use:\n"
+                f"POST /activate-beta\n"
+                f"  admin_email: stangman9898@gmail.com\n"
+                f"  tester_email: {email_clean}\n"
+                f"  tester_name: [their name]\n"
+                f"  slot_number: [1-20]",
+                "plain"
+            )
+            msg["Subject"] = f"🔔 LYLO Waitlist — New Signup #{len(WAITLIST_DB)}: {email_clean}"
+            msg["From"]    = smtp_user
+            msg["To"]      = "stangman9898@gmail.com"
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, "stangman9898@gmail.com", msg.as_string())
+            logger.info(f"✅ Waitlist notification sent for {email_clean}")
+    except Exception as e:
+        logger.warning(f"Waitlist notify failed (non-critical): {e}")
+
     return {"status": "success", "message": "Spot Secured"}
 
 
@@ -3157,6 +3186,22 @@ async def root():
         ],
     }
 
+
+
+@app.get("/health")
+async def health_check():
+    """Render uptime monitoring + quick system status."""
+    return {
+        "status":   "healthy",
+        "version":  "31.0.0",
+        "engines": {
+            "openai":  bool(openai_client),
+            "gemini":  bool(gemini_client),
+            "claude":  bool(claude_client),
+        },
+        "beta_slots_filled": sum(1 for e, d in ELITE_USERS.items() if d.get("beta") and "placeholder.com" not in e),
+        "waitlist_count":    len(WAITLIST_DB),
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
