@@ -811,7 +811,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
 # =============================================================================
 # AI ENGINE CALLS — DUAL-PASS CONSENSUS
 # =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash"):
+async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-3-flash-preview"):
     if not gemini_ready or not gemini_client:
         return None
     try:
@@ -1907,18 +1907,18 @@ async def chat(
         try:
             return await asyncio.wait_for(
                 call_gemini_vision(prompt, image_b64, model),
-                timeout=5.0
+                timeout=3.0
             )
         except (asyncio.TimeoutError, Exception) as e:
             logger.warning(f"⚡ Gemini fast-fail: {e}")
             return None
 
     openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-2.0-flash"))
+    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-3-flash-preview"))
 
     winner      = None
     pending     = {openai_task, gemini_task}
-    RACE_TIMEOUT = 25.0 if image_b64 else 15.0
+    RACE_TIMEOUT = 35.0 if image_b64 else 25.0
     loop         = asyncio.get_event_loop()
     deadline     = loop.time() + RACE_TIMEOUT
 
@@ -1947,6 +1947,17 @@ async def chat(
 
     for p in pending:
         p.cancel()
+
+    # Last resort — if race timed out but OpenAI task completed, grab its result
+    if not winner:
+        try:
+            if openai_task.done() and not openai_task.cancelled():
+                fallback = openai_task.result()
+                if fallback and "answer" in fallback:
+                    winner = fallback
+                    logger.info(f"✅ OpenAI fallback winner rescued for {user_data['name']}")
+        except Exception as e:
+            logger.warning(f"Fallback rescue failed: {e}")
 
     if not winner:
         logger.warning(f"⚡ Race timeout ({RACE_TIMEOUT}s) for {user_data['name']}")
