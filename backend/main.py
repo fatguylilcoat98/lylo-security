@@ -1197,15 +1197,18 @@ REQUIRED OUTPUT SCHEMA:
 # =============================================================================
 # V30 INLINE TTS
 # =============================================================================
+VALID_VOICES = {"nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"}
+
 async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
     if not openai_client or not text.strip():
         return ""
+    safe_voice = voice if voice in VALID_VOICES else "onyx"
     try:
         clean = text.replace("**","").replace("##","").replace("#","").replace("[","").replace("]","").strip()
-        resp  = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean[:3500])
+        resp  = await openai_client.audio.speech.create(model="tts-1", voice=safe_voice, input=clean[:3500])
         return base64.b64encode(resp.content).decode("utf-8")
     except Exception as e:
-        logger.warning(f"⚡ Inline TTS failed ({voice}): {e}")
+        logger.warning(f"⚡ Inline TTS failed ({safe_voice}): {e}")
         return ""
 
 # =============================================================================
@@ -1540,6 +1543,109 @@ async def chat(
             "medical_specialist": "The Doctor",
             "legal_specialist": "The Lawyer",
             "voice": "I'm the Wealth Architect. {topic} isn't a money problem — that's {specialist} territory. Switch seats. Bad advice here costs real money.",
+        },
+        "pastor": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","coolant","battery","alternator",
+                "suspension","steering","exhaust","obd","check engine","car","truck","vehicle","fix","repair",
+                "symptom","burning","fever","nausea","diagnosis","medication","hospital","urgent care","pee","urine",
+                "lawsuit","sue","legal","contract","court","attorney","eviction","custody","divorce","settlement",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Pastor. My lane is faith, healing of the spirit, and moral guidance — not {domain} questions. That belongs with {specialist}. Switch seats and get the right counsel.",
+        },
+        "therapist": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","fever","nausea","diagnosis","medication","hospital","urgent care","blood pressure",
+                "lawsuit","sue","legal","contract","court","attorney","eviction","custody","divorce","settlement",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Therapist. {topic} isn't an emotional or mental health question — that's {specialist} territory. I only work in this lane. Switch seats.",
+        },
+        "career": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine",
+                "lawsuit","sue","legal","contract","court","attorney","eviction","custody",
+                "invest","stocks","crypto","401k","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Career Strategist. {topic} isn't a career move — that's {specialist} territory. Wrong seat. Switch over.",
+        },
+        "tutor": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","burning","fever","diagnosis","medication","hospital","urgent care",
+                "lawsuit","sue","legal","contract","court","attorney","eviction",
+                "invest","stocks","crypto","401k","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Tutor. {topic} isn't something I can teach you accurately — that's {specialist} territory. Switch seats for the right expertise.",
+        },
+        "vitality": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "lawsuit","sue","legal","contract","court","attorney","eviction","custody",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Vitality Coach. {topic} isn't a performance or health question — that's {specialist} territory. Switch seats.",
+        },
+        "hype": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","burning","fever","diagnosis","medication","hospital","urgent care",
+                "lawsuit","sue","legal","contract","court","attorney","eviction",
+                "invest","stocks","crypto","401k","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "I'm the Hype Strategist. {topic} isn't a content play — that's {specialist} territory. Wrong seat, switch over.",
+        },
+        "bestie": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","fever","diagnosis","medication","hospital","urgent care",
+                "lawsuit","sue","legal","contract","court","attorney","eviction",
+                "invest","stocks","crypto","401k","mortgage","tax","irs",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "legal_specialist": "The Lawyer",
+            "financial_specialist": "The Wealth Architect",
+            "voice": "Okay bestie, I love you but {topic} is NOT my lane — that's {specialist} territory. I don't want to steer you wrong on something this real. Switch seats, get the right person.",
+        },
+        "guardian": {
+            "triggers": [
+                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
+                "symptom","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine",
+                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+                "anxiety","depression","therapy","grief","emotional","mental health",
+            ],
+            "specialist": "The Tech Specialist",
+            "medical_specialist": "The Doctor",
+            "financial_specialist": "The Wealth Architect",
+            "therapeutic_specialist": "The Therapist",
+            "voice": "I'm the Guardian. My domain is security and threat protection — not {domain} questions. That's {specialist} territory. Switch seats for accurate intel.",
         },
     }
 
@@ -2040,9 +2146,10 @@ async def _noop_coroutine():
 async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
     if not openai_client:
         return {"error": "Voice offline"}
+    safe_voice = voice if voice in VALID_VOICES else "onyx"
     try:
         clean  = text.replace("**","").replace("#","").strip()
-        resp   = await openai_client.audio.speech.create(model="tts-1", voice=voice, input=clean[:4000])
+        resp   = await openai_client.audio.speech.create(model="tts-1", voice=safe_voice, input=clean[:4000])
         return {"audio_b64": base64.b64encode(resp.content).decode("utf-8")}
     except Exception as e:
         return {"error": str(e)}
