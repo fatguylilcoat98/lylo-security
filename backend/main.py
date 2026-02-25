@@ -2328,6 +2328,26 @@ async def chat(
     }
 
     msg_lower = msg.lower()
+
+    # ── Emergency Protocol Detection — FIRES FIRST before any domain intercept ──
+    emergency_protocol, emergency_key = detect_emergency(persona, msg)
+    if emergency_protocol:
+        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], persona)
+        logger.info(f"🚨 EMERGENCY DETECTED [{persona}] → {emergency_key} for {user_data['name']}")
+        asyncio.create_task(send_mission_report_email(
+            user_email, emergency_response["answer"], persona, user_name=user_data["name"]
+        ))
+        async def _stream_emergency():
+            sentences = split_into_sentences(emergency_response["answer"])
+            for sentence in sentences:
+                audio = await generate_audio_inline(sentence, voice)
+                yield f"data: {json.dumps({'type':'text','content':sentence,'audio_b64':audio})}\n\n"
+                await asyncio.sleep(0.008)
+            yield f"data: {json.dumps({'type':'meta','confidence_score':99,'scam_detected':False,'threat_level':'high','action_trigger':'email_dispatch','audio_b64':'','full_answer':emergency_response['answer']})}\n\n"
+        return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
+                                  headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+    # ── END EMERGENCY — domain intercept below only fires for non-emergency messages ──
+
     intercept = _DOMAIN_INTERCEPTS.get(persona)
     if intercept:
         triggered_topic = None
@@ -2396,25 +2416,6 @@ async def chat(
             logger.info(f"🚫 Domain intercept [{persona}] blocked '{triggered_topic}' → routed to {correct}")
             return StreamingResponse(_stream_intercept(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
     # ── END DOMAIN INTERCEPT ──────────────────────────────────────────────
-
-    # ── Emergency Protocol Detection (fires before LLM race) ────────────
-    emergency_protocol, emergency_key = detect_emergency(persona, msg)
-    if emergency_protocol:
-        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], persona)
-        logger.info(f"🚨 EMERGENCY DETECTED [{persona}] → {emergency_key} for {user_data['name']}")
-        # Auto-dispatch PDF immediately — no prompt needed
-        asyncio.create_task(send_mission_report_email(
-            user_email, emergency_response["answer"], persona, user_name=user_data["name"]
-        ))
-        async def _stream_emergency():
-            sentences = split_into_sentences(emergency_response["answer"])
-            for sentence in sentences:
-                audio = await generate_audio_inline(sentence, voice)
-                yield f"data: {json.dumps({'type':'text','content':sentence,'audio_b64':audio})}\n\n"
-                await asyncio.sleep(0.008)
-            yield f"data: {json.dumps({'type':'meta','confidence_score':99,'scam_detected':False,'threat_level':'high','action_trigger':'email_dispatch','audio_b64':'','full_answer':emergency_response['answer']})}\n\n"
-        return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
-                                  headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
     # ── Scam scan ────────────────────────────────────────────────────────
     indicators = analyze_scam_indicators(msg)
