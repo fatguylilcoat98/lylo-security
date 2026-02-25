@@ -370,6 +370,12 @@ function ChatInterface({
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
   const PERSONAS = BASE_PERSONAS.map(p => p.id === 'pastor' ? getPastor(intakeProfile) : p);
   const [activePersona, setActivePersona]               = useState<PersonaConfig>(() => initialPersona ?? PERSONAS[0]);
+  // Sync parent persona prop into internal state when it changes
+  useEffect(() => {
+    if (initialPersona && initialPersona.id !== activePersona.id) {
+      setActivePersona(initialPersona);
+    }
+  }, [initialPersona?.id]);
   const [messages, setMessages]                         = useState<Message[]>([]);
   const [input, setInput]                               = useState('');
   const [loading, setLoading]                           = useState(false);
