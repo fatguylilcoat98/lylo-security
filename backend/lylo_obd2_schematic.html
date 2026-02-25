@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LYLO™ × OBDLink — Integration Schematic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030508;
+    --surface: #080d14;
+    --border: rgba(0,200,255,0.12);
+    --cyan: #00c8ff;
+    --cyan-dim: rgba(0,200,255,0.15);
+    --green: #00ff88;
+    --green-dim: rgba(0,255,136,0.12);
+    --amber: #ffaa00;
+    --amber-dim: rgba(255,170,0,0.12);
+    --red: #ff4455;
+    --white: #e8f4ff;
+    --gray: #4a6070;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'Exo 2', sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* SCANLINE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,200,255,0.015) 2px, rgba(0,200,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* GRID BACKGROUND */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 10; max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+
+  /* HEADER */
+  .header {
+    text-align: center;
+    margin-bottom: 60px;
+    position: relative;
+  }
+  .header::before {
+    content: 'TECHNICAL INTEGRATION PROPOSAL';
+    display: block;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--cyan);
+    letter-spacing: 0.4em;
+    margin-bottom: 16px;
+    opacity: 0.7;
+  }
+  .header h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(2rem, 6vw, 4rem);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .header h1 span { color: var(--cyan); }
+  .header h1 em { color: var(--amber); font-style: normal; }
+  .tagline {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--gray);
+    letter-spacing: 0.3em;
+    margin-top: 12px;
+  }
+
+  /* SECTION LABEL */
+  .sec-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    opacity: 0.6;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ARCHITECTURE FLOW */
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 60px;
+    flex-wrap: wrap;
+  }
+
+  .arch-node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    min-width: 140px;
+    position: relative;
+    transition: all 0.3s ease;
+    cursor: default;
+  }
+  .arch-node:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 30px rgba(0,200,255,0.15);
+    transform: translateY(-4px);
+  }
+  .arch-node.active { border-color: var(--cyan); box-shadow: 0 0 20px rgba(0,200,255,0.2); }
+  .arch-node.green { border-color: rgba(0,255,136,0.3); }
+  .arch-node.green:hover { border-color: var(--green); box-shadow: 0 0 30px rgba(0,255,136,0.15); }
+  .arch-node.amber { border-color: rgba(255,170,0,0.3); }
+  .arch-node.amber:hover { border-color: var(--amber); box-shadow: 0 0 30px rgba(255,170,0,0.15); }
+
+  .arch-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+  .arch-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--white);
+    margin-bottom: 4px;
+  }
+  .arch-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--gray);
+    letter-spacing: 0.1em;
+  }
+
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--cyan);
+    opacity: 0.4;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .arch-arrow.animate { animation: pulse-arrow 1.5s infinite; }
+  @keyframes pulse-arrow {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.8; }
+  }
+
+  /* STEP PIPELINE */
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 2px;
+    margin-bottom: 60px;
+    background: var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .step {
+    background: var(--surface);
+    padding: 24px 16px;
+    position: relative;
+    transition: background 0.3s ease;
+  }
+  .step:hover { background: rgba(0,200,255,0.05); }
+  .step-num {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--cyan);
+    opacity: 0.5;
+    letter-spacing: 0.2em;
+    margin-bottom: 10px;
+  }
+  .step-icon { font-size: 24px; margin-bottom: 8px; display: block; }
+  .step-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--white);
+    margin-bottom: 6px;
+  }
+  .step-desc {
+    font-size: 11px;
+    color: var(--gray);
+    line-height: 1.6;
+  }
+  .step-tech {
+    margin-top: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--cyan);
+    opacity: 0.6;
+    letter-spacing: 0.1em;
+  }
+
+  /* MOCK PHONE UI */
+  .phone-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: start;
+    margin-bottom: 60px;
+  }
+  @media (max-width: 700px) { .phone-section { grid-template-columns: 1fr; } }
+
+  .phone-wrap {
+    display: flex;
+    justify-content: center;
+  }
+
+  .phone {
+    width: 260px;
+    background: #050a0f;
+    border: 2px solid rgba(0,200,255,0.3);
+    border-radius: 36px;
+    padding: 16px;
+    box-shadow: 0 0 60px rgba(0,200,255,0.1), inset 0 0 20px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .phone::before {
+    content: '';
+    display: block;
+    width: 60px; height: 6px;
+    background: rgba(0,200,255,0.2);
+    border-radius: 3px;
+    margin: 0 auto 16px;
+  }
+  .phone-screen {
+    background: #020509;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(0,200,255,0.1);
+  }
+
+  /* SCREEN STATES */
+  .screen-header {
+    background: #050d15;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0,200,255,0.1);
+  }
+  .screen-brand {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    color: var(--white);
+  }
+  .screen-brand span { color: var(--cyan); }
+  .screen-persona {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: var(--gray);
+    letter-spacing: 0.15em;
+  }
+  .bt-badge {
+    width: 8px; height: 8px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan);
+    animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .screen-body { padding: 12px; }
+
+  .scan-card {
+    background: rgba(0,200,255,0.05);
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  .scan-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .scan-status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--green);
+  }
+  .scan-anim {
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,200,255,0.2);
+    border-top-color: var(--cyan);
+    animation: spin 1.2s linear infinite;
+    margin: 10px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dtc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,68,85,0.08);
+    border: 1px solid rgba(255,68,85,0.2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .dtc-code {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--red);
+    font-weight: bold;
+    min-width: 48px;
+  }
+  .dtc-desc {
+    font-size: 9px;
+    color: var(--gray);
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .ai-bubble {
+    background: rgba(0,200,255,0.05);
+    border: 1px solid rgba(0,200,255,0.15);
+    border-radius: 10px;
+    border-top-left-radius: 2px;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .ai-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: var(--cyan);
+    letter-spacing: 0.2em;
+    margin-bottom: 6px;
+  }
+  .ai-text {
+    font-size: 10px;
+    color: var(--white);
+    line-height: 1.5;
+    opacity: 0.85;
+  }
+
+  .pdf-btn {
+    width: 100%;
+    background: var(--amber);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  /* SPECS PANEL */
+  .specs-panel { }
+  .spec-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    transition: border-color 0.3s;
+  }
+  .spec-block:hover { border-color: rgba(0,200,255,0.3); }
+  .spec-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .spec-icon { font-size: 18px; }
+  .spec-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--white);
+  }
+  .spec-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--gray);
+    line-height: 1.5;
+  }
+  .spec-item::before {
+    content: '▸';
+    color: var(--cyan);
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .spec-item strong { color: var(--white); font-weight: 600; }
+
+  /* DATA FLOW DIAGRAM */
+  .data-flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 60px;
+    overflow-x: auto;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .flow-box {
+    background: rgba(0,200,255,0.06);
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  .flow-box.green { background: rgba(0,255,136,0.06); border-color: rgba(0,255,136,0.2); color: var(--green); }
+  .flow-box.amber { background: rgba(255,170,0,0.06); border-color: rgba(255,170,0,0.2); color: var(--amber); }
+  .flow-box.red { background: rgba(255,68,85,0.06); border-color: rgba(255,68,85,0.2); color: var(--red); }
+  .flow-arrow { color: var(--gray); font-size: 14px; opacity: 0.5; }
+  .flow-note {
+    font-size: 10px;
+    color: var(--gray);
+    margin-left: 4px;
+    font-style: italic;
+  }
+
+  /* ADAPTER CARDS */
+  .adapter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 60px;
+  }
+  .adapter-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+  }
+  .adapter-card:hover { border-color: var(--amber); box-shadow: 0 0 20px rgba(255,170,0,0.1); }
+  .adapter-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .adapter-type {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--gray);
+    letter-spacing: 0.2em;
+    margin-bottom: 14px;
+  }
+  .adapter-spec {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .adapter-spec:last-child { border-bottom: none; }
+  .adapter-spec .key { color: var(--gray); }
+  .adapter-spec .val { color: var(--white); font-family: 'Share Tech Mono', monospace; font-size: 9px; }
+  .compat-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    background: rgba(0,255,136,0.1);
+    color: var(--green);
+    border: 1px solid rgba(0,255,136,0.2);
+  }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+    margin-top: 20px;
+  }
+  .footer-brand {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 24px;
+    letter-spacing: 0.2em;
+    color: var(--white);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .footer-brand span { color: var(--cyan); }
+  .footer-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--gray);
+    letter-spacing: 0.3em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>LYLO<span>™</span> × <em>OBDLink</em></h1>
+    <h1 style="font-size:clamp(1rem,3vw,1.8rem); color: var(--gray); font-weight:400; margin-top:8px;">AI-Powered Vehicle Diagnostic Integration</h1>
+    <p class="tagline">TECHNICAL ARCHITECTURE · PROTOTYPE SCHEMATIC · v1.0</p>
+  </div>
+
+  <!-- ARCHITECTURE FLOW -->
+  <div class="sec-label">01 — System Architecture</div>
+  <div class="arch-flow">
+    <div class="arch-node active">
+      <span class="arch-icon">🚗</span>
+      <div class="arch-title">Vehicle ECU</div>
+      <div class="arch-sub">OBD-II Port</div>
+    </div>
+    <div class="arch-arrow animate">→</div>
+    <div class="arch-node amber">
+      <span class="arch-icon">📡</span>
+      <div class="arch-title">OBDLink</div>
+      <div class="arch-sub">CX / LX Adapter</div>
+    </div>
+    <div class="arch-arrow animate">→</div>
+    <div class="arch-node">
+      <span class="arch-icon">📱</span>
+      <div class="arch-title">LYLO App</div>
+      <div class="arch-sub">Bluetooth / WiFi</div>
+    </div>
+    <div class="arch-arrow animate">→</div>
+    <div class="arch-node green">
+      <span class="arch-icon">🧠</span>
+      <div class="arch-title">AI Mechanic</div>
+      <div class="arch-sub">Triple Engine</div>
+    </div>
+    <div class="arch-arrow animate">→</div>
+    <div class="arch-node amber">
+      <span class="arch-icon">📄</span>
+      <div class="arch-title">PDF Report</div>
+      <div class="arch-sub">Auto-Dispatched</div>
+    </div>
+  </div>
+
+  <!-- STEP PIPELINE -->
+  <div class="sec-label">02 — Integration Pipeline</div>
+  <div class="pipeline">
+    <div class="step">
+      <div class="step-num">STEP 01</div>
+      <span class="step-icon">🔌</span>
+      <div class="step-title">Plug In</div>
+      <div class="step-desc">User plugs OBDLink adapter into vehicle OBD-II port (under dash, driver side).</div>
+      <div class="step-tech">OBD-II J1962</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 02</div>
+      <span class="step-icon">📶</span>
+      <div class="step-title">BT Pair</div>
+      <div class="step-desc">LYLO app detects adapter via Bluetooth. One-tap pairing — no setup required after first connect.</div>
+      <div class="step-tech">BLE 4.0 / WiFi</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 03</div>
+      <span class="step-icon">🔍</span>
+      <div class="step-title">DTC Scan</div>
+      <div class="step-desc">LYLO sends AT commands via OBDLink API. Retrieves all stored + pending fault codes from ECU.</div>
+      <div class="step-tech">AT CMD / ELM327</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 04</div>
+      <span class="step-icon">🧠</span>
+      <div class="step-title">AI Analysis</div>
+      <div class="step-desc">DTC codes sent to LYLO's Mechanic specialist. Triple AI engine translates every code to plain English.</div>
+      <div class="step-tech">GPT-4o + Gemini + Claude</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 05</div>
+      <span class="step-icon">📋</span>
+      <div class="step-title">Diagnosis</div>
+      <div class="step-desc">Full breakdown: what's wrong, why it matters, urgency level, estimated repair cost range.</div>
+      <div class="step-tech">Structured JSON → NLP</div>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 06</div>
+      <span class="step-icon">📄</span>
+      <div class="step-title">PDF Dispatch</div>
+      <div class="step-desc">Full report auto-emailed. User walks into shop with documentation. No more getting overcharged.</div>
+      <div class="step-tech">SMTP + ReportLab</div>
+    </div>
+  </div>
+
+  <!-- PHONE MOCKUP + SPECS -->
+  <div class="sec-label">03 — App Interface Prototype</div>
+  <div class="phone-section">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="screen-header">
+            <div>
+              <div class="screen-brand">LY<span>LO</span>™</div>
+              <div class="screen-persona">THE MECHANIC</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div class="bt-badge"></div>
+              <span style="font-family:'Share Tech Mono';font-size:8px;color:var(--cyan)">OBD LIVE</span>
+            </div>
+          </div>
+          <div class="screen-body">
+            <div class="scan-card">
+              <div class="scan-title">Vehicle Scan</div>
+              <div class="scan-anim">🔧</div>
+              <div class="scan-status">● CONNECTED — SCANNING ECU...</div>
+            </div>
+
+            <div style="font-family:'Share Tech Mono';font-size:8px;color:var(--gray);letter-spacing:0.2em;margin:10px 0 6px;">FAULT CODES DETECTED</div>
+
+            <div class="dtc-row">
+              <div class="dtc-code">P0420</div>
+              <div class="dtc-desc">Catalyst System Efficiency Below Threshold (Bank 1)</div>
+            </div>
+            <div class="dtc-row">
+              <div class="dtc-code">P0171</div>
+              <div class="dtc-desc">System Too Lean (Bank 1)</div>
+            </div>
+
+            <div class="ai-bubble" style="margin-top:10px;">
+              <div class="ai-label">⚡ MECHANIC ANALYSIS</div>
+              <div class="ai-text">P0420 means your catalytic converter is failing. Not an emergency but fix within 60 days or it'll damage your O2 sensors. P0171 is a vacuum leak or dirty MAF sensor — check that first, it's cheaper.</div>
+            </div>
+
+            <button class="pdf-btn">📄 Send Full Report To Email</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="specs-panel">
+      <div class="spec-block">
+        <div class="spec-head">
+          <span class="spec-icon">⚡</span>
+          <div class="spec-title">What LYLO Reads</div>
+        </div>
+        <div class="spec-item"><strong>DTCs</strong> — All stored, pending & permanent fault codes</div>
+        <div class="spec-item"><strong>Live Data</strong> — RPM, coolant temp, fuel trim, O2 sensors, MAF</div>
+        <div class="spec-item"><strong>Freeze Frame</strong> — Conditions when fault first triggered</div>
+        <div class="spec-item"><strong>Readiness Monitors</strong> — Emissions test pass/fail prediction</div>
+        <div class="spec-item"><strong>VIN</strong> — Auto-identifies year, make, model, engine</div>
+      </div>
+      <div class="spec-block">
+        <div class="spec-head">
+          <span class="spec-icon">📄</span>
+          <div class="spec-title">What The PDF Contains</div>
+        </div>
+        <div class="spec-item"><strong>Full DTC list</strong> with plain-English descriptions</div>
+        <div class="spec-item"><strong>Urgency rating</strong> — Fix now / Soon / Monitor</div>
+        <div class="spec-item"><strong>Estimated repair cost</strong> range per issue</div>
+        <div class="spec-item"><strong>DIY vs shop</strong> recommendation per fault</div>
+        <div class="spec-item"><strong>Questions to ask</strong> your mechanic verbatim</div>
+      </div>
+      <div class="spec-block">
+        <div class="spec-head">
+          <span class="spec-icon">🔗</span>
+          <div class="spec-title">API Integration Method</div>
+        </div>
+        <div class="spec-item">OBDLink SDK — <strong>AT command set</strong> over BT serial</div>
+        <div class="spec-item">Protocol auto-detect: <strong>CAN, ISO, VPW, PWM</strong></div>
+        <div class="spec-item">Compatible with <strong>OBD-II standard PIDs</strong> + enhanced</div>
+        <div class="spec-item">Fallback to <strong>ELM327 emulation</strong> for broad car support</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATA FLOW -->
+  <div class="sec-label">04 — Data Flow</div>
+  <div class="data-flow">
+    <div class="flow-row">
+      <div class="flow-box red">ECU RAW DATA</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">OBDLink Adapter</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">BT Serial Stream</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">LYLO AT Parser</div>
+      <div class="flow-note">// Reads "41 0C" → RPM calculation</div>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box">DTC Array [ P0420, P0171 ]</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box green">LYLO Backend /obd-scan</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box green">Triple AI Engine Race</div>
+      <div class="flow-note">// Mechanic persona activated</div>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box green">AI Structured Diagnosis JSON</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">PDF Generator</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">SMTP Dispatch</div>
+      <div class="flow-note">// Auto-sent, no prompt needed</div>
+    </div>
+  </div>
+
+  <!-- ADAPTER COMPATIBILITY -->
+  <div class="sec-label">05 — OBDLink Adapter Compatibility</div>
+  <div class="adapter-grid">
+    <div class="adapter-card">
+      <div class="adapter-name">OBDLink CX</div>
+      <div class="adapter-type">BLUETOOTH LOW ENERGY</div>
+      <div class="adapter-spec"><span class="key">Protocol</span><span class="val">BLE 4.0+</span></div>
+      <div class="adapter-spec"><span class="key">iOS Support</span><span class="val">YES</span></div>
+      <div class="adapter-spec"><span class="key">Android</span><span class="val">YES</span></div>
+      <div class="adapter-spec"><span class="key">Use Case</span><span class="val">Primary target</span></div>
+      <div class="compat-badge">✓ PRIMARY TARGET</div>
+    </div>
+    <div class="adapter-card">
+      <div class="adapter-name">OBDLink LX</div>
+      <div class="adapter-type">BLUETOOTH CLASSIC</div>
+      <div class="adapter-spec"><span class="key">Protocol</span><span class="val">BT Classic 2.1</span></div>
+      <div class="adapter-spec"><span class="key">iOS Support</span><span class="val">LIMITED</span></div>
+      <div class="adapter-spec"><span class="key">Android</span><span class="val">YES</span></div>
+      <div class="adapter-spec"><span class="key">Use Case</span><span class="val">Android primary</span></div>
+      <div class="compat-badge">✓ SECONDARY TARGET</div>
+    </div>
+    <div class="adapter-card">
+      <div class="adapter-name">OBDLink MX+</div>
+      <div class="adapter-type">BLUETOOTH + ALL PROTOCOLS</div>
+      <div class="adapter-spec"><span class="key">Protocol</span><span class="val">BT + WiFi</span></div>
+      <div class="adapter-spec"><span class="key">iOS Support</span><span class="val">YES</span></div>
+      <div class="adapter-spec"><span class="key">Android</span><span class="val">YES</span></div>
+      <div class="adapter-spec"><span class="key">Use Case</span><span class="val">Premium tier</span></div>
+      <div class="compat-badge">✓ FUTURE SUPPORT</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-brand">LYLO<span>™</span> SECURITY SYSTEMS</div>
+    <div class="footer-sub">CONFIDENTIAL TECHNICAL PROPOSAL · PREPARED FOR OBDLINK TECHNICAL SUPPORT · 2026</div>
+    <div style="margin-top:16px;font-family:'Share Tech Mono';font-size:9px;color:var(--gray);">
+      mylylo.ai@gmail.com · mylylo.pro · Sacramento, CA
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
