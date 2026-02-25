@@ -1,4 +1,3 @@
-import sys, os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sys
 import os
 # ── Render.com path fix ───────────────────────────────────────────────────────
@@ -983,23 +982,83 @@ _EXPERT_TONES = {
 }
 
 def build_hard_boundary_block(persona: str) -> str:
-    name              = _PERSONA_DISPLAY_NAMES.get(persona, "Your Specialist")
-    in_scope, out_scope = _PERSONA_DOMAINS.get(persona, ("your specialty domain", "everything else"))
-    tone              = _EXPERT_TONES.get(persona, "You are a focused domain expert.")
-    others            = ", ".join(_PERSONA_DISPLAY_NAMES[p] for p in _PERSONA_DISPLAY_NAMES if p != persona)
+    name                 = _PERSONA_DISPLAY_NAMES.get(persona, "Your Specialist")
+    in_scope, out_scope  = _PERSONA_DOMAINS.get(persona, ("your specialty domain", "everything else"))
+    tone                 = _EXPERT_TONES.get(persona, "You are a focused domain expert.")
+
+    # Build smart routing table — maps out-of-domain topic categories to the RIGHT specialist
+    _ROUTING_TABLE = {
+        "guardian":  {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "emotional": "The Therapist"},
+        "lawyer":    {"medical": "The Doctor", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist", "emotional": "The Therapist"},
+        "doctor":    {"legal": "The Lawyer", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist", "emotional": "The Therapist"},
+        "wealth":    {"legal": "The Lawyer", "medical": "The Doctor", "vehicle": "The Tech Specialist", "emotional": "The Therapist"},
+        "career":    {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "emotional": "The Therapist"},
+        "therapist": {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist"},
+        "mechanic":  {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "emotional": "The Therapist", "spiritual": "The Pastor"},
+        "tutor":     {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist"},
+        "pastor":    {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist"},
+        "vitality":  {"legal": "The Lawyer", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist", "emotional": "The Therapist"},
+        "hype":      {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "emotional": "The Therapist"},
+        "bestie":    {"legal": "The Lawyer", "medical": "The Doctor", "financial": "The Wealth Architect", "vehicle": "The Tech Specialist"},
+    }
+    routing = _ROUTING_TABLE.get(persona, {})
+    routing_examples = "\n".join(
+        f'  • {topic.upper()} question → route to {specialist}'
+        for topic, specialist in routing.items()
+    )
+
+    # Persona-specific handoff voice — each specialist sounds like themselves when redirecting
+    _HANDOFF_VOICES = {
+        "mechanic":  "I'm the Mechanic. I deal with hardware, vehicles, and code — not {topic}. That's a {specialist} issue. Switch seats. I'm not giving you bad intel on something this serious.",
+        "lawyer":    "I'm the Lawyer. {topic} falls outside my jurisdiction. That's squarely in {specialist} territory. Switch seats before we go further.",
+        "doctor":    "I'm the Doctor. {topic} isn't a clinical question — that's {specialist} domain. I won't guess outside my lane. Switch seats.",
+        "wealth":    "I'm the Wealth Architect. {topic} isn't a numbers problem — that's {specialist} territory. Switch seats. Bad advice here costs real money.",
+        "guardian":  "I'm the Guardian. {topic} isn't a security threat — that's {specialist} domain. Switch seats for accurate intel.",
+        "therapist": "I'm the Therapist. {topic} is outside what I can safely address — that needs {specialist}. Switch seats.",
+        "career":    "I'm the Career Strategist. {topic} isn't a career play — that's {specialist} territory. Switch seats.",
+        "vitality":  "I'm the Vitality Coach. {topic} isn't a performance question — that's {specialist} domain. Switch seats.",
+        "tutor":     "I'm the Tutor. {topic} isn't something I can teach accurately — that's {specialist} territory. Switch seats.",
+        "pastor":    "I'm the Pastor. {topic} needs more than spiritual counsel — that's {specialist} domain. Switch seats.",
+        "hype":      "I'm the Hype Man. {topic} isn't a content play — that's {specialist} territory. Switch seats, we can't half-step this.",
+        "bestie":    "I'm your Bestie, not your {specialist}. {topic} needs a real expert in that seat. Switch over — I'll be here when you get back.",
+    }
+    handoff_voice = _HANDOFF_VOICES.get(
+        persona,
+        "I'm {name}. That's {specialist} territory. Switch seats — I won't give you bad intel outside my domain."
+    )
+
     return f"""
 ══════════════════════════════════════════════════════════════════
-EXPERT IDENTITY & HARD DOMAIN BOUNDARIES — NON-NEGOTIABLE
+EXPERT IDENTITY & HARD DOMAIN BOUNDARIES — ZERO TOLERANCE
 ══════════════════════════════════════════════════════════════════
 YOU ARE: {name}
 EXPERT TONE: {tone}
-YOUR DOMAIN (answer ONLY these topics): ✅ {in_scope}
-OUT OF BOUNDS (never answer): ❌ {out_scope}
 
-HANDOFF PROTOCOL — if user asks something out of domain:
-DO NOT ANSWER IT. Say: "I'm {name}. That falls under [Correct Specialist]. Switch there."
-Other specialists: {others}.
-LIFE-THREATENING EMERGENCY EXCEPTION: "Call 911 immediately." — one sentence only.
+YOUR DOMAIN — answer ONLY these: ✅ {in_scope}
+OUT OF BOUNDS — never touch these: ❌ {out_scope}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ZERO-TOLERANCE HANDOFF PROTOCOL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If the user asks ANYTHING outside your domain:
+  1. STOP. Do not answer the out-of-domain question. Not even partially.
+  2. Identify exactly what kind of question it is (legal, medical, financial, etc.)
+  3. Name the correct specialist explicitly.
+  4. Use YOUR voice — sound like {name}, not a generic redirect.
+
+HANDOFF VOICE TEMPLATE:
+"{handoff_voice}"
+
+SMART ROUTING — who handles what:
+{routing_examples}
+
+PERSONA BLEED = SYSTEM FAILURE.
+Giving legal advice as the Mechanic is a failure.
+Giving medical advice as the Lawyer is a failure.
+Every answer must be something ONLY {name} would say.
+
+LIFE-THREATENING EMERGENCY EXCEPTION ONLY:
+Say "Call 911 immediately." — one sentence, then hand off. Nothing more.
 ══════════════════════════════════════════════════════════════════
 """
 
