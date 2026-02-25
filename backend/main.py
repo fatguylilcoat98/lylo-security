@@ -1655,6 +1655,88 @@ CRITICAL RULES:
 # PDF auto-dispatches immediately — no user prompt needed.
 # =============================================================================
 
+# Maps emergency types to the correct persona regardless of current seat
+_EMERGENCY_PERSONA_ROUTER = {
+    # Any message containing these keywords → auto-switch to this persona
+    "car wreck":          "lawyer",
+    "car accident":       "lawyer",
+    "just crashed":       "lawyer",
+    "i crashed":          "lawyer",
+    "was hit":            "lawyer",
+    "got hit":            "lawyer",
+    "fender bender":      "lawyer",
+    "collision":          "lawyer",
+    "someone hit me":     "lawyer",
+    "hit and run":        "lawyer",
+    "totaled my car":     "lawyer",
+    "being arrested":     "lawyer",
+    "they arrested":      "lawyer",
+    "under arrest":       "lawyer",
+    "eviction notice":    "lawyer",
+    "being evicted":      "lawyer",
+    "served papers":      "lawyer",
+    "chest pain":         "doctor",
+    "heart attack":       "doctor",
+    "stroke symptoms":    "doctor",
+    "face drooping":      "doctor",
+    "slurred speech":     "doctor",
+    "overdose":           "doctor",
+    "not breathing":      "doctor",
+    "unconscious":        "doctor",
+    "severe allergic":    "doctor",
+    "throat closing":     "doctor",
+    "seizure":            "doctor",
+    "having a seizure":   "doctor",
+    "account hacked":     "guardian",
+    "i got hacked":       "guardian",
+    "someone hacked":     "guardian",
+    "identity stolen":    "guardian",
+    "identity theft":     "guardian",
+    "credit card stolen": "guardian",
+    "unauthorized charges": "guardian",
+    "fraud on my account": "guardian",
+    "brake failure":      "mechanic",
+    "brakes failed":      "mechanic",
+    "brakes aren't working": "mechanic",
+    "no brakes":          "mechanic",
+    "tire blowout":       "mechanic",
+    "blew a tire":        "mechanic",
+    "engine overheating": "mechanic",
+    "car is smoking":     "mechanic",
+    "account drained":    "wealth",
+    "bank account empty": "wealth",
+    "money stolen":       "wealth",
+    "wire fraud":         "wealth",
+    "heat stroke":        "vitality",
+    "heat exhaustion":    "vitality",
+    "passed out from heat": "vitality",
+}
+
+
+def detect_emergency_and_route(persona: str, message: str) -> tuple[dict | None, str | None, str | None]:
+    """
+    Detects emergency in message regardless of current persona.
+    Returns (protocol, protocol_key, correct_persona).
+    If emergency detected on wrong persona — auto-switches to correct one.
+    """
+    msg_lower = message.lower()
+
+    # Check global router first — works from ANY persona
+    routed_persona = None
+    for kw, target_persona in _EMERGENCY_PERSONA_ROUTER.items():
+        if kw in msg_lower:
+            routed_persona = target_persona
+            break
+
+    # Use routed persona if found, otherwise check current persona
+    check_persona = routed_persona or persona
+
+    protocol, key = detect_emergency(check_persona, message)
+    if protocol:
+        return protocol, key, routed_persona  # routed_persona = None means no switch needed
+    return None, None, None
+
+
 _EMERGENCY_TRIGGERS = {
     "lawyer": {
         "keywords": [
@@ -2329,13 +2411,19 @@ async def chat(
 
     msg_lower = msg.lower()
 
-    # ── Emergency Protocol Detection — FIRES FIRST before any domain intercept ──
-    emergency_protocol, emergency_key = detect_emergency(persona, msg)
+    # ── Emergency Protocol Detection — FIRES FIRST, auto-switches persona ──
+    emergency_protocol, emergency_key, routed_persona = detect_emergency_and_route(persona, msg)
     if emergency_protocol:
-        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], persona)
-        logger.info(f"🚨 EMERGENCY DETECTED [{persona}] → {emergency_key} for {user_data['name']}")
+        # Auto-switch to the correct persona if user is on the wrong one
+        active_persona = routed_persona if routed_persona else persona
+        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], active_persona)
+        switched = routed_persona and routed_persona != persona
+        if switched:
+            logger.info(f"🚨 EMERGENCY AUTO-SWITCH [{persona}→{active_persona}] → {emergency_key} for {user_data['name']}")
+        else:
+            logger.info(f"🚨 EMERGENCY DETECTED [{active_persona}] → {emergency_key} for {user_data['name']}")
         asyncio.create_task(send_mission_report_email(
-            user_email, emergency_response["answer"], persona, user_name=user_data["name"]
+            user_email, emergency_response["answer"], active_persona, user_name=user_data["name"]
         ))
         async def _stream_emergency():
             sentences = split_into_sentences(emergency_response["answer"])
@@ -2343,7 +2431,7 @@ async def chat(
                 audio = await generate_audio_inline(sentence, voice)
                 yield f"data: {json.dumps({'type':'text','content':sentence,'audio_b64':audio})}\n\n"
                 await asyncio.sleep(0.008)
-            yield f"data: {json.dumps({'type':'meta','confidence_score':99,'scam_detected':False,'threat_level':'high','action_trigger':'email_dispatch','audio_b64':'','full_answer':emergency_response['answer']})}\n\n"
+            yield f"data: {json.dumps({'type':'meta','confidence_score':99,'scam_detected':False,'threat_level':'high','action_trigger':'email_dispatch','audio_b64':'','full_answer':emergency_response['answer'],'emergency':True,'switched_persona':active_persona,'persona_switched':switched})}\n\n"
         return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
                                   headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
     # ── END EMERGENCY — domain intercept below only fires for non-emergency messages ──
