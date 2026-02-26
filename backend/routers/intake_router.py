@@ -16,7 +16,7 @@ from io import BytesIO
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse
 from services.config import create_user_id
 from services.memory_engine import retrieve_intake_profile, store_intake_profile
