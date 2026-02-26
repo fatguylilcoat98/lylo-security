@@ -2876,9 +2876,20 @@ async def persona_hook(
 ):
     """Returns a personalized opening hook for the given persona."""
     try:
-        user_id   = create_user_id(user_email.lower().strip())
-        user_data = ELITE_USERS.get(user_email.lower().strip(), {"name": "Protected User"})
-        user_name = user_data.get("name", "Protected User")
+        email_lower = user_email.lower().strip()
+        user_id     = create_user_id(email_lower)
+        user_data   = ELITE_USERS.get(email_lower, {"name": "Protected User"})
+
+        # ── Name resolution priority: intake → ELITE_USERS → email prefix ──
+        intake_for_hook = await retrieve_intake_profile(user_id)
+        user_name = (
+            intake_for_hook.get("preferred_name") or
+            intake_for_hook.get("round1_preferred_name") or
+            user_data.get("name") or
+            email_lower.split("@")[0].capitalize()
+        ).strip()
+        if user_name == "Protected User" and "@" in email_lower:
+            user_name = email_lower.split("@")[0].replace(".", " ").title()
 
         # Try to get a fresh hook from the LLM
         PERSONA_HOOKS = {
