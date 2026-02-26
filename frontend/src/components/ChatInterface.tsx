@@ -450,10 +450,12 @@ function ChatInterface({
   const [lang, setLang] = useState<'en' | 'es'>(() =>
     (localStorage.getItem('lylo_lang') as 'en' | 'es') || 'en'
   );
+  const langRef = useRef<'en' | 'es'>(lang);
   const t = (key: string): string => UI_STRINGS[lang]?.[key] ?? UI_STRINGS.en[key] ?? key;
   const toggleLang = () => {
     const next: 'en' | 'es' = lang === 'en' ? 'es' : 'en';
     setLang(next);
+    langRef.current = next;
     localStorage.setItem('lylo_lang', next);
   };
 
@@ -745,7 +747,7 @@ function ChatInterface({
       fd.append('persona', activePersona.id); fd.append('user_email', userEmail);
       fd.append('user_location', ''); fd.append('vibe', communicationStyle);
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
-      fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse); fd.append('lang', lang);
+      fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse); fd.append('lang', langRef.current);
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
