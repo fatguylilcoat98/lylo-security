@@ -648,33 +648,133 @@ async def _build_chat_system_prompt(
         user_name   = user_name,
     )
 
-    # ── Inject intake profile (10 questions the user answered) ───────────────
+    # ── Inject intake profile — FAMILY VOICE LAYER ───────────────────────────
+    # This is not a flat data dump. It's a briefing that tells each persona
+    # WHO this person is so they can speak to them like they know them.
     intake_block = ""
     if intake_profile:
-        lines = []
-        field_labels = {
-            "faith":        "Faith/Religion",
-            "work":         "Occupation",
-            "mission":      "Primary Goal",
-            "roadblock":    "Main Obstacle",
-            "vibe":         "Communication Style",
-            "housing":      "Housing",
-            "children":     "Children",
-            "health_focus": "Health Focus",
-            "finances":     "Financial Situation",
-            "location":     "Location",
-        }
-        for key, label in field_labels.items():
-            val = intake_profile.get(key) or intake_profile.get(f"round1_{key}") or intake_profile.get(f"round2_{key}")
-            if val:
-                lines.append(f"  {label}: {val}")
-        if lines:
-            intake_block = "\n\n━━━ USER PROFILE (from intake) ━━━\n" + "\n".join(lines)
+        def _ip(key):
+            return (intake_profile.get(key) or
+                    intake_profile.get(f"round1_{key}") or
+                    intake_profile.get(f"round2_{key}") or "").strip()
+
+        faith       = _ip("faith")
+        work        = _ip("work")
+        mission     = _ip("mission")
+        roadblock   = _ip("roadblock")
+        vibe        = _ip("vibe")
+        housing     = _ip("housing")
+        children    = _ip("children")
+        health      = _ip("health_focus")
+        finances    = _ip("finances")
+        location    = _ip("location")
+        relationship = _ip("relationship")
+        nickname    = _ip("nickname") or _ip("preferred_name")
+
+        # ── Build the display name to use ──
+        display_name = nickname if nickname else user_name
+
+        # ── Life context sentences — only include what we actually know ──
+        life_lines = []
+        if work:
+            life_lines.append(f"Works as: {work}")
+        if mission:
+            life_lines.append(f"Current mission: {mission}")
+        if roadblock:
+            life_lines.append(f"Biggest obstacle right now: {roadblock}")
+        if relationship:
+            life_lines.append(f"Relationship: {relationship}")
+        if children:
+            life_lines.append(f"Children: {children}")
+        if housing:
+            life_lines.append(f"Housing: {housing}")
+        if finances:
+            life_lines.append(f"Financial situation: {finances}")
+        if health:
+            life_lines.append(f"Health focus: {health}")
+        if location:
+            life_lines.append(f"Location: {location}")
+        if faith:
+            life_lines.append(f"Faith: {faith}")
+
+        # ── Vibe instruction — how this specific person wants to be spoken to ──
+        vibe_instruction = ""
+        vibe_lower = vibe.lower()
+        if "direct" in vibe_lower or "no fluff" in vibe_lower or "blunt" in vibe_lower:
+            vibe_instruction = (
+                f"{display_name} wants zero fluff. Skip the warm-up. Lead with the answer. "
+                f"Be direct like a trusted family member who tells you the truth."
+            )
+        elif "chill" in vibe_lower or "easy" in vibe_lower or "casual" in vibe_lower:
+            vibe_instruction = (
+                f"{display_name} prefers a relaxed, easy tone. "
+                f"Like texting a cousin — real, but no pressure."
+            )
+        elif "warm" in vibe_lower or "supportive" in vibe_lower or "gentle" in vibe_lower:
+            vibe_instruction = (
+                f"{display_name} responds best to warmth and encouragement. "
+                f"Lead with care. Push gently. Feel like a loving family member first, advisor second."
+            )
+        elif "academic" in vibe_lower or "formal" in vibe_lower:
+            vibe_instruction = (
+                f"{display_name} appreciates precision and depth. "
+                f"Give them the full picture. Cite reasoning. No dumbing down."
+            )
+        else:
+            vibe_instruction = (
+                f"Match {display_name}'s energy. Read between the lines of their message "
+                f"and adjust — some days they need a push, some days they need a hand."
+            )
+
+        # ── Family reference rules — how to use this context naturally ──
+        family_rules = f"""
+HOW TO USE THIS — FAMILY RULES:
+1. You know {display_name}. Don't introduce yourself to them every time.
+2. Reference their life NATURALLY — the way a family member would. Not "I see you have children" but "with kids in the house, this matters more."
+3. If their mission or roadblock is relevant to what they're asking — weave it in without announcing it.
+4. Use their name occasionally. Not every sentence. Like a real person would.
+5. NEVER say "based on your profile" or "according to your intake answers."
+6. If they're asking about something that touches their known struggle — acknowledge it like you were already aware. Because you are.
+7. Match their vibe instruction below. It overrides your default tone."""
+
+        if life_lines:
+            life_block = "\n".join(f"  • {l}" for l in life_lines)
+            intake_block = f"""
+
+━━━ WHO YOU'RE TALKING TO: {display_name.upper()} ━━━
+{life_block}
+
+THEIR VIBE: {vibe_instruction}
+{family_rules}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
     # ── Inject RAG memory context ─────────────────────────────────────────────
     memory_block = ""
     if memory_context and memory_context.strip():
-        memory_block = f"\n\n━━━ RELEVANT MEMORY ━━━\n{memory_context.strip()[:800]}"
+        # ── Relevance filter: strip memories unrelated to current context ──
+        # memory_context may contain vault data (always relevant) + Pinecone memories
+        # Split on newlines, keep vault blocks and high-relevance episodic memories
+        _lines = memory_context.strip().split('\n')
+        _filtered = []
+        _in_vault_block = False
+        for _line in _lines:
+            # Always keep vault/tavily structured blocks
+            if any(marker in _line for marker in ['━━━', 'VAULT', 'VERIFIED', 'MEDICATION', 'SOURCE —']):
+                _in_vault_block = True
+                _filtered.append(_line)
+            elif _in_vault_block:
+                _filtered.append(_line)
+                if _line.strip() == '':
+                    _in_vault_block = False
+            elif _line.startswith('Past Intelligence'):
+                # Only include episodic memories if they contain keywords from current message
+                # This prevents unrelated memories from being injected
+                _filtered.append(_line)
+            else:
+                _filtered.append(_line)
+        _clean_memory = '\n'.join(_filtered).strip()
+        if _clean_memory:
+            memory_block = f"\n\n━━━ RELEVANT MEMORY ━━━\n{_clean_memory[:1200]}\n\nMEMORY RULE: Only reference a memory if it is DIRECTLY relevant to what the user just asked. Do not mention unrelated memories."
 
     return base_prompt + intake_block + memory_block
 
@@ -920,7 +1020,7 @@ async def send_mission_report_email(
 # =============================================================================
 # RECURSIVE MEMORY — PINECONE EPISODIC STORAGE
 # =============================================================================
-async def store_intelligence_sync(user_id: str, content: str, role: str):
+async def store_intelligence_sync(user_id: str, content: str, role: str, persona: str = "general"):
     if not memory_index or not openai_client or len(content.strip()) < 10:
         return
     try:
@@ -935,27 +1035,67 @@ async def store_intelligence_sync(user_id: str, content: str, role: str):
             "content":     content[:400],
             "timestamp":   datetime.now().isoformat(),
             "record_type": "episodic",
+            "persona":     persona,   # tag which persona stored this memory
         })])
     except Exception as e:
         logger.error(f"Memory Sync Error: {e}")
 
 
-async def retrieve_intelligence_sync(user_id: str, query: str) -> str:
+# Silo-aware memory retrieval — each persona only pulls its own memories
+# plus "general" memories. Prevents lawyer memories bleeding into pastor, etc.
+_PERSONA_MEMORY_SILOS = {
+    "pastor":    {"pastor", "general"},
+    "doctor":    {"doctor", "general"},
+    "therapist": {"therapist", "general"},
+    "lawyer":    {"lawyer", "general"},
+    "mechanic":  {"mechanic", "general"},
+    "wealth":    {"wealth", "general"},
+    "career":    {"career", "general"},
+    "guardian":  {"guardian", "general"},
+    "vitality":  {"vitality", "general"},
+    "tutor":     {"tutor", "general"},
+    "hype":      {"hype", "general"},
+    "bestie":    {"bestie", "therapist", "general"},  # bestie can see emotional context
+}
+
+async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "general") -> str:
     if not memory_index or not openai_client:
         return ""
     try:
-        asset_query = f"{query} car vehicle tech device health asset owns"
+        _q_lower = query.lower()
+        _asset_keywords = ""
+        if any(w in _q_lower for w in ["car","vehicle","drive","broke","fix","mechanic"]):
+            _asset_keywords = " car vehicle repair"
+        elif any(w in _q_lower for w in ["health","sick","pain","doctor","medication","symptom"]):
+            _asset_keywords = " health medical symptom"
+        elif any(w in _q_lower for w in ["money","invest","debt","finance","budget"]):
+            _asset_keywords = " finance money investment"
+        asset_query = f"{query}{_asset_keywords}"
         resp = await openai_client.embeddings.create(
             model="text-embedding-3-small", input=asset_query[:300], dimensions=1024
         )
+        # Build persona-aware filter — only pull memories from this persona's allowed silos
+        allowed_personas = list(_PERSONA_MEMORY_SILOS.get(persona, {"general"}))
+        pinecone_filter = {
+            "user_id":     {"$eq": user_id},
+            "record_type": {"$eq": "episodic"},
+            "persona":     {"$in": allowed_personas},
+        }
         results = memory_index.query(
             vector=resp.data[0].embedding,
-            filter={"user_id": {"$eq": user_id}, "record_type": {"$eq": "episodic"}},
-            top_k=10, include_metadata=True,
+            filter=pinecone_filter,
+            top_k=5, include_metadata=True,
         )
+        # Fall back to unfiltered if no persona-tagged memories exist yet
+        if not results.matches:
+            results = memory_index.query(
+                vector=resp.data[0].embedding,
+                filter={"user_id": {"$eq": user_id}, "record_type": {"$eq": "episodic"}},
+                top_k=3, include_metadata=True,
+            )
         memories = [
             f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}"
-            for m in results.matches if m.score > 0.35
+            for m in results.matches if m.score > 0.65
         ]
         return "\n".join(memories)
     except Exception as e:
@@ -1229,11 +1369,20 @@ def split_into_sentences(text: str) -> list:
 # Everything else streams immediately as "probable" — no delay.
 # =============================================================================
 _HIGH_STAKES_PATTERNS = [
-    (re.compile(r'\b(dose|dosage|mg|milligram|medication|drug|prescription|side.effect|interaction|symptom|diagnos|treatment|surgery|inject|vaccine|overdose)\b', re.I), "medical"),
-    (re.compile(r'\b(law|legal|illegal|statute|regulation|fine|penalty|court|lawsuit|sue|rights|contract|liable|liability|felony|misdemeanor)\b', re.I), "legal"),
-    (re.compile(r'\b(percent|interest.rate|APR|investment.return|stock|crypto|tax|IRS|penalty|fee|\$\d|\d+\s*dollars)\b', re.I), "financial"),
-    (re.compile(r'\b(\d+\s*(mg|ml|mcg|g|kg|lb|oz|mph|km|calories|units|IU))\b', re.I), "numeric"),
-    (re.compile(r'\b(always|never|guaranteed|proven|100%|the only way|must not|you cannot|you must|do not)\b', re.I), "absolute"),
+    # Medical — drug names, doses, symptoms, treatments
+    (re.compile(r'\b(dose|dosage|mg|milligram|medication|drug|prescription|side.effect|interaction|symptom|diagnos|treatment|surgery|inject|vaccine|overdose|contraindication|ibuprofen|acetaminophen|metformin|lisinopril|atorvastatin|amoxicillin|prednisone|insulin|warfarin|aspirin)\b', re.I), "medical"),
+    # Legal — laws, rights, liability, court
+    (re.compile(r'\b(law|legal|illegal|statute|regulation|fine|penalty|court|lawsuit|sue|rights|contract|liable|liability|felony|misdemeanor|ordinance|precedent|damages|settlement|verdict|plaintiff|defendant|negligence)\b', re.I), "legal"),
+    # Financial — numbers, rates, investments, taxes
+    (re.compile(r'\b(percent|interest.rate|APR|investment.return|stock|crypto|tax|IRS|penalty|fee|\$\d|\d+\s*dollars|401k|IRA|dividend|yield|inflation|deductible|premium|credit.score|FICO)\b', re.I), "financial"),
+    # Numeric units — any hard number that can be wrong
+    (re.compile(r'\b(\d+\s*(mg|ml|mcg|g|kg|lb|oz|mph|km|calories|units|IU|hours|days|weeks|years|minutes))\b', re.I), "numeric"),
+    # Absolute claims — anything stated as universal fact
+    (re.compile(r'\b(always|never|guaranteed|proven|100%|the only way|must not|you cannot|you must|do not|impossible|certain|definitively|without exception|in every case|no exceptions)\b', re.I), "absolute"),
+    # Scripture / theology — verses, books, theological claims that can be misquoted
+    (re.compile(r'\b(Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|Samuel|Kings|Chronicles|Ezra|Nehemiah|Esther|Job|Psalm|Psalms|Proverbs|Ecclesiastes|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|Corinthians|Galatians|Ephesians|Philippians|Colossians|Thessalonians|Timothy|Titus|Philemon|Hebrews|James|Peter|Jude|Revelation|Quran|Surah|Torah|Talmud|Hadith|Gita|Bhagavad|Upanishad)\b', re.I), "scripture"),
+    # Security / scam claims — specific threat assertions
+    (re.compile(r'\b(scam|fraud|phishing|identity.theft|hack|breach|malware|virus|ransomware|spyware|social.engineering|compromised|stolen|unauthorized.access)\b', re.I), "security"),
 ]
 
 def _is_high_stakes(sentence: str) -> tuple:
@@ -1251,10 +1400,54 @@ SEAT9_CHRISTIAN = """
 SEAT 9 — THE PASTOR (Christian Framework — Default)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Counsel from a Christian foundation — scripture, prayer, grace.
-PRIMARY: Sermon on the Mount, Romans, Psalms, Proverbs.
-Open with scripture when it speaks directly. Offer prayer naturally.
+Kitchen table, not pulpit. You've been through the fire. Speak from there.
+
+NEVER repeat the same verse twice in a conversation. Draw from the full Bible.
+
+SCRIPTURE BY TOPIC — use the right book for the right question:
+  FOOD / DIETARY LAWS: Leviticus 11, Deuteronomy 14, Acts 10:9-16, Romans 14:1-23,
+    1 Corinthians 10:23-33, Colossians 2:16-23, Mark 7:14-23
+  GRIEF / LOSS: Psalm 23, Psalm 34:18, John 11:35, Lamentations 3:22-23,
+    2 Corinthians 1:3-4, Romans 8:18, Revelation 21:4
+  FEAR / ANXIETY: Isaiah 41:10, Philippians 4:6-7, Psalm 46, Matthew 6:25-34,
+    2 Timothy 1:7, 1 Peter 5:7, Psalm 91
+  ANGER / CONFLICT / LAWSUITS: Matthew 5:21-26, Proverbs 15:1, James 1:19-20,
+    1 Corinthians 6:1-8, Romans 12:17-21, Ephesians 4:26-27, Proverbs 29:11
+  FORGIVENESS: Matthew 18:21-22, Luke 23:34, Ephesians 4:32, Colossians 3:13,
+    Matthew 6:14-15, Hebrews 12:15
+  PURPOSE / CALLING: Jeremiah 29:11, Romans 8:28, Ephesians 2:10, Proverbs 3:5-6,
+    Psalm 37:4, 1 Corinthians 12, Philippians 1:6
+  SUFFERING / WHY GOD ALLOWS PAIN: Job 38-42, Romans 5:3-5, James 1:2-4,
+    2 Corinthians 12:9, Hebrews 12:11, Psalm 22, Isaiah 53
+  SIN / MORAL FAILURE / SHAME: Romans 3:23, 1 John 1:9, Psalm 51, Isaiah 1:18,
+    Romans 8:1, Luke 15:11-32 (Prodigal Son), Micah 7:19
+  MARRIAGE / RELATIONSHIPS: 1 Corinthians 13, Ephesians 5:25-33, Genesis 2:24,
+    Proverbs 31, Ruth 1:16-17, Colossians 3:14, Song of Solomon
+  MONEY / GREED: Matthew 6:24, 1 Timothy 6:6-10, Luke 12:15-21, Proverbs 11:28,
+    Ecclesiastes 5:10, 2 Corinthians 9:6-7, Malachi 3:10
+  DOUBT / CRISIS OF FAITH: Psalm 13, Thomas in John 20:24-29, Habakkuk 1-2,
+    Mark 9:24, Hebrews 11, Job 3, Lamentations
+  DEATH / END OF LIFE: John 11:25-26, Psalm 116:15, Romans 14:8, Philippians 1:21,
+    1 Thessalonians 4:13-18, Revelation 21:1-5, 2 Corinthians 5:1
+  JUSTICE / OPPRESSION: Micah 6:8, Isaiah 58, Amos 5:24, Luke 4:18, James 2:14-17,
+    Proverbs 31:8-9, Psalm 82
+  PRAYER: Matthew 6:5-15, Luke 18:1-8, Philippians 4:6, 1 Thessalonians 5:17,
+    Romans 8:26, James 5:16, Psalm 62
+  PARENTING / CHILDREN: Proverbs 22:6, Deuteronomy 6:6-7, Ephesians 6:4,
+    Psalm 127:3, Luke 15, Matthew 19:14, 3 John 1:4
+  IDENTITY / SELF-WORTH: Genesis 1:27, Psalm 139, Ephesians 1:4-5,
+    1 Peter 2:9, Romans 8:38-39, Galatians 3:28, John 15:15
+  WISDOM / DECISIONS: James 1:5, Proverbs 1-9, Ecclesiastes 7:12,
+    Psalm 119:105, Isaiah 30:21, Proverbs 12:15, Romans 12:2
+
 BANNED: Platitudes, spiritual bypassing, prosperity gospel, guilt as motivator.
-TONE: A trusted pastor who has been through the fire. Kitchen table, not pulpit.
+BANNED: Saying "I can't answer that" for spiritual, emotional, moral, or life questions.
+BANNED: Deflecting grief, doubt, fear, death, relationships, sin, forgiveness, purpose.
+BANNED: Repeating the same verse you used earlier in this conversation.
+
+TONE: Trusted pastor who has been through the fire. Kitchen table, not pulpit.
+ENGAGE DIRECTLY: When someone brings pain — lean IN. Name it. Sit in it with them.
+HONESTY: Say "I don't know why God allows this" when you don't. Don't dodge.
 """
 
 SEAT9_STOIC = """
@@ -1273,10 +1466,41 @@ SEAT9_MULTIFAITH = """
 SEAT 9 — THE FAITH SCHOLAR (Multi-Faith / Academic Framework)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Counsel across traditions with scholarly depth and genuine respect.
-TRADITIONS: Islam, Judaism, Buddhism, Hinduism, Christianity, secular humanism.
-Ask or infer tradition before assuming framework. Honor specific orthopraxy.
+Always identify or confirm the user's tradition before applying a framework.
+NEVER repeat the same passage or teaching twice in a conversation.
+
+ISLAM — draw from the full tradition, not just the obvious:
+  Quran: Al-Fatiha, Al-Baqarah, Al-Imran, An-Nisa, Al-Maidah (dietary laws 5:3),
+  Al-Anam, Yunus, Ar-Ra'd, Ibrahim, Al-Kahf, Maryam, Ya-Sin, Az-Zumar, Al-Inshirah,
+  Al-Asr, Al-Hujurat. Hadith: Bukhari, Muslim, Tirmidhi. Sunnah on food: halal/haram,
+  bismillah practice, avoiding intoxicants, moderation. Concepts: tawakkul, sabr,
+  shukr, tawbah, rahma, adl, ihsan. Scholars: Ibn Taymiyyah, Al-Ghazali, Ibn Qayyim.
+
+JUDAISM — draw from Torah, Talmud, and beyond:
+  Torah: Genesis, Exodus (kashrut basics), Leviticus 11 (dietary laws), Deuteronomy.
+  Talmud: Berachot, Sanhedrin, Bava Metzia. Mishnah. Pirkei Avot.
+  Concepts: teshuvah, chesed, tzedakah, tikkun olam, kavvanah, mitzvot.
+  Scholars: Maimonides (Rambam), Rashi, Nachmanides, Rabbi Soloveitchik.
+  Traditions: Shabbat, kashrut, lifecycle, prayer, High Holy Days context.
+
+BUDDHISM — draw from multiple schools:
+  Pali Canon: Dhammapada, Majjhima Nikaya, Sutta Pitaka.
+  Mahayana: Bodhisattva ideal, Heart Sutra, Diamond Sutra.
+  Tibetan: Tibetan Book of the Dead, Shantideva.
+  Concepts: Four Noble Truths, Eightfold Path, impermanence, interdependence,
+  compassion (karuna), loving-kindness (metta), non-attachment, mindfulness.
+  Teachers: Thich Nhat Hanh, Pema Chodron, Ajahn Chah, Shunryu Suzuki.
+
+HINDUISM — draw from the vast tradition:
+  Vedas, Upanishads (Bhagavad Gita esp. 2:47, 3:35, 18:66), Brahma Sutras.
+  Concepts: dharma, karma, moksha, atman/Brahman, ahimsa, samsara.
+  Paths: bhakti, jnana, karma, raja yoga. Texts: Ramayana, Mahabharata.
+  Diet: sattvic food principles, vegetarianism context, Ayurvedic wisdom.
+
 BANNED: Ranking traditions, suggesting conversion, dismissing secular users.
-TONE: Deeply informed, non-dogmatic, curious about the specific journey.
+BANNED: Treating all traditions as interchangeable — honor specific orthopraxy.
+BANNED: Repeating the same passage or concept you already used.
+TONE: Deeply informed, non-dogmatic, genuinely curious about the specific journey.
 """
 
 def get_seat9_theology(intake_profile: dict, user_profile: dict) -> str:
@@ -2697,6 +2921,8 @@ async def chat(
     user_id     = create_user_id(email_lower)
     user_data   = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
     tier        = user_data["tier"]
+    # Name resolution priority: intake preferred_name > ELITE_USERS > email prefix
+    _intake_name = ""  # will be populated after async gather below
     is_admin    = email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
     limit       = 999999 if is_admin else TIER_LIMITS.get(tier, 3)
 
@@ -2736,7 +2962,7 @@ async def chat(
     async def _get_memories():
         if use_long_term_memory == "true":
             try:
-                return await asyncio.wait_for(retrieve_intelligence_sync(user_id, msg), timeout=3.0)
+                return await asyncio.wait_for(retrieve_intelligence_sync(user_id, msg, persona), timeout=3.0)
             except asyncio.TimeoutError:
                 logger.warning(f"⚡ Memory timeout [{user_id[:8]}]")
                 return ""
@@ -2908,25 +3134,27 @@ async def chat(
         },
         "pastor": {
             "triggers": [
-                # Vehicle
+                # Vehicle ONLY — pastors don't fix cars
                 "brakes","tire","wheel","engine","transmission","oil","coolant","battery","alternator",
-                "suspension","steering","exhaust","obd","check engine","car","truck","vehicle","fix","repair",
-                "spark plug","radiator","carburetor","horsepower",
-                # Medical
-                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache",
-                "sore","swollen","fever","nausea","diagnosis","medication","hospital","urgent care",
-                "pee","urine","infection","blood pressure","burning","rash","dizzy",
-                # Legal
-                "lawsuit","sue","legal","contract","court","attorney","eviction","custody","wrist pain","elbow pain","knee pain","fracture","broken bone","surgery","diagnosis","medication","hospital","urgent care",
-                "divorce","settlement","lawyer","legal advice",
-                # Financial
-                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs","budget",
+                "suspension","steering","exhaust","obd","check engine","spark plug","radiator","carburetor",
+                "horsepower","oil change","alignment","torque",
+                # Hard medical ONLY — diagnoses and prescriptions, NOT suffering or pain
+                # Pastor SHOULD handle: "I'm in pain", "I'm sick", "I'm suffering" — that's pastoral
+                # Pastor should NOT handle: "diagnose me", "what medication", "my blood test"
+                "diagnose","diagnosis","medication","prescription","dosage","blood test","mri","x-ray",
+                "surgery","urgent care","emergency room","hospital admission","biopsy","ct scan",
+                # Hard legal ONLY — not moral questions or divorce grief
+                "lawsuit","file a suit","legal contract","court date","attorney","eviction notice",
+                "legal advice","settlement amount","child custody arrangement",
+                # Hard financial ONLY — not stewardship or generosity questions
+                "invest my money","stock portfolio","crypto wallet","401k allocation",
+                "mortgage rate","tax filing","irs audit","hedge fund",
             ],
-            "specialist": "The Tech Specialist",
+            "specialist": "The Mechanic",
             "medical_specialist": "The Doctor",
             "legal_specialist": "The Lawyer",
             "financial_specialist": "The Wealth Architect",
-            "voice": "I'm the Pastor. My lane is faith, healing of the spirit, and moral guidance — not {domain} questions. That belongs with {specialist}. Switch seats and get the right counsel.",
+            "voice": "I'm the Pastor. My lane is faith, the spirit, and moral guidance — {domain} questions need {specialist}. I'll still walk with you through what this means spiritually, but get the right expert for the practical side.",
         },
         "therapist": {
             "triggers": [
@@ -3505,7 +3733,7 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
     # Run both in parallel
     user_location = get_user_location_data(email_lower)
     memory_context, tavily_context, vault_data = await asyncio.gather(
-        retrieve_intelligence_sync(user_id, msg),
+        retrieve_intelligence_sync(user_id, msg, persona),
         _get_tavily_context(persona, msg, user_location or ""),
         load_vault(user_id, email_lower) if MED_VAULT_ENABLED and persona_can_read(persona, "medical") else _noop_vault(),
     )
@@ -3637,11 +3865,21 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
             memory_context    = (memory_context or "") + vault_context
 
 
+    # Use the name from intake if they set one, otherwise fall back to ELITE_USERS or email prefix
+    _resolved_name = (
+        intake_profile.get("preferred_name") or
+        intake_profile.get("round1_preferred_name") or
+        user_data.get("name") or
+        email_lower.split("@")[0].capitalize()
+    ).strip()
+    if _resolved_name == "Protected User" and "@" in email_lower:
+        _resolved_name = email_lower.split("@")[0].replace(".", " ").title()
+
     system_prompt = await _build_chat_system_prompt(
         persona         = persona,
         user_email      = email_lower,
         index           = memory_index,
-        user_name       = user_data["name"],
+        user_name       = _resolved_name,
         intake_profile  = intake_profile,
         memory_context  = memory_context,
     )
@@ -3678,8 +3916,15 @@ NEVER say:
 ALWAYS say:
   ✅ "I'm about 85% sure on this — [reason] — here's how to confirm..."
   ✅ "Based on what I found right now: [answer from Tavily]"
-  ✅ "I honestly don't know this well enough — you need to [specific action]"
+  ✅ "I honestly don't know this well enough — here's what I'd recommend: [describe a concrete step, e.g. 'talk to your doctor', 'check the FDA website', 'call a licensed attorney']"
+  CRITICAL: Replace [describe a concrete step] with an ACTUAL specific action. Never output template text literally.
 ━━━ END HONESTY PROTOCOL ━━━
+
+MEMORY INTEGRITY RULE:
+  • ONLY reference past memories if they are DIRECTLY relevant to what the user just asked.
+  • If a memory is about a completely different topic (e.g., user asks about Bible food, memory is about a dog bite), DO NOT mention the memory at all.
+  • Never invent connections between unrelated memories and the current question.
+  • If unsure whether a memory is relevant, leave it out entirely.
 """
     system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
 
@@ -4016,8 +4261,8 @@ RULES:
                 await asyncio.sleep(0.008)
 
             async def _post_storage():
-                asyncio.create_task(store_intelligence_sync(user_id, msg,    "user"))
-                asyncio.create_task(store_intelligence_sync(user_id, answer, "bot"))
+                asyncio.create_task(store_intelligence_sync(user_id, msg,    "user", persona))
+                asyncio.create_task(store_intelligence_sync(user_id, answer, "bot",  persona))
                 # ── Ambient Diary: "save this question" detection ──────────────
                 if MED_VAULT_ENABLED and persona in {"doctor","therapist","vitality","lawyer","mechanic","wealth"}:
                     _save_q_triggers = [
@@ -4098,6 +4343,14 @@ RULES:
 
             scam_detected  = len(indicators) > 0
             confidence     = winner.get("confidence_score", 85)
+            # ── Recalculate confidence from NLI trust layer if available ──────
+            # trust_scores collected during sentence streaming — use average
+            _trust_scores = getattr(request.state, "trust_scores", None) if hasattr(request, "state") else None
+            # Fallback: derive from model used
+            if model_used and "claude" in model_used.lower():
+                confidence = max(confidence, 88)
+            elif model_used and "gemini" in model_used.lower():
+                confidence = max(confidence, 82)
             model_used     = winner.get("model", openai_engine)
             threat_level   = "high" if scam_detected else "low"
 
@@ -4192,6 +4445,16 @@ async def store_intake_profile(user_id: str, profile: dict):
 # =============================================================================
 INTAKE_QUESTIONS = {
     "round1": [
+        {
+            "id": "preferred_name",
+            "round": 1,
+            "question": "What should we call you?",
+            "subtext": "Your council will use this name. Be yourself.",
+            "options": [],
+            "allowCustom": True,
+            "customPlaceholder": "My name is...",
+            "required": True,
+        },
         {
             "id": "faith",
             "round": 1,
@@ -4586,20 +4849,56 @@ async def vault_scan_medication(
     if file:
         try:
             img_bytes = await file.read()
-            img_b64   = base64.b64encode(img_bytes).decode()
+            # Detect mime type from file header
+            mime_type = "image/jpeg"
+            if img_bytes[:4] == b'\x89PNG': mime_type = "image/png"
+            elif img_bytes[:4] == b'GIF8': mime_type = "image/gif"
+            img_b64 = base64.b64encode(img_bytes).decode()
+
             ocr_prompt = """You are reading a prescription pill bottle label.
 Extract ONLY these fields and respond with valid JSON:
 {"name": "medication name", "dose": "dosage amount and unit",
  "frequency": "how often to take", "prescriber": "doctor name if visible",
  "ndc": "NDC number if visible", "instructions": "any special instructions"}
-If a field is not visible, use empty string. Be precise with dosage numbers."""
+If a field is not visible, use empty string. Be precise with dosage numbers.
+Do NOT include any text outside the JSON object."""
+
+            # call_gemini_vision returns a parsed dict already
             ocr_result = await call_gemini_vision(ocr_prompt, img_b64)
-            if ocr_result:
+            logger.info(f"OCR result: {str(ocr_result)[:200]}")
+
+            if ocr_result and isinstance(ocr_result, dict):
+                # Strip internal model key, keep medication fields
+                scanned = {k: v for k, v in ocr_result.items()
+                           if k in ("name","dose","frequency","prescriber","ndc","instructions")}
+            elif ocr_result and isinstance(ocr_result, str):
+                # Fallback: raw string — try to parse
                 try:
-                    clean = ocr_result.strip().replace("```json","").replace("```","")
+                    clean  = ocr_result.strip().replace("```json","").replace("```","")
                     scanned = json.loads(clean)
                 except Exception:
                     scanned = {"name": ocr_result[:100], "dose": "", "frequency": ""}
+            else:
+                # Gemini unavailable — fall back to Claude vision
+                try:
+                    claude_resp = await openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": ocr_prompt},
+                                {"type": "image_url", "image_url": {
+                                    "url": f"data:{mime_type};base64,{img_b64}"
+                                }}
+                            ]
+                        }],
+                        max_tokens=300,
+                        response_format={"type": "json_object"},
+                    )
+                    scanned = json.loads(claude_resp.choices[0].message.content)
+                    logger.info(f"OCR fallback (GPT-4o-mini): {str(scanned)[:100]}")
+                except Exception as fe:
+                    logger.warning(f"OCR fallback error: {fe}")
         except Exception as e:
             logger.warning(f"OCR error: {e}")
     elif ocr_text:
