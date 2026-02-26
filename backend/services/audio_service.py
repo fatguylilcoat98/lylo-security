@@ -29,3 +29,4 @@ async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
     except Exception as e:
         logger.warning(f"⚡ Inline TTS failed ({safe_voice}): {e}")
         return ""
+
