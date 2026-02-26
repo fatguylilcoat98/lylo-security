@@ -3,6 +3,7 @@ LYLO OS — routers/chat_router.py
 Endpoints: /generate-audio, /persona-hook, /chat
 This is the main intelligence engine — all AI response logic lives here.
 """
+import datetime
 import re
 import json
 import time
