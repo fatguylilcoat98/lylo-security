@@ -7,6 +7,7 @@ All Pinecone read/write operations:
   - retrieve/store intake_profile
   - vault core (encrypted load/save)
 """
+import datetime
 import re
 import json
 import time
