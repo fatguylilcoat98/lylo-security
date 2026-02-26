@@ -1,16 +1,112 @@
+"""LYLO OS — routers/session_router.py
+Endpoints: /ui-strings, /send-session-report, /health, /
 """
-LYLO OS — routers/session_router.py
-Endpoints: /send-session-report, /health, /ui-strings, /obd2, /
-"""
+import re
 import os
+import json
+import time
+import asyncio
+import base64
+import hashlib
 import logging
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
+
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse, HTMLResponse
-from services.config import create_user_id, ELITE_USERS
+from services.config import (
+    create_user_id, ELITE_USERS, openai_client,
+    gemini_client, claude_client, WAITLIST_DB,
+)
 from services.pdf_mailer import send_mission_report_email
-
 logger = logging.getLogger("LYLO.Session")
 router = APIRouter()
+
+_UI_STRINGS = {
+    "en": {
+        "welcome":          "Welcome to LYLO",
+        "tagline":          "Your Digital Bodyguard",
+        "login_prompt":     "Enter your email to access your council",
+        "login_button":     "Access My Council",
+        "language_toggle":  "Español",
+        "end_session":      "End Session",
+        "send_report":      "Send Report to Email",
+        "report_prompt":    "Would you like this session report sent to your email?",
+        "report_yes":       "Yes, send it",
+        "report_no":        "No thanks",
+        "complete_profile": "Complete Your Profile",
+        "profile_prompt":   "5 quick questions to sharpen your council's advice — takes 60 seconds.",
+        "profile_cta":      "Let's Do It",
+        "profile_skip":     "Maybe Later",
+        "emergency_next":   "Done — Next Step",
+        "emergency_done":   "All Steps Complete",
+        "step_label":       "Step",
+        "of_label":         "of",
+        "intake_round1":    "Quick Start · Question",
+        "intake_round2":    "Profile · Question",
+        "custom_prompt":    "Type your own answer...",
+        "skip":             "Skip",
+        "back":             "Back",
+        "personas": {
+            "mechanic":  "The Mechanic",
+            "doctor":    "The Doctor",
+            "lawyer":    "Legal Shield",
+            "wealth":    "Wealth Architect",
+            "therapist": "The Therapist",
+            "career":    "Career Coach",
+            "tutor":     "The Tutor",
+            "vitality":  "Vitality Coach",
+            "hype":      "Hype Engine",
+            "bestie":    "The Bestie",
+            "pastor":    "The Pastor",
+            "guardian":  "The Guardian",
+        },
+    },
+    "es": {
+        "welcome":          "Bienvenido a LYLO",
+        "tagline":          "Tu Guardaespaldas Digital",
+        "login_prompt":     "Ingresa tu correo para acceder a tu consejo",
+        "login_button":     "Acceder a Mi Consejo",
+        "language_toggle":  "English",
+        "end_session":      "Terminar Sesión",
+        "send_report":      "Enviar Reporte al Correo",
+        "report_prompt":    "¿Quieres que te enviemos el reporte de esta sesión?",
+        "report_yes":       "Sí, envíalo",
+        "report_no":        "No, gracias",
+        "complete_profile": "Completa Tu Perfil",
+        "profile_prompt":   "5 preguntas rápidas para mejorar los consejos de tu consejo — solo 60 segundos.",
+        "profile_cta":      "Vamos",
+        "profile_skip":     "Quizás Después",
+        "emergency_next":   "Listo — Siguiente Paso",
+        "emergency_done":   "Todos los Pasos Completados",
+        "step_label":       "Paso",
+        "of_label":         "de",
+        "intake_round1":    "Inicio Rápido · Pregunta",
+        "intake_round2":    "Perfil · Pregunta",
+        "custom_prompt":    "Escribe tu propia respuesta...",
+        "skip":             "Omitir",
+        "back":             "Atrás",
+        "personas": {
+            "mechanic":  "El Mecánico",
+            "doctor":    "El Doctor",
+            "lawyer":    "Escudo Legal",
+            "wealth":    "Arquitecto de Riqueza",
+            "therapist": "El Terapeuta",
+            "career":    "Asesor de Carrera",
+            "tutor":     "El Tutor",
+            "vitality":  "Coach de Vitalidad",
+            "hype":      "Motor de Hype",
+            "bestie":    "Tu Mejor Amigo",
+            "pastor":    "El Pastor",
+            "guardian":  "El Guardián",
+        },
+    },
+}
+
 
 @router.get("/ui-strings")
 async def get_ui_strings(lang: str = "en"):
@@ -83,6 +179,3 @@ async def root():
         "message": "Digital Bodyguard OS — Protecting lives through intelligence.",
     }
 
-
-
-# =============================================================================
