@@ -2,6 +2,8 @@
 LYLO OS — routers/obd_router.py
 Endpoints: /obd-handshake, /obd2
 """
+import json
+import asyncio
 import logging
 from fastapi import APIRouter, Form
 from fastapi.responses import HTMLResponse
