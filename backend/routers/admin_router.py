@@ -1,196 +1,181 @@
+"""LYLO OS — routers/session_router.py
+Endpoints: /ui-strings, /send-session-report, /health, /
 """
-LYLO OS — routers/admin_router.py
-Endpoints: /join-waitlist, /view-waitlist, /beta-status,
-           /activate-beta, /view-paid-queue, /webhook (Stripe)
-"""
+import re
 import os
-import smtplib
 import json
+import time
+import asyncio
+import base64
+import hashlib
 import logging
-import stripe
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from services.config import (
-    STRIPE_WEBHOOK_SECRET, ELITE_USERS, ELITE_TIERS,
-    ADMIN_USERS, _save_beta_users, _load_beta_users, create_user_id
-)
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
 
-logger = logging.getLogger("LYLO.Admin")
+from fastapi import APIRouter, Form
+from fastapi.responses import JSONResponse, HTMLResponse
+from services.config import (
+    create_user_id, ELITE_USERS, openai_client,
+    gemini_client, claude_client, WAITLIST_DB,
+)
+from services.pdf_mailer import send_mission_report_email
+logger = logging.getLogger("LYLO.Session")
 router = APIRouter()
 
-# =============================================================================
-# WAITLIST & PAID QUEUE
-# =============================================================================
-class WaitlistRequest(BaseModel):
-    email: str
-
-WAITLIST_FILE   = "waitlist.json"
-PAID_QUEUE_FILE = "paid_queue.json"
-
-try:
-    with open(WAITLIST_FILE, "r") as _f:
-        WAITLIST_DB = set(json.load(_f))
-except Exception:
-    WAITLIST_DB = set()
-
-try:
-    with open(PAID_QUEUE_FILE, "r") as _f:
-        PAID_QUEUE_DB = json.load(_f)
-except Exception:
-    PAID_QUEUE_DB = {}
-
-
-@router.post("/join-waitlist")
-async def join_waitlist(request: WaitlistRequest):
-    email_clean = request.email.lower().strip()
-    WAITLIST_DB.add(email_clean)
-    try:
-        with open(WAITLIST_FILE, "w") as f:
-            json.dump(list(WAITLIST_DB), f)
-    except Exception as e:
-        logger.error(f"Failed to save waitlist: {e}")
-
-    # ── Notify Chris every time someone joins ─────────────────────────────
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-        smtp_user = os.getenv("SMTP_USERNAME", "")
-        smtp_pass = os.getenv("SMTP_PASSWORD", "")
-        if smtp_user and smtp_pass:
-            msg = MIMEText(
-                f"New waitlist signup: {email_clean}\n\n"
-                f"Total on waitlist: {len(WAITLIST_DB)}\n\n"
-                f"To activate as beta tester reply or use:\n"
-                f"POST /activate-beta\n"
-                f"  admin_email: stangman9898@gmail.com\n"
-                f"  tester_email: {email_clean}\n"
-                f"  tester_name: [their name]\n"
-                f"  slot_number: [1-20]",
-                "plain"
-            )
-            msg["Subject"] = f"🔔 LYLO Waitlist — New Signup #{len(WAITLIST_DB)}: {email_clean}"
-            msg["From"]    = smtp_user
-            msg["To"]      = "stangman9898@gmail.com"
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_user, "stangman9898@gmail.com", msg.as_string())
-            logger.info(f"✅ Waitlist notification sent for {email_clean}")
-    except Exception as e:
-        logger.warning(f"Waitlist notify failed (non-critical): {e}")
-
-    return {"status": "success", "message": "Spot Secured"}
-
-
-@router.get("/view-waitlist/{admin_email}")
-async def view_waitlist(admin_email: str):
-    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
-        return {"status": "AUTHORIZED", "total_waiting": len(WAITLIST_DB), "emails": list(WAITLIST_DB)}
-    return {"error": "UNAUTHORIZED ACCESS"}
-
-
-@router.get("/beta-status/{admin_email}")
-async def beta_status(admin_email: str):
-    """Admin endpoint — see all 20 beta slots, which are filled vs open."""
-    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
-        return {"error": "UNAUTHORIZED"}
-    slots = {
-        email: data for email, data in ELITE_USERS.items()
-        if data.get("beta") is True
-    }
-    filled = {e: d for e, d in slots.items() if "placeholder.com" not in e}
-    open_slots = {e: d for e, d in slots.items() if "placeholder.com" in e}
-    return {
-        "total_slots":  20,
-        "filled":       len(filled),
-        "open":         len(open_slots),
-        "filled_slots": filled,
-        "open_slots":   list(open_slots.keys()),
-        "waitlist_queue": list(WAITLIST_DB),
-    }
+_UI_STRINGS = {
+    "en": {
+        "welcome":          "Welcome to LYLO",
+        "tagline":          "Your Digital Bodyguard",
+        "login_prompt":     "Enter your email to access your council",
+        "login_button":     "Access My Council",
+        "language_toggle":  "Español",
+        "end_session":      "End Session",
+        "send_report":      "Send Report to Email",
+        "report_prompt":    "Would you like this session report sent to your email?",
+        "report_yes":       "Yes, send it",
+        "report_no":        "No thanks",
+        "complete_profile": "Complete Your Profile",
+        "profile_prompt":   "5 quick questions to sharpen your council's advice — takes 60 seconds.",
+        "profile_cta":      "Let's Do It",
+        "profile_skip":     "Maybe Later",
+        "emergency_next":   "Done — Next Step",
+        "emergency_done":   "All Steps Complete",
+        "step_label":       "Step",
+        "of_label":         "of",
+        "intake_round1":    "Quick Start · Question",
+        "intake_round2":    "Profile · Question",
+        "custom_prompt":    "Type your own answer...",
+        "skip":             "Skip",
+        "back":             "Back",
+        "personas": {
+            "mechanic":  "The Mechanic",
+            "doctor":    "The Doctor",
+            "lawyer":    "Legal Shield",
+            "wealth":    "Wealth Architect",
+            "therapist": "The Therapist",
+            "career":    "Career Coach",
+            "tutor":     "The Tutor",
+            "vitality":  "Vitality Coach",
+            "hype":      "Hype Engine",
+            "bestie":    "The Bestie",
+            "pastor":    "The Pastor",
+            "guardian":  "The Guardian",
+        },
+    },
+    "es": {
+        "welcome":          "Bienvenido a LYLO",
+        "tagline":          "Tu Guardaespaldas Digital",
+        "login_prompt":     "Ingresa tu correo para acceder a tu consejo",
+        "login_button":     "Acceder a Mi Consejo",
+        "language_toggle":  "English",
+        "end_session":      "Terminar Sesión",
+        "send_report":      "Enviar Reporte al Correo",
+        "report_prompt":    "¿Quieres que te enviemos el reporte de esta sesión?",
+        "report_yes":       "Sí, envíalo",
+        "report_no":        "No, gracias",
+        "complete_profile": "Completa Tu Perfil",
+        "profile_prompt":   "5 preguntas rápidas para mejorar los consejos de tu consejo — solo 60 segundos.",
+        "profile_cta":      "Vamos",
+        "profile_skip":     "Quizás Después",
+        "emergency_next":   "Listo — Siguiente Paso",
+        "emergency_done":   "Todos los Pasos Completados",
+        "step_label":       "Paso",
+        "of_label":         "de",
+        "intake_round1":    "Inicio Rápido · Pregunta",
+        "intake_round2":    "Perfil · Pregunta",
+        "custom_prompt":    "Escribe tu propia respuesta...",
+        "skip":             "Omitir",
+        "back":             "Atrás",
+        "personas": {
+            "mechanic":  "El Mecánico",
+            "doctor":    "El Doctor",
+            "lawyer":    "Escudo Legal",
+            "wealth":    "Arquitecto de Riqueza",
+            "therapist": "El Terapeuta",
+            "career":    "Asesor de Carrera",
+            "tutor":     "El Tutor",
+            "vitality":  "Coach de Vitalidad",
+            "hype":      "Motor de Hype",
+            "bestie":    "Tu Mejor Amigo",
+            "pastor":    "El Pastor",
+            "guardian":  "El Guardián",
+        },
+    },
+}
 
 
-@router.post("/activate-beta")
-async def activate_beta(
-    admin_email: str = Form(...),
-    tester_email: str = Form(...),
-    tester_name:  str = Form(...),
-    slot_number:  int = Form(...),
+@router.get("/ui-strings")
+async def get_ui_strings(lang: str = "en"):
+    """Returns UI strings in the requested language (en or es)."""
+    lang_clean = lang.lower().strip()[:2]
+    strings    = _UI_STRINGS.get(lang_clean, _UI_STRINGS["en"])
+    return JSONResponse({"lang": lang_clean, "strings": strings})
+
+
+@router.post("/send-session-report")
+async def send_session_report(
+    user_email: str = Form(...),
+    persona:    str = Form("guardian"),
+    content:    str = Form(...),
+    user_name:  str = Form("Protected User"),
 ):
-    """Admin endpoint — fill a beta slot with a real tester email."""
-    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
-        return {"error": "UNAUTHORIZED"}
-    slot_key = f"beta_slot_{slot_number}@placeholder.com"
-    if slot_key not in ELITE_USERS:
-        return {"error": f"Slot {slot_number} not found or already filled"}
-    del ELITE_USERS[slot_key]
-    clean_email = tester_email.lower().strip()
-    clean_name  = tester_name.strip()
-    # Save to persistent file — survives ALL redeploys
-    _BETA_USERS_DB[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
-    _save_beta_users(_BETA_USERS_DB)
-    # Update runtime immediately
-    ELITE_USERS[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
-    logger.info(f"✅ Beta slot {slot_number} activated → {clean_email} persisted to beta_users.json")
-    return {"status": "activated", "slot": slot_number, "email": clean_email, "name": clean_name}
-
-
-@router.get("/view-paid-queue/{admin_email}")
-async def view_paid_queue(admin_email: str):
-    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
-        return {"status": "AUTHORIZED", "total_pending": len(PAID_QUEUE_DB), "pending_users": PAID_QUEUE_DB}
-    return {"error": "UNAUTHORIZED ACCESS"}
-
-# =============================================================================
-# STRIPE WEBHOOK
-# =============================================================================
-@router.post("/webhook")
-async def stripe_webhook(request: Request):
-    payload    = await request.body()
-    sig_header = request.headers.get("stripe-signature")
+    """
+    Called when user taps 'End Session' and confirms they want the PDF.
+    This is the ONLY place PDFs are dispatched for regular chat sessions.
+    Emergency protocols do NOT auto-send — they wait for this too.
+    """
+    if not content.strip():
+        return JSONResponse({"status": "skipped", "reason": "no content"})
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        await send_mission_report_email(
+            to_email     = user_email.lower().strip(),
+            content      = content,
+            persona_name = persona,
+            user_name    = user_name,
+        )
+        logger.info(f"📄 Session report sent → {user_email} [{persona}]")
+        return JSONResponse({"status": "sent"})
+    except Exception as e:
+        logger.error(f"Session report send failed: {e}")
+        return JSONResponse({"status": "error", "reason": str(e)}, status_code=500)
 
-    if event["type"] == "checkout.session.completed":
-        session        = event["data"]["object"]
-        customer_email = session.get("customer_details", {}).get("email")
-        amount_total   = session.get("amount_total", 0)
 
-        if customer_email:
-            email_lower = customer_email.lower().strip()
-            new_tier = "free"
-            if amount_total in [199, 1999]:    new_tier = "pro"
-            elif amount_total in [499, 4999]:  new_tier = "elite"
-            elif amount_total >= 999:          new_tier = "max"
+@router.get("/health")
+async def health_check():
+    """Render uptime monitoring + quick system status."""
+    return {
+        "status":   "healthy",
+        "version":  "31.0.0",
+        "engines": {
+            "openai":  bool(openai_client),
+            "gemini":  bool(gemini_client),
+            "claude":  bool(claude_client),
+        },
+        "beta_slots_filled": sum(1 for e, d in ELITE_USERS.items() if d.get("beta") and "placeholder.com" not in e),
+        "waitlist_count":    len(WAITLIST_DB),
+    }
 
-            if email_lower in ELITE_USERS:
-                ELITE_USERS[email_lower]["tier"] = new_tier
-                logger.info(f"💰 STRIPE: Upgraded {email_lower} to {new_tier.upper()}")
-            else:
-                PAID_QUEUE_DB[email_lower] = {
-                    "tier":   new_tier,
-                    "name":   email_lower.split("@")[0].capitalize(),
-                    "status": "pending_admin_approval",
-                }
-                try:
-                    with open(PAID_QUEUE_FILE, "w") as f:
-                        json.dump(PAID_QUEUE_DB, f)
-                except Exception as e:
-                    logger.error(f"Failed to save paid queue: {e}")
-                logger.info(f"💰 STRIPE: New user {email_lower} → MANUAL APPROVAL QUEUE")
 
-            if email_lower in WAITLIST_DB:
-                WAITLIST_DB.discard(email_lower)
-                try:
-                    with open(WAITLIST_FILE, "w") as f:
-                        json.dump(list(WAITLIST_DB), f)
-                except Exception as e:
-                    logger.error(f"Waitlist removal error: {e}")
+@router.get("/obd2")
+async def serve_obd2_schematic():
+    """Serve the OBDLink integration schematic — shareable link for partners."""
+    schematic_path = os.path.join(os.path.dirname(__file__), "lylo_obd2_schematic.html")
+    if os.path.exists(schematic_path):
+        with open(schematic_path, "r") as f:
+            html = f.read()
+        return HTMLResponse(content=html)
+    return HTMLResponse(content="<h1>Schematic not found</h1>", status_code=404)
 
-    return {"status": "success"}
 
-# =============================================================================
+@router.get("/")
+async def root():
+    return {
+        "status":  "LYLO OS Active",
+        "version": "31.0.0 — KERNEL v31 | TRIPLE ENGINE | CLAUDE VALIDATOR | OBD-II",
+        "message": "Digital Bodyguard OS — Protecting lives through intelligence.",
+    }
+
