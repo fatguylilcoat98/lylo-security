@@ -33,7 +33,7 @@ import {
   Zap, Brain, LogOut, X, ArrowRight, Briefcase, Bell, Info,
   ExternalLink, Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock,
   Compass, Star, Users, Target, Flame, Heart, Sliders, ChevronLeft, ChevronRight,
-  CheckCircle, Globe,
+  CheckCircle,
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -502,7 +502,7 @@ function ChatInterface({
 
   // [V31.1-3] End Session + PDF modal state
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
-  const [sessionContent, setSessionContent]             = useState('');
+
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -724,7 +724,7 @@ function ChatInterface({
 
   // [V31.1-3] Collect session content as messages arrive
   const appendSessionContent = (content: string, sender: 'user' | 'bot') => {
-    if (content.trim()) setSessionContent(prev => prev + (prev ? '\n' : '') + `[${sender.toUpperCase()}]: ${content}`);
+    if (content.trim()) sessionContentRef.current += (sessionContentRef.current ? '\n' : '') + `[${sender.toUpperCase()}]: ${content}`;
   };
 
   const handleSend = async () => {
@@ -838,7 +838,7 @@ function ChatInterface({
     const bp = PERSONAS.find(p => p.id === 'bestie'); if (bp) handlePersonaChange(bp);
   };
 
-  const handleInternalBack = () => { setMessages([]); setShowPersonaGrid(true); setSessionContent(''); aqm.stop(); setIsSpeaking(false); };
+  const handleInternalBack = () => { setMessages([]); setShowPersonaGrid(true); sessionContentRef.current = ''; aqm.stop(); setIsSpeaking(false); };
   const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
   const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
@@ -868,14 +868,14 @@ function ChatInterface({
   // [V31.1-3] Send session report to backend
   const sendSessionReport = async () => {
     setShowEndSessionModal(false);
-    if (!sessionContent.trim()) { setSessionContent(''); return; }
+    if (!sessionContentRef.current.trim()) { return; }
     try {
       const fd = new FormData();
       fd.append('user_email', userEmail); fd.append('persona', activePersona.id);
-      fd.append('content', sessionContent); fd.append('user_name', userName);
+      fd.append('content', sessionContentRef.current); fd.append('user_name', userName);
       await fetch(`${API_URL}/send-session-report`, { method: 'POST', body: fd });
     } catch (e) { console.warn('[PDF] send failed:', e); }
-    setSessionContent('');
+    sessionContentRef.current = '';
   };
 
   const handleEmailDispatch = async (content: string) => {
@@ -931,7 +931,7 @@ function ChatInterface({
       <div className="fixed inset-0 bg-[#080808] flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
         {/* Language toggle on intake screen */}
         <button onClick={toggleLang} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-xs font-bold hover:bg-white/10 transition-all">
-          <Globe className="w-3.5 h-3.5" /> {t('lang_toggle')}
+          {t('lang_toggle')}
         </button>
 
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -1134,7 +1134,7 @@ function ChatInterface({
                 {t('report_yes')}
               </button>
               <button
-                onClick={() => { setShowEndSessionModal(false); setSessionContent(''); }}
+                onClick={() => { setShowEndSessionModal(false); sessionContentRef.current = ''; }}
                 className="flex-1 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-all active:scale-95"
               >
                 {t('report_no')}
@@ -1167,7 +1167,7 @@ function ChatInterface({
                 <div className="mb-6 space-y-3">
                   <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Type className="w-5 h-5 text-blue-400" /><span className="font-bold">Text Size</span></div><span className="text-xs font-black uppercase tracking-widest text-gray-400">Level {fontLevel}</span></button>
                   <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3">{isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}<span className="font-bold">Voice Output</span></div><span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'OFF'}</span></button>
-                  <button onClick={toggleLang} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Globe className="w-5 h-5 text-yellow-400" /><span className="font-bold">Language</span></div><span className="text-xs font-black uppercase tracking-widest text-yellow-400">{lang.toUpperCase()}</span></button>
+                  <button onClick={toggleLang} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Star className="w-5 h-5 text-yellow-400" /><span className="font-bold">Language</span></div><span className="text-xs font-black uppercase tracking-widest text-yellow-400">{lang.toUpperCase()}</span></button>
                   <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(0); setOnboardingRound(1); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Info className="w-5 h-5 text-blue-400" /><span className="font-bold">Rebuild My Profile</span></div></button>
                   {canInstall && (<button onClick={() => { setShowDropdown(false); handleInstallClick(); }} className="w-full p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl text-white flex items-center justify-between hover:bg-blue-600/20 transition-colors"><div className="flex items-center gap-3"><ArrowRight className="w-5 h-5 text-blue-400" /><span className="font-bold">Install LYLO OS</span></div><span className="text-[9px] text-blue-400 font-black uppercase tracking-widest">Home Screen</span></button>)}
                   {/* [V31.1-3] End Session button */}
