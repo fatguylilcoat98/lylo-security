@@ -292,10 +292,5 @@ async def get_or_create_vault(user_id: str, email: str, pin: str = "") -> dict:
         vault = empty_medical_vault()
         await save_vault(user_id, email, vault, pin)
     return vault
+
 async def _noop_vault(): return None
-
-
-# =============================================================================
-# PERSONALIZED SEARCH (TAVILY)
-# =============================================================================
-async def search_personalized_web(query: str, location: str = "") -> str:
