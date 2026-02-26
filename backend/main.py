@@ -159,6 +159,10 @@ TIER_LIMITS = {
 }
 
 USAGE_TRACKER        = defaultdict(int)
+# ── Conversation persona context — remembers last 3 messages per user ─────────
+# Prevents re-routing the same message if it was already handled correctly
+CONVO_CONTEXT: dict[str, list[dict]] = defaultdict(list)
+MAX_CONVO_CONTEXT = 6  # last 6 turns per user
 AUTHORIZED_DEVICES   = defaultdict(set)
 MAX_DEVICES_PER_USER = 2
 
@@ -285,8 +289,11 @@ def _save_beta_users(data: dict):
 
 # ADMIN accounts — always in code, never wiped
 ADMIN_USERS = {
-    "stangman9898@gmail.com": {"tier": "max", "name": "Christopher"},
-    "mylylo.ai@gmail.com":    {"tier": "max", "name": "LYLO Admin"},
+    "stangman9898@gmail.com":    {"tier": "max", "name": "Christopher"},
+    "mylylo.ai@gmail.com":       {"tier": "max", "name": "LYLO Admin"},
+    # ── Real beta testers (hardcoded so they always have access) ───────────
+    "bearjcameron@icloud.com":   {"tier": "pro", "name": "Bear",   "beta": True},
+    "paintonmynails80@gmail.com": {"tier": "pro", "name": "Aubrey", "beta": True},
 }
 
 # Beta testers — loaded from file, survives all redeploys
@@ -522,7 +529,8 @@ def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     msg_lower = message.lower()
     for category, keywords in PIN_KEYWORDS.items():
         for kw in keywords:
-            if kw in msg_lower:
+            pattern = r'\b' + re.escape(kw) + r'\b'
+            if re.search(pattern, msg_lower):
                 return (message.strip()[:200], category)
     return None
 
@@ -1637,9 +1645,9 @@ async def validate_with_claude(
     if not claude_client:
         return {"answer": winner_answer, "claude_validated": False}
 
-    # Only validate if structural headers are present — skip simple greetings
-    has_headers = any(h in winner_answer for h in _STRUCTURAL_HEADERS)
-    if not has_headers:
+    # Skip only ultra-short responses (greetings, 1-2 word replies)
+    # Everything else gets validated — no more casual bleed-through
+    if len(winner_answer.strip()) < 80:
         return {"answer": winner_answer, "claude_validated": False, "skipped": True}
 
     name_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
@@ -2078,33 +2086,47 @@ def detect_emergency(persona: str, message: str) -> tuple[dict | None, str | Non
 
 def build_emergency_response(protocol: dict, user_name: str, persona: str) -> dict:
     """
-    Builds a structured emergency response from a protocol.
-    Always triggers email_dispatch — emergencies always get PDFs.
+    Builds a step-by-step emergency response.
+    Returns steps as structured list so frontend can show one step at a time
+    with a 'Done — Next Step' button after each one.
+    PDF only sends when user taps End Session — NOT auto-dispatched here.
     """
     name_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
-    steps_text = "\n".join(f"{step}" for step in protocol["steps"])
-    warning = protocol.get("critical_warning", "")
+    steps        = protocol.get("steps", [])
+    warning      = protocol.get("critical_warning", "")
 
+    # Build intro message — calm, clear, direct
+    intro = (
+        f"{user_name}, I've got you. Stay calm and follow these steps one at a time. "
+        f"Tap **Done — Next Step** after you complete each one."
+    )
+
+    # Full text version (for PDF and fallback display)
+    steps_text = "\n".join(
+        f"**Step {i+1}:** {step}" for i, step in enumerate(steps)
+    )
     answer = f"""{protocol['title']}
 
-{user_name}, stop and focus. Here is exactly what to do right now:
+{intro}
 
 {steps_text}
 
-⚠️ CRITICAL: {warning}
+⚠️ {warning}
 
-— {name_display}
-This protocol has been sent to your email for reference."""
+— {name_display}"""
 
     return {
         "answer":           answer,
         "confidence_score": 99,
         "scam_detected":    False,
         "threat_level":     "high",
-        "action_trigger":   "email_dispatch",
+        "action_trigger":   None,          # PDF only on End Session — not auto
         "model":            f"LYLO-EMERGENCY ({name_display})",
         "emergency":        True,
         "protocol_title":   protocol["title"],
+        "emergency_steps":  steps,         # Structured list for step-by-step UI
+        "emergency_warning": warning,
+        "emergency_intro":  intro,
     }
 
 # =============================================================================
@@ -2467,195 +2489,240 @@ async def chat(
             user_email, emergency_response["answer"], active_persona, user_name=user_data["name"]
         ))
         async def _stream_emergency():
-            sentences = split_into_sentences(emergency_response["answer"])
-            for sentence in sentences:
-                audio = await generate_audio_inline(sentence, voice)
-                yield f"data: {json.dumps({'type':'text','content':sentence,'audio_b64':audio})}\n\n"
-                await asyncio.sleep(0.008)
-            yield f"data: {json.dumps({'type':'meta','confidence_score':99,'scam_detected':False,'threat_level':'high','action_trigger':'email_dispatch','audio_b64':'','full_answer':emergency_response['answer'],'emergency':True,'switched_persona':active_persona,'persona_switched':switched})}\n\n"
+            # Stream the intro first
+            intro_audio = await generate_audio_inline(emergency_response["emergency_intro"], voice)
+            yield f"data: {json.dumps({'type':'text','content':emergency_response['emergency_intro'],'audio_b64':intro_audio})}\n\n"
+            await asyncio.sleep(0.008)
+            # Then stream meta with structured steps for step-by-step UI
+            meta_payload = {
+                'type':             'meta',
+                'confidence_score': 99,
+                'scam_detected':    False,
+                'threat_level':     'high',
+                'action_trigger':   None,
+                'audio_b64':        '',
+                'full_answer':      emergency_response['answer'],
+                'emergency':        True,
+                'emergency_steps':  emergency_response.get('emergency_steps', []),
+                'emergency_warning': emergency_response.get('emergency_warning', ''),
+                'emergency_title':  emergency_response.get('protocol_title', ''),
+                'switched_persona': active_persona,
+                'persona_switched': switched,
+            }
+            yield f"data: {json.dumps(meta_payload)}\n\n"
         return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
                                   headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
     # ── END EMERGENCY — domain intercept below only fires for non-emergency messages ──
 
-    intercept = _DOMAIN_INTERCEPTS.get(persona)
-    if intercept:
-        triggered_topic = None
-        for kw in intercept["triggers"]:
-            if kw in msg_lower:
-                triggered_topic = kw
-                break
-        if triggered_topic:
-            # Route based on the TRIGGERED KEYWORD — not a second message scan
-            # This prevents a financial keyword in a medical message from mis-routing
-            _MEDICAL_KW    = {"symptom","burning","pain","pain when","hurts when","pee","urine","infection","uti",
-                               "fever","nausea","vomit","bleeding","rash","swollen","dizzy","chest pain",
-                               "headache","stomach","bowel","diarrhea","constipation","gas","fart",
-                               "prescription","medication","dose","diagnosis","doctor","urgent care",
-                               "hospital","blood pressure","anxiety","depression","mental health","therapy",
-                               "wrist","elbow","shoulder","knee","ankle","back","neck","hip","foot","feet",
-                               "finger","thumb","hand","arm","leg","eye","ear","throat","spine","muscle",
-                               "joint","tendon","ligament","bone","nerve","hurts","hurt","hurting","ache",
-                               "aching","sore","soreness","inflammation","inflamed","stiff","numb","numbness",
-                               "tingling","cramp","cramping","spasm","bruised","bruise","pulled","strain",
-                               "sprain","torn","fracture","carpal tunnel","tendonitis","repetitive strain"}
-            _LEGAL_KW      = {"sue","lawsuit","legal","contract","court","attorney","rights","eviction",
-                               "custody","divorce","settlement"}
-            _FINANCIAL_KW  = {"invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
-                               "budget","salary"}
-            _VEHICLE_KW    = {"brakes","tire","wheel","engine","transmission","oil","coolant","battery",
-                               "alternator","suspension","steering","exhaust","catalytic","obd",
-                               "check engine","car","truck","vehicle","fix","repair"}
+    # ── Claude-Powered Domain Routing ───────────────────────────────────────
+    # Claude reads the FULL message in context and decides if it's truly
+    # out of domain — no keyword lists, no false positives, no substring traps.
+    # Only fires if Claude is available. Falls back to keyword check if not.
+    # Cost: ~$0.0001 per message (Haiku). Worth every penny.
+    # ─────────────────────────────────────────────────────────────────────────
+    async def claude_domain_check(persona: str, message: str) -> dict | None:
+        """
+        Ask Claude: is this message actually out of domain for this specialist?
+        Returns routing dict if out of domain, None if message belongs here.
+        """
+        _client = claude_client or anthropic_client
+        if not _client:
+            return None
 
-            if triggered_topic in _MEDICAL_KW:
-                correct = intercept.get("medical_specialist", "The Doctor")
-                domain  = "medical"
-            elif triggered_topic in _LEGAL_KW:
-                correct = intercept.get("legal_specialist", "The Lawyer")
-                domain  = "legal"
-            elif triggered_topic in _FINANCIAL_KW:
-                correct = intercept.get("financial_specialist", "The Wealth Architect")
-                domain  = "financial"
-            elif triggered_topic in _VEHICLE_KW:
-                correct = intercept.get("specialist", "The Tech Specialist")
-                domain  = "technical"
-            else:
-                # Fallback: scan message for category clues
-                if any(w in msg_lower for w in _MEDICAL_KW):
-                    correct = intercept.get("medical_specialist", "The Doctor")
-                    domain  = "medical"
-                elif any(w in msg_lower for w in _LEGAL_KW):
-                    correct = intercept.get("legal_specialist", "The Lawyer")
-                    domain  = "legal"
-                elif any(w in msg_lower for w in _FINANCIAL_KW):
-                    correct = intercept.get("financial_specialist", "The Wealth Architect")
-                    domain  = "financial"
-                else:
-                    correct = intercept.get("specialist", "The Tech Specialist")
-                    domain  = "technical"
+        PERSONA_DOMAINS = {
+            "mechanic":  "vehicle repair, car maintenance, mechanical issues, OBD diagnostics",
+            "doctor":    "health, medical symptoms, body conditions, wellness, medications",
+            "lawyer":    "legal matters, rights, contracts, court, lawsuits, evictions",
+            "wealth":    "finances, investing, budgeting, debt, taxes, money management",
+            "therapist": "mental health, emotions, relationships, trauma, grief, anxiety",
+            "career":    "jobs, career growth, resumes, interviews, workplace issues",
+            "tutor":     "learning, education, homework, studying, academic subjects",
+            "vitality":  "fitness, nutrition, exercise, diet, physical performance",
+            "hype":      "motivation, content creation, social media, entrepreneurship, hustle",
+            "bestie":    "personal life, friendship, dating, venting, everyday problems",
+            "pastor":    "faith, spirituality, prayer, scripture, moral guidance",
+            "guardian":  "cybersecurity, scams, identity theft, digital safety, account protection",
+        }
 
-            persona_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
-            handoff = intercept["voice"].format(topic=triggered_topic, domain=domain, specialist=correct)
+        domain = PERSONA_DOMAINS.get(persona.lower(), "general assistance")
 
-            async def _stream_intercept():
-                payload = json.dumps({"type": "text",  "content": handoff})
-                meta    = json.dumps({"type": "meta",  "confidence_score": 99, "scam_detected": False, "threat_level": "low", "action_trigger": None, "full_answer": handoff})
-                yield f"data: {payload}\n\n"
-                yield f"data: {meta}\n\n"
+        # Get last 3 turns of conversation for this user
+        recent_context = CONVO_CONTEXT.get(user_email, [])[-3:]
+        context_str = ""
+        if recent_context:
+            context_str = "\nRECENT CONVERSATION CONTEXT:\n"
+            for turn in recent_context:
+                context_str += f"  [{turn['persona'].upper()}]: {turn['msg'][:100]}\n"
 
-            logger.info(f"🚫 Domain intercept [{persona}] blocked '{triggered_topic}' → routed to {correct}")
-            return StreamingResponse(_stream_intercept(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-    # ── END DOMAIN INTERCEPT ──────────────────────────────────────────────
+        prompt = f"""You are a routing validator for an AI app called LYLO.
 
-    # ── Scam scan ────────────────────────────────────────────────────────
+The user is currently talking to the {persona.upper()} specialist whose domain is: {domain}
+{context_str}
+User message: "{message}"
+
+Your job: Decide if this message is GENUINELY out of domain for the {persona.upper()}.
+
+Rules:
+- "I'm tired" to the Doctor = IN DOMAIN (tired is a health symptom)
+- "I got hired" to the Doctor = IN DOMAIN (job stress affects health)  
+- "my tire is flat" to the Doctor = OUT OF DOMAIN (vehicle issue)
+- "I feel stressed about my new job" to the Mechanic = OUT OF DOMAIN (emotional/health)
+- "my back hurts from lifting" to the Mechanic = OUT OF DOMAIN (medical symptom)
+- "what stocks should I buy" to the Doctor = OUT OF DOMAIN (financial)
+- Context matters. Emotional words like "tired", "drained", "burned out" are HEALTH topics, not vehicle topics.
+- Common life events like being hired, fired, stressed, worried = STAY with current specialist unless clearly wrong domain.
+- Only route away if the message is CLEARLY and UNAMBIGUOUSLY about another specialist's domain.
+
+Respond with JSON only:
+{{"in_domain": true}} if the message belongs with {persona.upper()}
+{{"in_domain": false, "correct_persona": "<persona_name>", "reason": "<one sentence>"}} if it should route elsewhere
+
+Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vitality, hype, bestie, pastor, guardian"""
+
+        try:
+            import anthropic as _anth
+            resp = await asyncio.wait_for(
+                _client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=120,
+                    messages=[{{"role": "user", "content": prompt}}],
+                ),
+                timeout=4.0
+            )
+            raw = resp.content[0].text.strip()
+            # Strip markdown fences if present
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            result = json.loads(raw)
+            if not result.get("in_domain", True):
+                correct = result.get("correct_persona", "")
+                reason  = result.get("reason", "")
+                logger.info(f"🛡️ Claude Domain Check: [{persona}→{correct}] {reason}")
+                return {{"correct_persona": correct, "reason": reason}}
+            return None
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Claude domain check timed out — passing through")
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️ Claude domain check failed: {{e}} — passing through")
+            return None
+
+    # Run Claude domain check
+    domain_reroute = await claude_domain_check(persona, msg)
+    if domain_reroute:
+        correct_persona = domain_reroute["correct_persona"]
+        reason          = domain_reroute["reason"]
+        # Build handoff message in the current persona's voice
+        PERSONA_NAMES = {{
+            "mechanic":  "The Mechanic",  "doctor":    "The Doctor",
+            "lawyer":    "Legal Shield",  "wealth":    "Wealth Architect",
+            "therapist": "The Therapist", "career":    "Career Coach",
+            "tutor":     "The Tutor",     "vitality":  "Vitality Coach",
+            "hype":      "Hype Engine",   "bestie":    "The Bestie",
+            "pastor":    "The Pastor",    "guardian":  "The Guardian",
+        }}
+        correct_name = PERSONA_NAMES.get(correct_persona, correct_persona.capitalize())
+        handoff_msg  = (
+            f"That's outside my lane. {reason} "
+            f"Switch to **{correct_name}** — they've got you covered on this."
+        )
+        async def _handoff():
+            meta_obj = {"persona_switched": True, "switched_persona": correct_persona, "threat_level": "low"}
+            payload  = json.dumps({"token": handoff_msg, "meta": meta_obj})
+            yield f"data: {payload}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(_handoff(), media_type="text/event-stream")
+
+    # ── Scam scan ────────────────────────────────────────────────────────────
     indicators = analyze_scam_indicators(msg)
 
-    # ── V31.0 AUTO-PIN — silently save goals/struggles/projects ─────────
-    pin_result = auto_detect_pin_category(msg)
-    if pin_result and memory_index:
-        pin_text, pin_cat = pin_result
-        asyncio.create_task(asyncio.to_thread(
-            upsert_memory_pin, memory_index, email_lower, pin_text, pin_cat
-        ))
-        logger.info(f"📌 Auto-pinned [{pin_cat}] for {email_lower[:6]}***: {pin_text[:60]}")
+    # ── Build final system prompt ─────────────────────────────────────────────
+    user_profile  = await retrieve_user_profile(user_id)
+    intake_profile = await retrieve_intake_profile(user_id)
+    memory_context = await retrieve_intelligence_sync(user_id, msg)
+    user_location  = get_user_location_data(email_lower)
 
-    # ── Image processing ─────────────────────────────────────────────────
-    image_b64 = None
-    if file:
-        file_bytes = await file.read()
-        image_b64  = base64.b64encode(file_bytes).decode("utf-8")
-        if not msg.strip():
-            msg = "Please analyze this image and provide a technical assessment based on your specialty."
-
-    current_real_time = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
-
-    # ── V31.0: Build kernel system prompt (replaces static system message) ─
-    kernel_system_prompt = await _build_chat_system_prompt(
+    system_prompt = await _build_chat_system_prompt(
         persona    = persona,
         user_email = email_lower,
         index      = memory_index,
         user_name  = user_data["name"],
     )
 
-    # ── Assemble 5-layer domain prompt (answer body) ─────────────────────
-    full_prompt = assemble_prompt(
-        persona           = persona,
-        user_name         = user_data["name"],
-        tier              = tier,
-        msg               = msg,
-        memories          = memories,
-        search_intel      = search_intel,
-        indicators        = indicators,
-        image_b64         = image_b64,
-        current_real_time = current_real_time,
-        vibe              = vibe,
-        user_profile      = user_profile,
-        intake_profile    = intake_profile,
-        user_location     = user_location,
-        user_email        = email_lower,
+    # ── Engine selection ─────────────────────────────────────────────────────
+    openai_engine = (
+        "gpt-4o"
+        if tier == "max" or email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
+        else "gpt-4o-mini"
     )
 
-    # ── Engine selection ─────────────────────────────────────────────────
-    openai_engine = "gpt-4o-mini"
-
-    # ── V31.0: Inject kernel as system message into OpenAI call ─────────
-    # The kernel_system_prompt from lylo_kernel.py is the FIRST system message.
-    # The 5-layer domain prompt follows as the user message.
-    # This ensures the Human Balance Protocol, memory pins, and banned phrases
-    # are always the outermost instruction layer — highest model priority.
-    async def call_openai_with_kernel(prompt: str, img_b64: str = None, model: str = "gpt-4o-mini"):
+    # ── V31.0: Inject kernel as system message into OpenAI call ──────────────
+    async def run_openai():
         if not openai_client:
             return None
         try:
-            content = [{"type": "text", "text": prompt}]
-            if img_b64:
-                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}})
-            resp = await openai_client.chat.completions.create(
-                model    = model,
-                messages = [
-                    # [V31.0] Kernel wraps everything — Human Balance Protocol + memory + banned phrases
-                    {"role": "system", "content": kernel_system_prompt},
-                    # [EXISTING] 5-layer domain prompt carries persona identity + runtime context
-                    {"role": "user",   "content": content},
-                ],
-                response_format = {"type": "json_object"},
-                max_tokens      = 1200,
-                temperature     = 0.2,
+            messages_payload = [{"role": "system", "content": system_prompt}]
+            if image_b64:
+                messages_payload.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                        {"type": "text", "text": msg},
+                    ]
+                })
+            else:
+                messages_payload.append({"role": "user", "content": msg})
+
+            resp = await asyncio.wait_for(
+                openai_client.chat.completions.create(
+                    model=openai_engine,
+                    messages=messages_payload,
+                    max_tokens=900,
+                    temperature=0.7,
+                ),
+                timeout=20.0,
             )
-            raw = resp.choices[0].message.content
-            try:
-                result = json.loads(raw)
-            except Exception:
-                cleaned = raw.replace("```json","").replace("```","").strip()
-                try:
-                    result = json.loads(cleaned)
-                except Exception:
-                    result = {"answer": cleaned[:2000] or "Response processing error.",
-                              "confidence_score": 80, "scam_detected": False,
-                              "threat_level": "low", "action_trigger": None}
-            result["model"] = f"LYLO-CORE-v31 ({model})"
-            return result
+            answer = resp.choices[0].message.content.strip()
+            if not answer:
+                return None
+            return {"answer": answer, "model": openai_engine, "confidence_score": 88}
+        except asyncio.TimeoutError:
+            logger.warning(f"⚡ OpenAI timeout for {user_data['name']}")
+            return None
         except Exception as e:
-            logger.error(f"OpenAI Kernel call error: {e}")
+            logger.warning(f"⚠️ OpenAI error: {e}")
             return None
 
-    # ── First-wins race — OpenAI (kernel-wrapped) vs Gemini ─────────────
-    # Gemini wrapped with hard 5s timeout so a slow 404 never blocks OpenAI from winning
-    async def call_gemini_with_timeout(prompt, image_b64, model):
+    async def run_gemini():
+        if not gemini_client or not gemini_ready:
+            return None
         try:
-            return await asyncio.wait_for(
-                call_gemini_vision(prompt, image_b64, model),
-                timeout=3.0
+            gemini_prompt = f"{system_prompt}\n\nUser: {msg}"
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    gemini_client.models.generate_content,
+                    model="gemini-2.0-flash-lite",
+                    contents=gemini_prompt,
+                ),
+                timeout=12.0,
             )
-        except (asyncio.TimeoutError, Exception) as e:
-            logger.warning(f"⚡ Gemini fast-fail: {e}")
+            answer = resp.text.strip() if resp and resp.text else None
+            if not answer:
+                return None
+            return {"answer": answer, "model": "gemini-2.0-flash-lite", "confidence_score": 85}
+        except asyncio.TimeoutError:
+            logger.warning(f"⚡ Gemini timeout for {user_data['name']}")
+            return None
+        except Exception as e:
+            logger.warning(f"⚠️ Gemini error: {e}")
             return None
 
-    openai_task = asyncio.create_task(call_openai_with_kernel(full_prompt, image_b64, openai_engine))
-    gemini_task = asyncio.create_task(call_gemini_with_timeout(full_prompt, image_b64, "gemini-2.0-flash-lite"))
+    # ── RACE ─────────────────────────────────────────────────────────────────
+    openai_task  = asyncio.ensure_future(run_openai())
+    gemini_task  = asyncio.ensure_future(run_gemini())
+    pending      = {openai_task, gemini_task}
+    winner       = None
 
-    winner      = None
-    pending     = {openai_task, gemini_task}
-    RACE_TIMEOUT = 35.0 if image_b64 else 25.0
+    RACE_TIMEOUT = 25.0 if image_b64 else 15.0
     loop         = asyncio.get_event_loop()
     deadline     = loop.time() + RACE_TIMEOUT
 
@@ -2685,17 +2752,7 @@ async def chat(
     for p in pending:
         p.cancel()
 
-    # Last resort — if race timed out but OpenAI task completed, grab its result
-    if not winner:
-        try:
-            if openai_task.done() and not openai_task.cancelled():
-                fallback = openai_task.result()
-                if fallback and "answer" in fallback:
-                    winner = fallback
-                    logger.info(f"✅ OpenAI fallback winner rescued for {user_data['name']}")
-        except Exception as e:
-            logger.warning(f"Fallback rescue failed: {e}")
-
+    # ── OpenAI rescue fallback ────────────────────────────────────────────────
     if not winner:
         try:
             if openai_task.done() and not openai_task.cancelled():
@@ -2713,92 +2770,18 @@ async def chat(
             yield f"data: {json.dumps({'type':'meta','confidence_score':0,'scam_detected':False,'threat_level':'low','action_trigger':None,'audio_b64':'','full_answer':busy_msg})}\n\n"
         return StreamingResponse(_busy(), media_type="text/event-stream")
 
-    # ── CLAUDE LANE ENFORCER — validates winner before streaming ────────
-    # Only fires when answer contains structural headers (skips simple greetings)
-    _STRUCTURAL_HEADERS = [
-        "[DIAGNOSIS]","[FIX PROTOCOL]","[ANALYSIS]","[RISK]","[TACTICAL MOVE]",
-        "[MOST LIKELY]","[PROTOCOL]","[ESCALATE WHEN]","[CURRENT STATE]",
-        "[BLEEDING POINT]","[60-DAY PLAN]","[REFLECT]","[IDENTIFY]","[REFRAME]",
-        "[EXPERIMENT]","[SITUATION READ]","[LEVERAGE POINTS]","[EXACT PLAY]",
-        "[ROOT CAUSE]","[COST INTEL]","[PARTS &","[SHOP ALERT]",
-    ]
-    _PERSONA_LANE_SUMMARY = {
-        "guardian":  "digital security, scam detection, fraud, phishing, identity protection, privacy",
-        "lawyer":    "legal strategy, contracts, rights, lawsuits, employment law, landlord-tenant law",
-        "doctor":    "medical symptoms, health conditions, medications, clinical protocols, physiology",
-        "wealth":    "personal finance, investing, budgeting, debt, retirement, tax strategy",
-        "career":    "job strategy, resume, interviews, salary, workplace dynamics, career pivots",
-        "therapist": "emotional wellbeing, mental health, relationships, stress, grief, anxiety",
-        "mechanic":  "vehicles, cars, trucks, electronics, computers, phones, appliances, OBD-II codes",
-        "tutor":     "education, math, science, history, writing, study skills, homework help",
-        "pastor":    "faith, spirituality, purpose, prayer, grief, forgiveness, moral questions",
-        "vitality":  "fitness, nutrition, exercise, sleep, recovery, body composition",
-        "hype":      "motivation, content creation, social media, entrepreneurship, viral ideas",
-        "bestie":    "emotional support, life navigation, honest perspective, encouragement",
-    }
+    # ── Claude lane validator ─────────────────────────────────────────────────
+    winner_answer = winner["answer"]
+    validated     = await validate_with_claude(persona, msg, winner_answer, user_data["name"])
+    final_answer  = validated.get("answer", winner_answer)
 
-    answer_has_headers = any(h in winner.get("answer","") for h in _STRUCTURAL_HEADERS)
-
-    if answer_has_headers and anthropic_client:
-        try:
-            lane = _PERSONA_LANE_SUMMARY.get(persona, "your specialty domain")
-            persona_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
-            validation_prompt = f"""You are the LYLO Lane Enforcer. Your ONLY job is to validate that a specialist's answer stays in their lane.
-
-SPECIALIST: {persona_display}
-THEIR LANE: {lane}
-USER MESSAGE: {msg}
-SPECIALIST ANSWER: {winner.get("answer","")}
-
-DECISION:
-1. Does this answer give advice OUTSIDE the specialist's lane? (medical advice from mechanic, legal advice from doctor, etc.)
-2. If YES — rewrite ONLY the out-of-lane portions as a proper handoff. Keep any in-lane content.
-3. If NO — return the answer EXACTLY as-is, word for word.
-
-Respond ONLY with valid JSON:
-{{"answer": "the answer or corrected answer", "was_corrected": true/false, "reason": "brief reason if corrected"}}"""
-
-            validation = await asyncio.wait_for(
-                anthropic_client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=1200,
-                    messages=[{"role": "user", "content": validation_prompt}]
-                ),
-                timeout=4.0
-            )
-            raw_validation = validation.content[0].text.strip()
-            raw_validation = raw_validation.replace("```json","").replace("```","").strip()
-            validated = json.loads(raw_validation)
-            if validated.get("was_corrected"):
-                logger.info(f"🛡️ Lane Enforcer corrected [{persona}]: {validated.get('reason','')[:80]}")
-                winner["answer"] = validated["answer"]
-            else:
-                logger.info(f"✅ Lane Enforcer passed [{persona}] — answer in lane")
-        except asyncio.TimeoutError:
-            logger.warning("⚡ Lane Enforcer timeout — passing original answer through")
-        except Exception as e:
-            logger.warning(f"⚡ Lane Enforcer error — passing original: {e}")
-    # ── END LANE ENFORCER ─────────────────────────────────────────────────
-
-    # ── Claude Validator — lane enforcement on race winner ───────────────
-    if winner:
-        validation = await validate_with_claude(
-            persona      = persona,
-            user_msg     = msg,
-            winner_answer = winner["answer"],
-            user_name    = user_data["name"],
-        )
-        winner["answer"] = validation["answer"]
-        if validation.get("claude_validated"):
-            logger.info(f"🛡️ Claude lane-check passed [{persona}] for {user_data['name']}")
-
-    # ── V30 Streaming response ────────────────────────────────────────────
+    # ── V30 Streaming response ─────────────────────────────────────────────────
     async def stream_response():
         try:
             USAGE_TRACKER[user_id]  += 1
             current_count            = USAGE_TRACKER[user_id]
             action_trigger           = winner.get("action_trigger", None)
-            answer                   = winner["answer"]
+            answer                   = final_answer
 
             sentences = split_into_sentences(answer)
             for sentence in sentences:
@@ -2810,43 +2793,55 @@ Respond ONLY with valid JSON:
             async def _post_storage():
                 asyncio.create_task(store_intelligence_sync(user_id, msg,    "user"))
                 asyncio.create_task(store_intelligence_sync(user_id, answer, "bot"))
+                # Save to conversation context for routing memory
+                CONVO_CONTEXT[email_lower].append({"persona": persona, "msg": msg[:120]})
+                if len(CONVO_CONTEXT[email_lower]) > MAX_CONVO_CONTEXT:
+                    CONVO_CONTEXT[email_lower] = CONVO_CONTEXT[email_lower][-MAX_CONVO_CONTEXT:]
                 if action_trigger == "email_dispatch":
-                    asyncio.create_task(send_mission_report_email(
-                        user_email, answer, persona, user_name=user_data["name"]
-                    ))
-                    logger.info(f"📧 email_dispatch: {persona.upper()} → {user_email}")
-                elif email_consent == "true":
-                    asyncio.create_task(send_mission_report_email(
-                        user_email, answer, persona, user_name=user_data["name"]
-                    ))
+                    await send_mission_report_email(user_email, answer, persona, user_name=user_data["name"])
+                pin_result = auto_detect_pin_category(msg)
+                if pin_result and memory_index:
+                    pin_text, pin_category = pin_result
+                    upsert_memory_pin(
+                        index    = memory_index,
+                        user_id  = user_id,
+                        pin_text = pin_text,
+                        category = pin_category,
+                    )
+            asyncio.create_task(_post_storage())
 
-            await _post_storage()
-
-            if current_count % SYNTHESIS_INTERVAL == 0:
-                logger.info(f"🧠 Synthesis at #{current_count} for {user_data['name']}")
-                asyncio.create_task(synthesize_user_profile(user_id, user_data["name"]))
-
-            logger.info(
-                f"✅ [{persona.upper()}] → {user_data['name']} | {tier} | "
-                f"#{current_count} | {len(sentences)} sentences | Action: {action_trigger or '—'}"
-            )
+            scam_detected  = len(indicators) > 0
+            confidence     = winner.get("confidence_score", 85)
+            model_used     = winner.get("model", openai_engine)
+            threat_level   = "high" if scam_detected else "low"
 
             meta = {
                 "type":             "meta",
-                "confidence_score": winner.get("confidence_score", 95),
-                "scam_detected":    winner.get("scam_detected",    False),
-                "threat_level":     winner.get("threat_level",     "low"),
+                "confidence_score": confidence,
+                "scam_detected":    scam_detected,
+                "threat_level":     threat_level,
                 "action_trigger":   action_trigger,
                 "audio_b64":        "",
                 "full_answer":      answer,
+                "model":            model_used,
+                "scam_indicators":  indicators,
+                "claude_validated": validated.get("claude_validated", False),
+                "usage_count":      current_count,
+                "limit":            tier_limit,
             }
             yield f"data: {json.dumps(meta)}\n\n"
 
-        except Exception as exc:
-            logger.error(f"❌ Stream error: {exc}")
-            yield f"data: {json.dumps({'type':'error','message':'Stream error — retry in 5s.'})}\n\n"
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            err_chunk = {"type": "text", "content": "Something went wrong. Please try again."}
+            yield f"data: {json.dumps(err_chunk)}\n\n"
 
-    return StreamingResponse(stream_response(), media_type="text/event-stream")
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 # =============================================================================
 # INTAKE PROFILE — DETERMINISTIC PINECONE STORE/RETRIEVE
@@ -2877,38 +2872,185 @@ async def retrieve_intake_profile(user_id: str) -> dict:
                 _PROFILE_CACHE[cache_key] = (profile, time.time())
                 return profile
     except Exception as e:
-        logger.error(f"Intake profile retrieval error: {e}")
+        logger.error(f"Intake Profile Retrieval Error: {e}")
     return {}
 
 
-async def upsert_intake_profile(user_id: str, intake_data: dict):
+async def store_intake_profile(user_id: str, profile: dict):
     if not memory_index or not openai_client:
         return
     try:
-        anchor_text = "user identity intake profile occupation mission roadblock relationship vibe"
-        emb = await openai_client.embeddings.create(
-            model="text-embedding-3-small", input=anchor_text, dimensions=1024
+        anchor    = PROFILE_EMBEDDING_ANCHOR
+        resp      = await openai_client.embeddings.create(
+            model="text-embedding-3-small", input=anchor, dimensions=1024
         )
-        anchor_vec = emb.data[0].embedding
-        intake_data["last_updated"] = datetime.now().isoformat()
+        embedding = resp.data[0].embedding
         intake_id = f"{user_id}{INTAKE_VECTOR_ID_SUFFIX}"
-        memory_index.upsert([(intake_id, anchor_vec, {
-            "user_id":      user_id,
-            "record_type":  "intake_profile",
-            "intake_json":  json.dumps(intake_data),
-            "last_updated": intake_data["last_updated"],
-            "occupation":   intake_data.get("occupation",  ""),
-            "mission":      intake_data.get("mission",     ""),
-            "roadblock":    intake_data.get("roadblock",   ""),
-            "relationship": intake_data.get("relationship",""),
-            "vibe":         intake_data.get("vibe",        ""),
+        memory_index.upsert([(intake_id, embedding, {
+            "user_id":     user_id,
+            "intake_json": json.dumps(profile),
+            "record_type": "intake_profile",
+            "updated_at":  datetime.now().isoformat(),
         })])
         cache_key = f"{user_id}_intake"
-        if cache_key in _PROFILE_CACHE:
-            del _PROFILE_CACHE[cache_key]
-        logger.info(f"✅ Intake upserted for {user_id[:8]}...")
+        _PROFILE_CACHE[cache_key] = (profile, time.time())
+        logger.info(f"✅ Intake profile stored for {user_id}")
     except Exception as e:
-        logger.error(f"❌ Intake upsert error: {e}")
+        logger.error(f"Intake Profile Store Error: {e}")
+
+
+# =============================================================================
+# INTAKE QUESTIONS — Served to frontend so questions are always in sync
+# Round 1: 5 questions on first login (religion first — sets up Pastor)
+# Round 2: 5 questions after first session (gentle "complete your profile" prompt)
+# =============================================================================
+INTAKE_QUESTIONS = {
+    "round1": [
+        {
+            "id": "faith",
+            "round": 1,
+            "question": "What guides your spirit?",
+            "subtext": "This helps your Pastor speak your language.",
+            "options": [
+                {"label": "A", "text": "Christian", "emoji": "✝️"},
+                {"label": "B", "text": "Muslim", "emoji": "☪️"},
+                {"label": "C", "text": "Jewish", "emoji": "✡️"},
+            ],
+            "more_options": [
+                {"label": "Hindu", "emoji": "🕉️"},
+                {"label": "Buddhist", "emoji": "☸️"},
+                {"label": "Spiritual / No label", "emoji": "🌿"},
+                {"label": "No faith preference", "emoji": "🤝"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My faith is...",
+        },
+        {
+            "id": "work",
+            "round": 1,
+            "question": "What do you do for work?",
+            "subtext": "Your council adapts to your world.",
+            "options": [
+                {"label": "A", "text": "Professional / Employee", "emoji": "💼"},
+                {"label": "B", "text": "Entrepreneur / Business Owner", "emoji": "🚀"},
+                {"label": "C", "text": "Student", "emoji": "📚"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "I work as...",
+        },
+        {
+            "id": "mission",
+            "round": 1,
+            "question": "What's your #1 mission right now?",
+            "subtext": "We lock in on what matters most to you.",
+            "options": [
+                {"label": "A", "text": "Build Wealth", "emoji": "💰"},
+                {"label": "B", "text": "Protect My Family", "emoji": "🛡️"},
+                {"label": "C", "text": "Advance My Career", "emoji": "📈"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My mission is...",
+        },
+        {
+            "id": "vibe",
+            "round": 1,
+            "question": "How should your council talk to you?",
+            "subtext": "Real talk or gentle guidance — you choose.",
+            "options": [
+                {"label": "A", "text": "Direct & No Fluff", "emoji": "⚡"},
+                {"label": "B", "text": "Chill & Easy", "emoji": "😎"},
+                {"label": "C", "text": "Warm & Supportive", "emoji": "🤗"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "Talk to me like...",
+        },
+        {
+            "id": "relationship",
+            "round": 1,
+            "question": "What's your relationship status?",
+            "subtext": "Helps your council understand your support system.",
+            "options": [
+                {"label": "A", "text": "Single", "emoji": "🙋"},
+                {"label": "B", "text": "In a Relationship / Married", "emoji": "❤️"},
+                {"label": "C", "text": "It's Complicated", "emoji": "🤷"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My situation is...",
+        },
+    ],
+    "round2": [
+        {
+            "id": "housing",
+            "round": 2,
+            "question": "Do you own or rent your home?",
+            "options": [
+                {"label": "A", "text": "I Own My Home", "emoji": "🏠"},
+                {"label": "B", "text": "I Rent", "emoji": "🔑"},
+                {"label": "C", "text": "I Live With Family / Other", "emoji": "👨‍👩‍👧"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My situation is...",
+        },
+        {
+            "id": "children",
+            "round": 2,
+            "question": "Do you have children?",
+            "options": [
+                {"label": "A", "text": "Yes, young kids (under 12)", "emoji": "🧒"},
+                {"label": "B", "text": "Yes, teenagers or adults", "emoji": "👦"},
+                {"label": "C", "text": "No children", "emoji": "🚫"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "Tell us more...",
+        },
+        {
+            "id": "health_focus",
+            "round": 2,
+            "question": "Any ongoing health focus?",
+            "options": [
+                {"label": "A", "text": "Fitness & Weight Loss", "emoji": "💪"},
+                {"label": "B", "text": "Managing a Condition", "emoji": "🏥"},
+                {"label": "C", "text": "Mental Health & Stress", "emoji": "🧠"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My health focus is...",
+        },
+        {
+            "id": "finances",
+            "round": 2,
+            "question": "What best describes your finances right now?",
+            "options": [
+                {"label": "A", "text": "Stable, looking to grow", "emoji": "📊"},
+                {"label": "B", "text": "Getting by, want to improve", "emoji": "💡"},
+                {"label": "C", "text": "Struggling, need a plan", "emoji": "🆘"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "My situation is...",
+        },
+        {
+            "id": "location",
+            "round": 2,
+            "question": "What state do you live in?",
+            "subtext": "Helps your Lawyer and Wealth Architect give you state-specific advice.",
+            "options": [
+                {"label": "A", "text": "California", "emoji": "🌴"},
+                {"label": "B", "text": "Texas", "emoji": "⭐"},
+                {"label": "C", "text": "Florida", "emoji": "☀️"},
+            ],
+            "allowCustom": True,
+            "customPlaceholder": "I live in...",
+        },
+    ],
+}
+
+
+@app.get("/intake-questions/{round_number}")
+async def get_intake_questions(round_number: int):
+    """Returns the intake questions for a given round (1 or 2)."""
+    key = f"round{round_number}"
+    if key not in INTAKE_QUESTIONS:
+        return JSONResponse({"error": "Invalid round"}, status_code=400)
+    return JSONResponse({"round": round_number, "questions": INTAKE_QUESTIONS[key]})
 
 
 @app.post("/user-intake")
@@ -2920,288 +3062,156 @@ async def user_intake(
 ):
     email_lower = user_email.lower().strip()
     user_id     = create_user_id(email_lower)
+
     try:
-        intake_data = json.loads(full_profile)
+        profile = json.loads(full_profile)
     except Exception:
-        intake_data = {question_id: value}
-    intake_data[question_id]     = value
-    intake_data["intake_source"] = "tap_to_build"
-    asyncio.create_task(upsert_intake_profile(user_id, intake_data))
-    logger.info(f"📋 Intake [{question_id}={value}] for {email_lower}")
-    return {"status": "ok", "question_id": question_id, "value": value}
+        profile = {}
+
+    profile[question_id] = value
+
+    asyncio.create_task(store_intake_profile(user_id, profile))
+
+    return JSONResponse({
+        "status":     "saved",
+        "question_id": question_id,
+        "value":      value,
+        "profile_size": len(profile),
+    })
 
 
-@app.post("/initialize-profile")
-async def initialize_profile(
-    user_email:   str = Form(...),
-    occupation:   str = Form(""),
-    mission:      str = Form(""),
-    roadblock:    str = Form(""),
-    relationship: str = Form(""),
-    vibe:         str = Form("standard"),
-    full_profile: str = Form("{}"),
-):
+@app.get("/get-intake/{user_email}")
+async def get_intake(user_email: str):
     email_lower = user_email.lower().strip()
     user_id     = create_user_id(email_lower)
-    try:
-        provided = json.loads(full_profile) if full_profile != "{}" else {}
-    except Exception:
-        provided = {}
+    profile     = await retrieve_intake_profile(user_id)
+    return JSONResponse({"status": "ok", "profile": profile})
 
-    intake_data = {
-        "occupation":    provided.get("occupation",   occupation).strip(),
-        "mission":       provided.get("mission",      mission).strip(),
-        "roadblock":     provided.get("roadblock",    roadblock).strip(),
-        "relationship":  provided.get("relationship", relationship).strip(),
-        "vibe":          provided.get("vibe",         vibe).strip() or "standard",
-        "intake_source": "initialize_profile",
-        "intake_completed": True,
-    }
-
-    vibe_val, mission_val, occ_val, rb_val = (
-        intake_data["vibe"], intake_data["mission"],
-        intake_data["occupation"], intake_data["roadblock"],
-    )
-    if vibe_val == "academic" or rb_val == "knowledge":
-        intake_data["faith_inferred"] = "stoic"
-    elif mission_val == "personal_growth" or occ_val == "student":
-        intake_data["faith_inferred"] = "stoic"
-    else:
-        intake_data["faith_inferred"] = "christian"
-
-    await upsert_intake_profile(user_id, intake_data)
-    logger.info(f"🎯 Profile initialized: {email_lower} | Faith: {intake_data['faith_inferred']}")
-
-    return {
-        "status":          "initialized",
-        "faith_inferred":  intake_data["faith_inferred"],
-        "vibe_set":        intake_data["vibe"],
-        "intake_complete": True,
-    }
 
 # =============================================================================
-# PERSONA HOOK — V31.0 MEMORY-AWARE GREETING
+# HEALTH + OBD2 SCHEMATIC + ROOT
 # =============================================================================
-@app.post("/persona-hook")
-async def persona_hook(
-    persona:    str = Form(...),
+# =============================================================================
+# LANGUAGE SUPPORT — English / Spanish
+# Frontend sends ?lang=es to get Spanish UI strings
+# The chat endpoint also reads user's language pref from intake profile
+# =============================================================================
+_UI_STRINGS = {
+    "en": {
+        "welcome":          "Welcome to LYLO",
+        "tagline":          "Your Digital Bodyguard",
+        "login_prompt":     "Enter your email to access your council",
+        "login_button":     "Access My Council",
+        "language_toggle":  "Español",
+        "end_session":      "End Session",
+        "send_report":      "Send Report to Email",
+        "report_prompt":    "Would you like this session report sent to your email?",
+        "report_yes":       "Yes, send it",
+        "report_no":        "No thanks",
+        "complete_profile": "Complete Your Profile",
+        "profile_prompt":   "5 quick questions to sharpen your council's advice — takes 60 seconds.",
+        "profile_cta":      "Let's Do It",
+        "profile_skip":     "Maybe Later",
+        "emergency_next":   "Done — Next Step",
+        "emergency_done":   "All Steps Complete",
+        "step_label":       "Step",
+        "of_label":         "of",
+        "intake_round1":    "Quick Start · Question",
+        "intake_round2":    "Profile · Question",
+        "custom_prompt":    "Type your own answer...",
+        "skip":             "Skip",
+        "back":             "Back",
+        "personas": {
+            "mechanic":  "The Mechanic",
+            "doctor":    "The Doctor",
+            "lawyer":    "Legal Shield",
+            "wealth":    "Wealth Architect",
+            "therapist": "The Therapist",
+            "career":    "Career Coach",
+            "tutor":     "The Tutor",
+            "vitality":  "Vitality Coach",
+            "hype":      "Hype Engine",
+            "bestie":    "The Bestie",
+            "pastor":    "The Pastor",
+            "guardian":  "The Guardian",
+        },
+    },
+    "es": {
+        "welcome":          "Bienvenido a LYLO",
+        "tagline":          "Tu Guardaespaldas Digital",
+        "login_prompt":     "Ingresa tu correo para acceder a tu consejo",
+        "login_button":     "Acceder a Mi Consejo",
+        "language_toggle":  "English",
+        "end_session":      "Terminar Sesión",
+        "send_report":      "Enviar Reporte al Correo",
+        "report_prompt":    "¿Quieres que te enviemos el reporte de esta sesión?",
+        "report_yes":       "Sí, envíalo",
+        "report_no":        "No, gracias",
+        "complete_profile": "Completa Tu Perfil",
+        "profile_prompt":   "5 preguntas rápidas para mejorar los consejos de tu consejo — solo 60 segundos.",
+        "profile_cta":      "Vamos",
+        "profile_skip":     "Quizás Después",
+        "emergency_next":   "Listo — Siguiente Paso",
+        "emergency_done":   "Todos los Pasos Completados",
+        "step_label":       "Paso",
+        "of_label":         "de",
+        "intake_round1":    "Inicio Rápido · Pregunta",
+        "intake_round2":    "Perfil · Pregunta",
+        "custom_prompt":    "Escribe tu propia respuesta...",
+        "skip":             "Omitir",
+        "back":             "Atrás",
+        "personas": {
+            "mechanic":  "El Mecánico",
+            "doctor":    "El Doctor",
+            "lawyer":    "Escudo Legal",
+            "wealth":    "Arquitecto de Riqueza",
+            "therapist": "El Terapeuta",
+            "career":    "Asesor de Carrera",
+            "tutor":     "El Tutor",
+            "vitality":  "Coach de Vitalidad",
+            "hype":      "Motor de Hype",
+            "bestie":    "Tu Mejor Amigo",
+            "pastor":    "El Pastor",
+            "guardian":  "El Guardián",
+        },
+    },
+}
+
+
+@app.get("/ui-strings")
+async def get_ui_strings(lang: str = "en"):
+    """Returns UI strings in the requested language (en or es)."""
+    lang_clean = lang.lower().strip()[:2]
+    strings    = _UI_STRINGS.get(lang_clean, _UI_STRINGS["en"])
+    return JSONResponse({"lang": lang_clean, "strings": strings})
+
+
+@app.post("/send-session-report")
+async def send_session_report(
     user_email: str = Form(...),
+    persona:    str = Form("guardian"),
+    content:    str = Form(...),
+    user_name:  str = Form("Protected User"),
 ):
     """
-    V31.0: Greeting hook is now memory-aware.
-    Uses _build_chat_system_prompt() so the kernel memory pins inform the opener.
-    Falls back to static hook if OpenAI/Gemini times out.
-    No-Hello protocol: never starts with "Hello", "Hi", "Hey there".
+    Called when user taps 'End Session' and confirms they want the PDF.
+    This is the ONLY place PDFs are dispatched for regular chat sessions.
+    Emergency protocols do NOT auto-send — they wait for this too.
     """
-    email_lower  = user_email.lower().strip()
-    user_id      = create_user_id(email_lower)
-    warm_start   = get_warm_start_profile(email_lower)
-    user_profile = await retrieve_user_profile(user_id)
-
-    name     = warm_start.get("name") or user_profile.get("name") or "there"
-    projects = warm_start.get("projects") or user_profile.get("active_projects") or []
-    anchors  = warm_start.get("anchors") or []
-    goals    = warm_start.get("goals") or []
-    protocol = warm_start.get("protocol") or ""
-
-    context_parts = []
-    if projects: context_parts.append(f"Active projects: {', '.join(str(p) for p in projects[:3])}")
-    if goals:    context_parts.append(f"Current goals: {', '.join(str(g) for g in goals[:2])}")
-    if anchors:  context_parts.append(f"Daily anchors: {', '.join(str(a) for a in anchors[:3])}")
-    context_str = "\n".join(context_parts) if context_parts else "New user — no profile yet."
-
-    persona_voice_notes = {
-        "guardian":  "Military precision. Protective. Zero filler.",
-        "lawyer":    "Sharp, skeptical. Speaks in leverage and paper trails.",
-        "doctor":    "Clinical, calm. Treats user as an intelligent adult.",
-        "wealth":    "Direct, numbers-forward. Net worth = freedom.",
-        "career":    "Professional, ambitious. Every move is a chess problem.",
-        "therapist": "Warm, grounded. Asks the question beneath the question.",
-        "mechanic":  "Gritty, practical. No corporate speak.",
-        "tutor":     "Encouraging, brilliant. Shame has no place here.",
-        "pastor":    "Grounded, wise, warm, unhurried.",
-        "vitality":  "High-energy, science-dense. Speaks in physiology.",
-        "hype":      "Fast, confident, internet-native.",
-        "bestie":    "Unfiltered, fiercely loyal. Warmth and sharp truth.",
-    }
-    voice_note   = persona_voice_notes.get(persona, "Direct and helpful.")
-    current_day  = datetime.now().strftime("%A")
-
-    # V31.0: Build the kernel system prompt so memory pins inform the greeting
-    kernel_prompt = await _build_chat_system_prompt(
-        persona    = persona,
-        user_email = email_lower,
-        index      = memory_index,
-        user_name  = name,
-    )
-
-    hook_prompt = f"""You are the LYLO {persona.upper()} persona. Generate ONE personalized opening greeting.
-
-USER CONTEXT:
-Name: {name}
-{context_str}
-Engagement Protocol: {protocol[:300] if protocol else 'Standard'}
-Current day: {current_day}
-
-PERSONA VOICE: {voice_note}
-
-NO-HELLO PROTOCOL (strict):
-- Never start with "Hello", "Hi", "Hey there", or any generic greeting word.
-- Never start with "I'm going to stop you right there."
-- Never use "Great question!", "Certainly!", "Absolutely!", "I'm here to help."
-- Open with a statement that shows you already know this person's situation.
-
-RULES:
-- 1-3 sentences MAX. Under 50 words.
-- Use the user's name naturally once.
-- Reference ONE specific detail from their context.
-- Sound like a real expert who already knows this person.
-- If Sunday and health/accountability anchors present, subtly acknowledge.
-- Output ONLY the greeting text. No JSON. No preamble. No quotes.
-
-Generate the personalized greeting now:"""
-
+    if not content.strip():
+        return JSONResponse({"status": "skipped", "reason": "no content"})
     try:
-        # V31.0: Pass kernel as system message for hook generation too
-        result = await asyncio.wait_for(
-            openai_client.chat.completions.create(
-                model    = "gpt-4o-mini",
-                messages = [
-                    {"role": "system", "content": kernel_prompt},
-                    {"role": "user",   "content": hook_prompt},
-                ],
-                max_tokens  = 120,
-                temperature = 0.9,
-            ) if openai_client else _noop_coroutine(),
-            timeout = 4.0,
+        await send_mission_report_email(
+            to_email     = user_email.lower().strip(),
+            content      = content,
+            persona_name = persona,
+            user_name    = user_name,
         )
-        if openai_client:
-            hook_text = result.choices[0].message.content.strip()
-            if hook_text and len(hook_text) > 10:
-                logger.info(f"🎯 PersonaHook v31.0 (memory-aware): [{persona}] → {name}")
-                return {"hook": hook_text, "cached": False}
-    except asyncio.TimeoutError:
-        logger.warning(f"⏱️ PersonaHook timeout [{persona}] → {name}. Using static fallback.")
+        logger.info(f"📄 Session report sent → {user_email} [{persona}]")
+        return JSONResponse({"status": "sent"})
     except Exception as e:
-        logger.error(f"PersonaHook error: {e}")
-
-    static_hooks = {
-        "guardian":  f"Security protocols active, {name}. Perimeter check — what are we locking down today?",
-        "lawyer":    f"Paper trail starts now, {name}. Walk me through exactly what happened.",
-        "doctor":    f"Clinical assessment online, {name}. Tell me the symptoms — when did this start?",
-        "wealth":    f"Numbers don't lie, {name}. What's the current financial picture?",
-        "career":    f"Corporate chess, {name}. What's the move we're calculating today?",
-        "therapist": f"No rush here, {name}. What's been sitting heaviest on you?",
-        "mechanic":  f"Wrench ready, {name}. What's broken and when did it start?",
-        "tutor":     f"Class in session, {name}. Where does it stop making sense?",
-        "pastor":    f"Peace be with you, {name}. What's heavy on your heart today?",
-        "vitality":  f"Engine check, {name}. Sleep, fuel, movement — where's the weak link?",
-        "hype":      f"Already thinking, {name}. Drop the concept — raw is fine.",
-        "bestie":    f"No cap, I'm here, {name}. Spill — what's actually going on?",
-    }
-    return {"hook": static_hooks.get(persona, f"Ready, {name}. What's the mission?"), "cached": False}
-
-
-async def _noop_coroutine():
-    """Placeholder coroutine for when openai_client is None."""
-    return None
-
-# =============================================================================
-# GENERATE AUDIO
-# =============================================================================
-@app.post("/generate-audio")
-async def generate_audio(text: str = Form(...), voice: str = Form("onyx")):
-    if not openai_client:
-        return {"error": "Voice offline"}
-    safe_voice = voice if voice in VALID_VOICES else "onyx"
-    try:
-        clean  = text.replace("**","").replace("#","").strip()
-        resp   = await openai_client.audio.speech.create(model="tts-1", voice=safe_voice, input=clean[:4000])
-        return {"audio_b64": base64.b64encode(resp.content).decode("utf-8")}
-    except Exception as e:
-        return {"error": str(e)}
-
-# =============================================================================
-# USER STATS & UTILITIES
-# =============================================================================
-@app.get("/user-stats/{user_email}")
-async def get_stats(user_email: str):
-    uid       = create_user_id(user_email)
-    user_data = ELITE_USERS.get(user_email.lower(), {"tier": "free", "name": "User"})
-    limit     = (
-        999999
-        if user_email.lower() in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
-        else TIER_LIMITS.get(user_data["tier"], 3)
-    )
-    return {"usage": USAGE_TRACKER[uid], "limit": limit, "tier": user_data["tier"], "name": user_data["name"]}
-
-
-@app.post("/check-beta-access")
-async def check_beta(data: dict):
-    email = data.get("email", "").lower().strip()
-    # Reload from persistent file every check — catches newly activated testers
-    fresh = _load_beta_users()
-    ELITE_USERS.update(fresh)
-    user = ELITE_USERS.get(email)
-    if user:
-        return {"access": True, "tier": user["tier"], "name": user["name"]}
-    return {"access": False, "tier": "free"}
-
-
-@app.get("/user-profile/{user_email}")
-async def get_user_profile(user_email: str):
-    email_clean   = user_email.lower().strip()
-    uid           = create_user_id(email_clean)
-    warm_start    = get_warm_start_profile(email_clean)
-    synth_profile = await retrieve_user_profile(uid)
-    return {
-        "email":                      user_email,
-        "warm_start_found":           bool(warm_start),
-        "warm_start_name":            warm_start.get("name") if warm_start else None,
-        "synthesized_profile_loaded": bool(synth_profile),
-        "synthesized_profile":        synth_profile,
-    }
-
-
-@app.get("/scam-recovery/{email}")
-async def recovery_center(email: str):
-    return {
-        "title": "🛡️ PRIORITY RECOVERY CENTER",
-        "immediate_actions": [
-            "Call your bank fraud department immediately.",
-            "Freeze your credit at all 3 bureaus: Equifax, Experian, TransUnion.",
-            "File a report at IC3.gov (FBI Internet Crime Complaint Center).",
-            "Change all passwords from a clean, uncompromised device.",
-            "Enable 2FA on every account that supports it.",
-        ],
-    }
-
-# =============================================================================
-# ROOT
-# =============================================================================
-@app.get("/")
-async def root():
-    return {
-        "status":      "ONLINE",
-        "version":     "31.0.0",
-        "features": [
-            "Kernel v31.0 — Human-First Memory-Aware OS",
-            "Tactical Vault — Elite PDF Engine (4 persona reports)",
-            "OBD-II Bluetooth Handshake — Mechanic seat",
-            "Auto-Pin System — goals/struggles/projects silently saved",
-            "Sentinel Push Notifications",
-            "5-Layer Prompt | Dual-Engine Race | Streaming SSE | TTS | Synthesis",
-        ],
-        "routes": [
-            "POST /chat", "POST /persona-hook", "POST /generate-audio",
-            "POST /generate-report", "POST /send-report-to-pro",
-            "POST /obd-handshake", "POST /pin-memory",
-            "POST /user-intake", "POST /initialize-profile",
-            "POST /join-waitlist", "POST /webhook",
-            "GET  /user-stats/{email}", "GET /user-profile/{email}",
-        ],
-    }
-
+        logger.error(f"Session report send failed: {e}")
+        return JSONResponse({"status": "error", "reason": str(e)}, status_code=500)
 
 
 @app.get("/health")
@@ -3219,6 +3229,7 @@ async def health_check():
         "waitlist_count":    len(WAITLIST_DB),
     }
 
+
 @app.get("/obd2")
 async def serve_obd2_schematic():
     """Serve the OBDLink integration schematic — shareable link for partners."""
@@ -3229,5 +3240,15 @@ async def serve_obd2_schematic():
         return HTMLResponse(content=html)
     return HTMLResponse(content="<h1>Schematic not found</h1>", status_code=404)
 
+
+@app.get("/")
+async def root():
+    return {
+        "status":  "LYLO OS Active",
+        "version": "31.0.0 — KERNEL v31 | TRIPLE ENGINE | CLAUDE VALIDATOR | OBD-II",
+        "message": "Digital Bodyguard OS — Protecting lives through intelligence.",
+    }
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    uvicorn.run(app, host="0.0.0.0", port=8000)
