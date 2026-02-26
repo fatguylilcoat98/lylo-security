@@ -134,3 +134,5 @@ export interface ChatInterfaceProps {
   lang?: 'en' | 'es';
   onSignOut?: () => void;
 }
+// Alias for backwards compatibility with existing hooks
+export type Message = ChatMessage;
