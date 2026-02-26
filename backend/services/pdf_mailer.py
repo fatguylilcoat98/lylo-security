@@ -1,24 +1,25 @@
-"""
-LYLO OS — services/pdf_mailer.py
-Mission report PDF generation and email dispatch.
-"""
+"""LYLO OS — services/pdf_mailer.py"""
 import re
-import asyncio
-import datetime
 import os
+import json
+import time
+import asyncio
+import base64
+import hashlib
 import logging
 import smtplib
+import random
+import string
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from services.config import SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD
-
 logger = logging.getLogger("LYLO.PDFMailer")
-
-
 def generate_mission_report_pdf(
     content:   str,
     persona:   str,
