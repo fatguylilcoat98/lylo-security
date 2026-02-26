@@ -1,0 +1,29 @@
+"""
+LYLO OS — services/audio_service.py
+OpenAI TTS audio generation.
+"""
+import logging
+from services.config import openai_client
+
+logger = logging.getLogger("LYLO.Audio")
+
+# =============================================================================
+VALID_VOICES = {"nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"}
+
+async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
+    if not openai_client or not text.strip():
+        return ""
+    safe_voice = voice if voice in VALID_VOICES else "onyx"
+    try:
+        clean = text.replace("**","").replace("##","").replace("#","").replace("[","").replace("]","").strip()
+        resp  = await openai_client.audio.speech.create(model="tts-1", voice=safe_voice, input=clean[:3500])
+        return base64.b64encode(resp.content).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"⚡ Inline TTS failed ({safe_voice}): {e}")
+        return ""
+
+# =============================================================================
+# OBD-II BLUETOOTH HANDSHAKE
+# POST /obd-handshake
+# Called by the Mechanic persona's frontend when a BT OBD-II adapter is detected.
+# Returns parsed fault code descriptions ready for the PDF report and chat context.
