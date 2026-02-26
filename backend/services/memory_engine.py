@@ -37,15 +37,6 @@ def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     return None
 
 
-# =============================================================================
-# V31.0 — PIN-MEMORY ROUTER
-# POST /pin-memory — frontend or internal caller saves a pinnable event.
-# =============================================================================
-pin_router = APIRouter()
-
-
-@pin_router.post("/pin-memory")
-
 async def store_intelligence_sync(user_id: str, content: str, role: str, persona: str = "general"):
     if not memory_index or not openai_client or len(content.strip()) < 10:
         return
