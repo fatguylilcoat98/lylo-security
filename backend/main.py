@@ -201,6 +201,30 @@ if PINECONE_API_KEY:
     except Exception as e:
         logger.error(f"❌ Sync Index Failed: {e}")
 
+
+# ==============================================================================
+# SEMANTIC DOMAIN ROUTER — Anchor Cache
+# Embeddings for each persona's domain. Cached at first use.
+# These are the "north stars" for routing decisions.
+# ==============================================================================
+DOMAIN_ANCHORS: dict[str, str] = {
+    "guardian":  "cybersecurity scam phishing identity theft digital safety account protection hacking fraud suspicious email virus malware",
+    "doctor":    "medical symptom health illness body pain diagnosis medication treatment disease injury recovery fatigue tired sick headache fever",
+    "lawyer":    "legal law lawsuit court attorney rights contract dispute eviction tenant employment discrimination sue settlement",
+    "wealth":    "money finance investing debt budget savings income expenses taxes retirement stocks crypto portfolio financial",
+    "therapist": "emotions feelings mental health anxiety depression grief trauma stress relationships therapy counseling burnout overwhelmed",
+    "mechanic":  "car vehicle engine transmission oil brake tire wheel repair maintenance OBD fault code automotive truck check engine",
+    "career":    "job career resume interview promotion salary negotiation workplace boss employment professional growth",
+    "vitality":  "fitness workout exercise nutrition diet weight training recovery supplement performance body composition gym",
+    "tutor":     "learning education math science homework study skill knowledge teaching academic test exam understand",
+    "pastor":    "faith religion God prayer scripture Bible spiritual church worship belief spirituality purpose meaning",
+    "hype":      "content viral social media marketing brand audience followers TikTok Instagram YouTube engagement creator",
+    "bestie":    "relationship friendship dating personal life venting drama situationship family boyfriend girlfriend",
+}
+# Cache: persona → embedding vector (populated lazily on first request)
+_ANCHOR_EMBEDDINGS: dict[str, list[float]] = {}
+_ANCHOR_CACHE_LOCK = None  # set to asyncio.Lock() on first use
+
 gemini_ready = False
 gemini_client = None
 
@@ -1095,6 +1119,26 @@ def split_into_sentences(text: str) -> list:
     parts  = re.findall(r"[^.!?\n]+(?:[.!?]+[\"']?(?:\s|$)|\n|$)", clean)
     result = [s.strip() for s in parts if len(s.strip()) > 3]
     return result if result else [clean]
+
+# =============================================================================
+# TRUST LAYER — HIGH-STAKES CLAIM DETECTOR
+# Sentences matching these patterns get NLI verification before streaming.
+# Everything else streams immediately as "probable" — no delay.
+# =============================================================================
+_HIGH_STAKES_PATTERNS = [
+    (re.compile(r'\b(dose|dosage|mg|milligram|medication|drug|prescription|side.effect|interaction|symptom|diagnos|treatment|surgery|inject|vaccine|overdose)\b', re.I), "medical"),
+    (re.compile(r'\b(law|legal|illegal|statute|regulation|fine|penalty|court|lawsuit|sue|rights|contract|liable|liability|felony|misdemeanor)\b', re.I), "legal"),
+    (re.compile(r'\b(percent|interest.rate|APR|investment.return|stock|crypto|tax|IRS|penalty|fee|\$\d|\d+\s*dollars)\b', re.I), "financial"),
+    (re.compile(r'\b(\d+\s*(mg|ml|mcg|g|kg|lb|oz|mph|km|calories|units|IU))\b', re.I), "numeric"),
+    (re.compile(r'\b(always|never|guaranteed|proven|100%|the only way|must not|you cannot|you must|do not)\b', re.I), "absolute"),
+]
+
+def _is_high_stakes(sentence: str) -> tuple:
+    """Returns (is_high_stakes: bool, claim_type: str)"""
+    for pattern, category in _HIGH_STAKES_PATTERNS:
+        if pattern.search(sentence):
+            return True, category
+    return False, ""
 
 # =============================================================================
 # V30 SEAT 9 ADAPTIVE THEOLOGY
@@ -2939,117 +2983,230 @@ async def chat(
                                   headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
     # ── END EMERGENCY — domain intercept below only fires for non-emergency messages ──
 
-    # ── Claude-Powered Domain Routing ───────────────────────────────────────
-    # Claude reads the FULL message in context and decides if it's truly
-    # out of domain — no keyword lists, no false positives, no substring traps.
-    # Only fires if Claude is available. Falls back to keyword check if not.
-    # Cost: ~$0.0001 per message (Haiku). Worth every penny.
+    # ── INTELLIGENT SEMANTIC ROUTER ─────────────────────────────────────────
+    # Three-source routing intelligence — replaces dumb keyword matching:
+    #   1. Pinecone  → user's memory history (what has this person discussed?)
+    #   2. CONVO_CONTEXT → last 4 turns (what's the current thread?)
+    #   3. Claude Haiku  → semantic understanding (what does the message MEAN?)
+    #
+    # "I'm tired"  → Doctor stays (fatigue = health symptom in context)
+    # "flat tire"  → routes to Mechanic (vehicle context, not body)
+    # "my back"    → Doctor if health convo, Mechanic if car convo
+    # No substring traps. Context wins over pattern matching.
     # ─────────────────────────────────────────────────────────────────────────
-    async def claude_domain_check(persona: str, message: str) -> dict | None:
+
+    async def intelligent_semantic_router(persona: str, message: str) -> dict | None:
         """
-        Ask Claude: is this message actually out of domain for this specialist?
+        Routes using memory + conversation context + Claude semantic understanding.
         Returns routing dict if out of domain, None if message belongs here.
         """
         _client = claude_client or anthropic_client
-        if not _client:
-            return None
 
+        # ── Pull user memory from Pinecone ───────────────────────────────────
+        memory_context = ""
+        if memory_index and openai_client:
+            try:
+                emb = await asyncio.wait_for(
+                    openai_client.embeddings.create(
+                        model="text-embedding-3-small",
+                        input=message[:500],
+                    ),
+                    timeout=2.0
+                )
+                vec     = emb.data[0].embedding
+                matches = memory_index.query(
+                    vector=vec,
+                    filter={"user_id": {"$eq": email_lower}},
+                    top_k=5,
+                    include_metadata=True,
+                )
+                if matches.matches:
+                    frags = [
+                        m.metadata.get("content", "")
+                        for m in matches.matches
+                        if m.metadata.get("content")
+                    ]
+                    if frags:
+                        memory_context = (
+                            "USER MEMORY (relevant past discussions):\n"
+                            + "\n".join(f"  - {f[:120]}" for f in frags[:4])
+                        )
+            except Exception:
+                pass  # Memory unavailable — router continues without it
+
+        # ── Conversation thread context ───────────────────────────────────────
+        recent       = CONVO_CONTEXT.get(email_lower, [])[-4:]
+        convo_context = ""
+        if recent:
+            convo_context = (
+                "RECENT CONVERSATION (last turns):\n"
+                + "\n".join(f"  [{t['persona'].upper()}]: {t['msg'][:100]}" for t in recent)
+            )
+
+        # ── Persona domain map ────────────────────────────────────────────────
         PERSONA_DOMAINS = {
-            "mechanic":  "vehicle repair, car maintenance, mechanical issues, OBD diagnostics",
-            "doctor":    "health, medical symptoms, body conditions, wellness, medications",
-            "lawyer":    "legal matters, rights, contracts, court, lawsuits, evictions",
-            "wealth":    "finances, investing, budgeting, debt, taxes, money management",
-            "therapist": "mental health, emotions, relationships, trauma, grief, anxiety",
-            "career":    "jobs, career growth, resumes, interviews, workplace issues",
-            "tutor":     "learning, education, homework, studying, academic subjects",
-            "vitality":  "fitness, nutrition, exercise, diet, physical performance",
-            "hype":      "motivation, content creation, social media, entrepreneurship, hustle",
-            "bestie":    "personal life, friendship, dating, venting, everyday problems",
-            "pastor":    "faith, spirituality, prayer, scripture, moral guidance",
-            "guardian":  "cybersecurity, scams, identity theft, digital safety, account protection",
+            "guardian":  "cybersecurity, scams, phishing, identity theft, hacking, account protection, digital safety",
+            "doctor":    "medical symptoms, health conditions, body pain, illness, medication, fatigue, injury, mental symptoms",
+            "lawyer":    "legal matters, contracts, rights, lawsuits, court, evictions, employment law, legal advice",
+            "wealth":    "personal finance, investing, budgeting, debt, taxes, money management, savings, business finances",
+            "therapist": "emotions, mental wellbeing, relationships, anxiety, depression, grief, trauma, feelings",
+            "mechanic":  "vehicle repair, car problems, engines, brakes, tires on vehicles, OBD codes, mechanical issues",
+            "career":    "jobs, career growth, resumes, interviews, workplace issues, salary negotiation, promotions",
+            "vitality":  "fitness, nutrition, exercise, diet, physical training, supplements, body performance, workouts",
+            "hype":      "content creation, social media, viral strategy, entrepreneurship, motivation, hustle",
+            "bestie":    "personal life decisions, friendship, dating, venting, everyday problems, relationships",
+            "pastor":    "faith, spirituality, prayer, scripture, grief ministry, moral guidance, theology",
+            "tutor":     "learning, education, homework, studying, academic subjects, skills, explanations",
         }
 
         domain = PERSONA_DOMAINS.get(persona.lower(), "general assistance")
 
-        # Get last 3 turns of conversation for this user
-        recent_context = CONVO_CONTEXT.get(user_email, [])[-3:]
-        context_str = ""
-        if recent_context:
-            context_str = "\nRECENT CONVERSATION CONTEXT:\n"
-            for turn in recent_context:
-                context_str += f"  [{turn['persona'].upper()}]: {turn['msg'][:100]}\n"
+        # ── Semantic routing prompt ───────────────────────────────────────────
+        prompt = f"""You are the routing intelligence for LYLO, an AI assistant with 12 specialist personas.
 
-        prompt = f"""You are a routing validator for an AI app called LYLO.
+CURRENT SPECIALIST: {persona.upper()}
+THIS SPECIALIST HANDLES: {domain}
 
-The user is currently talking to the {persona.upper()} specialist whose domain is: {domain}
-{context_str}
-User message: "{message}"
+{memory_context}
 
-Your job: Decide if this message is GENUINELY out of domain for the {persona.upper()}.
+{convo_context}
 
-ROUTING RULES — apply these strictly:
+NEW MESSAGE FROM USER: "{message}"
 
-STAY in domain when:
-- The topic could reasonably relate to this specialist (e.g. "tired" with Doctor = health symptom)
-- Emotional context surrounds an in-domain topic
-- The question is ambiguous and could fit this specialist
+YOUR JOB: Decide if this message truly belongs with {persona.upper()} — or should route to a different specialist.
 
-ROUTE AWAY when:
-- The message is primarily about ANOTHER specialist's core subject
-- A Doctor gets a car/vehicle question → route to mechanic
-- A Mechanic gets a medical symptom → route to doctor  
-- A Doctor gets an investment/money question → route to wealth
-- A Lawyer gets a fitness/nutrition question → route to vitality
-- Any specialist gets a question that is CLEARLY another specialist's primary job
+━━━ ROUTING INTELLIGENCE RULES ━━━
 
-CONCRETE EXAMPLES:
-- "check engine light came on" to Doctor → OUT OF DOMAIN → mechanic
-- "I changed spark plugs" to Doctor → OUT OF DOMAIN → mechanic
-- "should I invest in crypto" to Doctor → OUT OF DOMAIN → wealth
-- "I have chest pain" to Mechanic → OUT OF DOMAIN → doctor
-- "my back hurts" to Mechanic → OUT OF DOMAIN → doctor
-- "I'm stressed" to Doctor → IN DOMAIN (stress is health)
-- "I'm tired" to Doctor → IN DOMAIN (fatigue is health)
-- "my car won't start" to Doctor → OUT OF DOMAIN → mechanic
-- "I got a speeding ticket" to Doctor → OUT OF DOMAIN → lawyer
+RULE 1 — UNDERSTAND MEANING, NOT WORDS:
+  "I'm tired" to Doctor → IN DOMAIN (fatigue is a health symptom)
+  "flat tire" to Doctor → OUT OF DOMAIN → mechanic
+  "I'm back" to Doctor → IN DOMAIN if discussing back pain
+  "I'm cold" to Doctor → IN DOMAIN (chills/illness)
+  "tired of this" to Therapist → IN DOMAIN (emotional exhaustion)
+  "back pain" to Guardian → OUT OF DOMAIN → doctor
+  "I feel anxious" to Guardian → OUT OF DOMAIN → therapist or doctor
+  "someone scammed me" to Doctor → OUT OF DOMAIN → guardian
+  "need a lawyer" to Doctor → OUT OF DOMAIN → lawyer
 
-Be decisive. If it's the wrong specialist, route it. Do not hedge.
+RULE 2 — CONVERSATION CONTEXT WINS:
+  If recent turns show medical discussion → ambiguous words stay with doctor
+  If recent turns show car discussion → "it's still making noise" stays with mechanic
+  Memory and conversation history override isolated word patterns
 
-Respond with JSON only:
-{{"in_domain": true}} if the message belongs with {persona.upper()}
-{{"in_domain": false, "correct_persona": "<persona_name>", "reason": "<one sentence>"}} if it should route elsewhere
+RULE 3 — STAY in domain when:
+  Message fits this specialist even loosely
+  Ambiguous message + conversation context points here
+  Emotional framing surrounds an in-domain topic
 
-Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vitality, hype, bestie, pastor, guardian"""
+RULE 4 — ROUTE AWAY when:
+  Message is clearly another specialist's primary subject with no ambiguity
+  
+RULE 5 — ROUTING MAP:
+  medical / health / body symptoms / fatigue / injury → doctor
+  legal / contracts / rights / lawsuit / court → lawyer
+  money / investing / debt / budget / taxes → wealth
+  car / vehicle / engine / brakes / flat tire / mechanic → mechanic
+  emotions / anxiety / depression / grief / feelings → therapist
+  fitness / nutrition / workout / exercise / diet → vitality
+  scam / hacking / phishing / identity theft / digital safety → guardian
+  career / job / resume / salary / workplace → career
+  faith / prayer / scripture / spiritual / God → pastor
+  content / social media / viral / hustle → hype
+  friendship / dating / venting / personal life → bestie
+  studying / homework / learning / academic → tutor
+
+Respond ONLY with valid JSON — no explanation, no markdown:
+{{"in_domain": true}}
+OR
+{{"in_domain": false, "correct_persona": "<persona_id>", "reason": "<one clear sentence why>"}}
+
+Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career, vitality, hype, bestie, pastor, tutor"""
+
+        if not _client:
+            return None
 
         try:
-            import anthropic as _anth
             resp = await asyncio.wait_for(
                 _client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=120,
                     messages=[{"role": "user", "content": prompt}],
                 ),
-                timeout=4.0
+                timeout=5.0
             )
-            raw = resp.content[0].text.strip()
-            # Strip markdown fences if present
-            raw = raw.replace("```json", "").replace("```", "").strip()
+            raw    = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
             result = json.loads(raw)
             if not result.get("in_domain", True):
                 correct = result.get("correct_persona", "")
                 reason  = result.get("reason", "")
-                logger.info(f"🛡️ Claude Domain Check: [{persona}→{correct}] {reason}")
+                logger.info(f"🧠 Semantic Router [{persona}→{correct}]: {reason}")
                 return {"correct_persona": correct, "reason": reason}
+            logger.debug(f"🧠 Semantic Router [{persona}]: in-domain ✅")
             return None
-        except asyncio.TimeoutError:
-            logger.warning("⚠️ Claude domain check timed out — passing through")
-            return None
-        except Exception as e:
-            logger.warning(f"⚠️ Claude domain check failed: {{e}} — passing through")
-            return None
+        except (asyncio.TimeoutError, Exception) as _router_err:
+            is_timeout = isinstance(_router_err, asyncio.TimeoutError)
+            logger.warning(f"⚠️ Semantic router {'timeout' if is_timeout else f'error: {_router_err}'} — running regex fallback")
 
-    # Run Claude domain check
-    domain_reroute = await claude_domain_check(persona, msg)
+            # ── Regex fallback: whole-word matching, zero false positives ────
+            # Fires ONLY on semantic router failure. Uses word boundaries so
+            # "tired" never matches "tire", "ear" never matches "clear", etc.
+            import re as _re
+
+            FALLBACK_ROUTES: list[tuple[set, str]] = [
+                # (trigger words, correct_persona)
+                ({"symptom","pain","hurts","hurting","ache","fever","nausea","vomit",
+                  "headache","migraine","dizzy","rash","swollen","bleeding","infection",
+                  "diagnosis","medication","prescription","doctor","hospital","urgent care",
+                  "carpal tunnel","tendonitis","arthritis","wrist","elbow","knee","ankle",
+                  "shoulder","spine","chest pain","stomach","fatigue","tired","sick",
+                  "numb","tingling","cramping","fracture","sprain","strain","bruise"},  "doctor"),
+                ({"lawsuit","sue","court","attorney","eviction","tenant","landlord",
+                  "legal advice","contract clause","my rights","wrongful","discrimination",
+                  "settlement","custody","divorce","restraining order","small claims"},    "lawyer"),
+                ({"investing","invest","portfolio","401k","mortgage","debt payoff","budget",
+                  "tax return","net worth","stocks","crypto","compound interest","refinance",
+                  "bankruptcy","savings account","financial plan","passive income",
+                  "money advice","how to save","where to put my money"},               "wealth"),
+                ({"anxiety","depression","trauma","grief","overwhelmed","burnout","therapy",
+                  "panic attack","self worth","mental health","loneliness","anger issues",
+                  "boundaries","codependent","attachment"},                                "therapist"),
+                ({"check engine","flat tire","oil change","brake pad","transmission fluid",
+                  "engine light","radiator","alternator","obd code","p0","coolant",
+                  "exhaust","spark plug","catalytic converter","alignment"},               "mechanic"),
+                ({"workout plan","macros","calorie deficit","protein intake","bench press",
+                  "squat","deadlift","hiit","cardio","supplements","creatine","pre-workout",
+                  "body fat","muscle gain","weight loss program"},                         "vitality"),
+                ({"job offer","salary negotiation","resume","linkedin","promotion","toxic boss",
+                  "wrongful termination","performance review","side hustle","freelance"},   "career"),
+                ({"viral","hook","tiktok algorithm","instagram reel","content calendar",
+                  "engagement rate","followers","brand deal","youtube shorts"},             "hype"),
+                ({"my faith","prayer","scripture","sermon","God","spiritual","church",
+                  "Bible verse","theology","forgiveness","salvation","grief ministry"},     "pastor"),
+                ({"homework","exam","study","algebra","calculus","history essay","tutoring",
+                  "gre","sat","act","learning disability","feynman","explain this concept"}, "tutor"),
+                ({"my relationship","breakup","situationship","my ex","dating advice",
+                  "toxic friend","family drama","my mom","my dad","venting"},               "bestie"),
+                ({"scam","phishing","hacked","identity theft","suspicious email","fake website",
+                  "malware","virus","2fa","password breach","dark web","ransomware"},       "guardian"),
+            ]
+
+            msg_l = message.lower()
+            for trigger_set, target_persona in FALLBACK_ROUTES:
+                if target_persona == persona:
+                    continue  # skip — already on right persona
+                for word in trigger_set:
+                    # Whole-word boundary match — "tired" won't match "tire"
+                    if _re.search(r'\b' + _re.escape(word) + r'\b', msg_l):
+                        if target_persona != persona:
+                            logger.info(f"🔒 Regex fallback [{persona}→{target_persona}] trigger='{word}'")
+                            return {"correct_persona": target_persona, "reason": f"Message contains '{word}' which belongs with the {target_persona} specialist"}
+                        break
+
+            return None  # Genuinely ambiguous — let LLM handle it in-persona
+
+    # Run semantic router (primary — understands meaning, uses memory + context)
+    domain_reroute = await intelligent_semantic_router(persona, msg)
+
     if domain_reroute:
         correct_persona = domain_reroute["correct_persona"]
         reason          = domain_reroute["reason"]
@@ -3063,14 +3220,71 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
             "pastor":    "The Pastor",    "guardian":  "The Guardian",
         }}
         correct_name = PERSONA_NAMES.get(correct_persona, correct_persona.capitalize())
-        handoff_msg  = (
-            f"That's outside my lane. {reason} "
-            f"Switch to **{correct_name}** — they've got you covered on this."
+
+        # ── Voiced handoff: each persona speaks in their own voice ───────────
+        _VOICED_HANDOFFS = {
+            # persona_id: (English template, Spanish template)
+            "guardian":  (
+                f"That's not a security threat — it's a {reason}. Switch to **{correct_name}** for accurate intel. I'll be here when you need digital protection.",
+                f"Eso no es una amenaza de seguridad — es un tema de {reason}. Cambia a **{correct_name}** para información precisa. Aquí estaré cuando necesites protección digital.",
+            ),
+            "doctor":    (
+                f"That's outside my clinical scope — {reason}. **{correct_name}** is the right specialist. Your health stays my priority, but this one's their lane.",
+                f"Eso está fuera de mi alcance clínico — {reason}. **{correct_name}** es el especialista correcto. Tu salud sigue siendo mi prioridad, pero esto es su área.",
+            ),
+            "lawyer":    (
+                f"That's not in my legal brief. {reason} **{correct_name}** owns that territory. Come back when you need legal firepower.",
+                f"Eso no está en mi expediente legal. {reason} **{correct_name}** domina ese territorio. Regresa cuando necesites poder legal.",
+            ),
+            "wealth":    (
+                f"That's not in my financial playbook. {reason} **{correct_name}** has you covered. Your money strategy stays with me.",
+                f"Eso no está en mi manual financiero. {reason} **{correct_name}** te tiene cubierto. Tu estrategia de dinero se queda conmigo.",
+            ),
+            "therapist": (
+                f"That's outside my therapeutic scope. {reason} Let me point you to **{correct_name}** — they're equipped for this. I'm here for the emotional side.",
+                f"Eso está fuera de mi alcance terapéutico. {reason} Déjame dirigirte a **{correct_name}** — están equipados para esto. Yo estoy aquí para el lado emocional.",
+            ),
+            "mechanic":  (
+                f"I work on machines, not this. {reason} **{correct_name}** is your expert here. Come back when something needs fixing under the hood.",
+                f"Trabajo en máquinas, no en esto. {reason} **{correct_name}** es tu experto aquí. Regresa cuando algo necesite arreglarse bajo el capó.",
+            ),
+            "vitality":  (
+                f"That's beyond the gym floor. {reason} **{correct_name}** handles that. I'll be here for your fitness and nutrition.",
+                f"Eso está más allá del área de ejercicios. {reason} **{correct_name}** maneja eso. Aquí estaré para tu condición física y nutrición.",
+            ),
+            "career":    (
+                f"That's not a career move. {reason} **{correct_name}** is who you need for that. Come back when you're ready to level up professionally.",
+                f"Eso no es un movimiento de carrera. {reason} **{correct_name}** es quien necesitas para eso. Regresa cuando estés listo para crecer profesionalmente.",
+            ),
+            "hype":      (
+                f"Yo, that's not my lane — {reason}. **{correct_name}** is who you need. Switch seats and come back when you're ready to go viral.",
+                f"Eso no es mi área — {reason}. **{correct_name}** es quien necesitas. Cambia y regresa cuando estés listo para hacer viral tu contenido.",
+            ),
+            "bestie":    (
+                f"Okay babe, that's above my bestie pay grade — {reason}. You need to talk to **{correct_name}** for real. I got you on everything else.",
+                f"Okay, eso está por encima de mis posibilidades — {reason}. Necesitas hablar con **{correct_name}** en serio. Yo te apoyo en todo lo demás.",
+            ),
+            "pastor":    (
+                f"Peace to you. {reason} That question belongs with **{correct_name}**, not in the sanctuary. Come back when you need spiritual grounding.",
+                f"Paz a ti. {reason} Esa pregunta le pertenece a **{correct_name}**, no al santuario. Regresa cuando necesites fundamento espiritual.",
+            ),
+            "tutor":     (
+                f"That's outside the classroom. {reason} **{correct_name}** is the expert there. Come back when you're ready to learn.",
+                f"Eso está fuera del salón de clases. {reason} **{correct_name}** es el experto ahí. Regresa cuando estés listo para aprender.",
+            ),
+        }
+        _en_voice, _es_voice = _VOICED_HANDOFFS.get(
+            persona,
+            (
+                f"That's outside my lane. {reason} Switch to **{correct_name}** — they've got you covered.",
+                f"Eso está fuera de mi área. {reason} Cambia a **{correct_name}** — ellos te tienen cubierto.",
+            )
         )
+        handoff_msg = _es_voice if lang == "es" else _en_voice
+
         async def _handoff():
-            # Text chunk — correct SSE format the frontend expects
-            yield f"data: {json.dumps({'type': 'text', 'content': handoff_msg})}\n\n"
-            # Meta chunk — tells frontend who to switch to
+            h_audio = await generate_audio_inline(handoff_msg, voice)
+            yield f"data: {json.dumps({'type': 'text', 'content': handoff_msg, 'audio_b64': h_audio})}\n\n"
             meta_obj = {
                 "type":             "meta",
                 "confidence_score": 95,
@@ -3079,14 +3293,15 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 "action_trigger":   None,
                 "audio_b64":        "",
                 "full_answer":      handoff_msg,
-                "model":            "LYLO-Director",
+                "model":            "LYLO-SemanticRouter",
                 "persona_switched": True,
                 "switched_persona": correct_persona,
                 "usage_count":      USAGE_TRACKER[user_id],
                 "limit":            limit,
             }
             yield f"data: {json.dumps(meta_obj)}\n\n"
-        return StreamingResponse(_handoff(), media_type="text/event-stream")
+        return StreamingResponse(_handoff(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     # ── Scam scan ────────────────────────────────────────────────────────────
     indicators = analyze_scam_indicators(msg)
@@ -3094,8 +3309,107 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
     # ── Build final system prompt ─────────────────────────────────────────────
     user_profile  = await retrieve_user_profile(user_id)
     intake_profile = await retrieve_intake_profile(user_id)
-    memory_context = await retrieve_intelligence_sync(user_id, msg)
-    user_location  = get_user_location_data(email_lower)
+
+    # ── Real-Time Intelligence: Pinecone + Tavily run in parallel ────────────
+    # Both fire simultaneously — total wait = max(pinecone_time, tavily_time)
+    # not pinecone_time + tavily_time. Usually <1.5s combined.
+    async def _get_tavily_context(persona: str, message: str, location: str) -> str:
+        """
+        Generates a domain-specific Tavily query per persona and returns
+        verified real-time context. Never crashes — returns "" on any failure.
+        """
+        if not tavily_client:
+            return ""
+        
+        # Per-persona query strategy — each specialist searches their domain
+        PERSONA_QUERY_MAP = {
+            "doctor":    f"{message} medical health symptoms treatment",
+            "lawyer":    f"{message} legal rights law advice",
+            "wealth":    f"{message} personal finance investment advice",
+            "mechanic":  f"{message} car vehicle repair fix",
+            "therapist": f"{message} mental health emotional wellbeing coping",
+            "vitality":  f"{message} fitness nutrition exercise health",
+            "career":    f"{message} career job workplace professional advice",
+            "tutor":     f"{message} explanation learn understand",
+            "guardian":  f"{message} cybersecurity scam safety protect",
+            "hype":      f"{message} content creation social media strategy",
+            "pastor":    f"{message} faith spirituality scripture meaning",
+            "bestie":    f"{message} advice relationship personal",
+        }
+        
+        # Personas that always need real-time data (medical, legal, financial)
+        ALWAYS_SEARCH = {"doctor", "lawyer", "wealth", "guardian", "mechanic"}
+        
+        # For other personas: only search if message contains uncertainty triggers
+        SEARCH_TRIGGERS = {
+            "how do i", "what is", "is it safe", "should i", "what are",
+            "how much", "is this", "what does", "can i", "when should",
+            "what happens", "is there", "how long", "how often", "best way",
+            "help me understand", "explain", "difference between",
+        }
+        
+        if persona not in ALWAYS_SEARCH:
+            msg_lower = message.lower()
+            if not any(t in msg_lower for t in SEARCH_TRIGGERS):
+                return ""  # Skip search for statements/venting, not questions
+        
+        query = PERSONA_QUERY_MAP.get(persona, message)
+        loc   = location or ""
+        
+        try:
+            resp = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: tavily_client.search(
+                        query        = f"{query} {loc}".strip(),
+                        search_depth = "advanced",
+                        max_results  = 4,
+                        include_answer = True,
+                    )
+                ),
+                timeout=4.0
+            )
+            
+            parts = []
+            if resp.get("answer"):
+                parts.append(f"VERIFIED ANSWER: {resp['answer']}")
+            for r in resp.get("results", [])[:3]:
+                title   = r.get("title", "")
+                snippet = r.get("content", "")[:250]
+                source  = r.get("url", "")
+                if snippet:
+                    parts.append(f"SOURCE — {title}: {snippet} [{source}]")
+            
+            if not parts:
+                return ""
+            
+            return (
+                "\n\n━━━ REAL-TIME VERIFIED INTELLIGENCE ━━━\n"
+                "The following was retrieved RIGHT NOW from trusted sources.\n"
+                "Use this to give accurate, up-to-date answers. Cite the source "
+                "when it materially affects your answer.\n\n"
+                + "\n".join(parts)
+                + "\n━━━ END VERIFIED INTELLIGENCE ━━━"
+            )
+        
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Tavily timeout for [{persona}] — responding from training knowledge")
+            return ""
+        except Exception as e:
+            logger.warning(f"⚠️ Tavily error for [{persona}]: {e}")
+            return ""
+
+    # Run both in parallel
+    user_location = get_user_location_data(email_lower)
+    memory_context, tavily_context = await asyncio.gather(
+        retrieve_intelligence_sync(user_id, msg),
+        _get_tavily_context(persona, msg, user_location or ""),
+    )
+
+    # Merge: Tavily context appended to memory context so both reach the LLM
+    if tavily_context:
+        memory_context = (memory_context or "") + tavily_context
+        logger.info(f"🌐 Tavily injected [{persona}] for {user_data['name']}: {len(tavily_context)} chars")
 
     system_prompt = await _build_chat_system_prompt(
         persona         = persona,
@@ -3105,6 +3419,43 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
         intake_profile  = intake_profile,
         memory_context  = memory_context,
     )
+
+    # ── Honesty Layer: inject confidence + verification mandate ──────────────
+    HONESTY_DIRECTIVE = """
+━━━ HONESTY & CONFIDENCE PROTOCOL (NON-NEGOTIABLE) ━━━
+You are talking to real people who trust you completely — elderly, disabled,
+or tech-struggling users who may act on everything you say.
+
+NEVER say anything with false confidence. NEVER make up facts to sound helpful.
+
+CONFIDENCE RULES:
+  • 95–100% sure → State it directly. No hedge needed.
+  • 70–94% sure  → Lead with the answer, add: "I'm about [X]% sure on this —
+                   verify with [specific source] before acting."
+  • Below 70%    → "I want to be honest with you — I'm not fully sure about
+                   this. Here's what I do know: [answer]. To get you 100%
+                   accurate on this, you should [specific next step]."
+  • Not sure at all → "I don't know this well enough to advise you. The right
+                   move is [specific action — call a doctor, check Medicare.gov, etc.]"
+
+REAL-TIME DATA:
+  If VERIFIED INTELLIGENCE is present above, use it. It's current.
+  If no verified data is available, your training has a knowledge cutoff —
+  say so when it matters (drug interactions, current laws, recent prices, etc.)
+
+NEVER say:
+  ❌ "I'm not 100% sure" (too vague — give the actual percentage)
+  ❌ "As an AI I cannot..." (you are their specialist — act like it)
+  ❌ Confident answers about current drug interactions, legal statutes, or
+     financial regulations without citing the verified intelligence above.
+
+ALWAYS say:
+  ✅ "I'm about 85% sure on this — [reason] — here's how to confirm..."
+  ✅ "Based on what I found right now: [answer from Tavily]"
+  ✅ "I honestly don't know this well enough — you need to [specific action]"
+━━━ END HONESTY PROTOCOL ━━━
+"""
+    system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
 
     # ── Language injection ────────────────────────────────────────────────────
     if lang == "es":
@@ -3270,10 +3621,171 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 logger.warning(f"⚡ Director timeout in stream — using winner directly")
                 answer = winner_answer
 
+            # ── Empty-answer safety net ───────────────────────────────────────
+            # If the LLM returned an empty answer (hard boundary refusal without
+            # a handoff message), generate an in-persona handoff rather than
+            # streaming silence to the frontend.
+            if not answer or not answer.strip():
+                _persona_display_en = {
+                    "guardian":  "The Guardian",  "doctor":    "The Doctor",
+                    "lawyer":    "The Lawyer",     "wealth":    "The Wealth Architect",
+                    "therapist": "The Therapist",  "mechanic":  "The Tech Specialist",
+                    "career":    "The Career Strategist", "vitality": "The Vitality Coach",
+                    "tutor":     "The Tutor",      "pastor":    "The Pastor",
+                    "hype":      "The Hype Strategist", "bestie": "The Bestie",
+                }
+                _persona_display_es = {
+                    "guardian":  "El Guardian",   "doctor":    "El Doctor",
+                    "lawyer":    "El Abogado",     "wealth":    "El Arquitecto Financiero",
+                    "therapist": "El Terapeuta",   "mechanic":  "El Especialista Técnico",
+                    "career":    "El Estratega de Carrera", "vitality": "El Coach de Bienestar",
+                    "tutor":     "El Tutor",       "pastor":    "El Pastor",
+                    "hype":      "El Estratega de Contenido", "bestie": "La Bestie",
+                }
+                if lang == "es":
+                    _name = _persona_display_es.get(persona, persona.capitalize())
+                    answer = (
+                        f"Soy {_name}. Esa pregunta está fuera de mi dominio — "
+                        f"cambia al especialista correcto y te ayudarán."
+                    )
+                else:
+                    _name = _persona_display_en.get(persona, persona.capitalize())
+                    answer = (
+                        f"I'm {_name}. That question falls outside my domain — "
+                        f"switch to the right specialist and they'll have you covered."
+                    )
+                logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
+
             sentences = split_into_sentences(answer)
+
+            # ── NLI Trust Scorer (local to stream_response) ──────────────────
+            async def _nli_trust_score(sentence: str, claim_type: str) -> dict:
+                """
+                Checks a high-stakes sentence against Tavily context + Haiku NLI.
+                Returns trust tier, confidence, optional correction, audit trail.
+                Fast path: 3s timeout. Falls back to "probable" on any failure.
+                """
+                _client = claude_client or anthropic_client
+                if not _client:
+                    return {"tier": "probable", "confidence": 75, "correction": None,
+                            "source": "training", "audit": None}
+
+                has_tavily = bool(tavily_context and "VERIFIED ANSWER" in tavily_context)
+                ctx_snippet = tavily_context[:600] if has_tavily else "No real-time data available."
+
+                prompt = f"""You are a fact-checking engine for an AI assistant used by elderly and vulnerable people.
+SENTENCE: "{sentence}"
+CLAIM TYPE: {claim_type}
+REAL-TIME DATA: {ctx_snippet}
+
+Respond ONLY with valid JSON:
+{{"tier":"verified"|"probable"|"uncertain","confidence":<0-100>,"issue":<null or one sentence>,"correction":<null or corrected sentence>,"source":"tavily"|"training"|"unknown"}}
+
+RULES:
+- verified: Real-time data directly supports this. confidence 90-100.
+- probable: Consistent with knowledge, no contradiction. confidence 60-89.
+- uncertain: Contradicts data, unverifiable specific claim, or dangerous absolute statement. confidence 0-59.
+- correction: Only if uncertain AND you have a more accurate version. Otherwise null.
+- Conservative: when unsure use probable not verified.
+- Never flag general conversational sentences as uncertain."""
+
+                try:
+                    resp = await asyncio.wait_for(
+                        _client.messages.create(
+                            model    = "claude-haiku-4-5-20251001",
+                            max_tokens = 180,
+                            messages = [{"role": "user", "content": prompt}],
+                        ),
+                        timeout=3.0
+                    )
+                    raw    = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
+                    result = json.loads(raw)
+                    tier       = result.get("tier", "probable")
+                    confidence = int(result.get("confidence", 75))
+                    correction = result.get("correction")
+                    source     = result.get("source", "training")
+                    issue      = result.get("issue")
+                    audit = None
+                    if tier == "uncertain" and (issue or correction):
+                        audit = {
+                            "original":   sentence,
+                            "issue":      issue or "Could not verify this claim.",
+                            "correction": correction,
+                            "source_label": "Tavily real-time search" if source == "tavily" else "Internal consistency check",
+                            "timestamp":  datetime.now().isoformat(),
+                        }
+                    return {"tier": tier, "confidence": confidence, "correction": correction,
+                            "source": source, "audit": audit}
+                except (asyncio.TimeoutError, Exception) as _e:
+                    logger.warning(f"NLI scorer: {_e}")
+                    return {"tier": "probable", "confidence": 70, "correction": None,
+                            "source": "training", "audit": None}
+
+            # ── Trust Layer Streaming Pipeline ───────────────────────────────
+            # For each sentence:
+            #   1. Check if high-stakes (instant, pure Python)
+            #   2. If yes: show 🔵 checking pulse, run NLI in background
+            #   3. Audio generation runs in parallel with NLI check
+            #   4. Stream: original or corrected sentence + trust metadata
+            #   5. Frontend renders color/icon + optional audit dropdown
+
             for sentence in sentences:
-                sentence_audio = await generate_audio_inline(sentence, voice)
-                chunk = {"type": "text", "content": sentence, "audio_b64": sentence_audio}
+                is_risky, claim_type = _is_high_stakes(sentence)
+
+                if is_risky:
+                    # Send "checking" pulse immediately — user sees AI thinking
+                    checking_note = (
+                        f"...déjame verificar eso por ti..." if lang == "es"
+                        else f"...let me make sure that's right for you..."
+                    )
+                    yield f"data: {json.dumps({'type':'trust_checking','content': checking_note, 'original': sentence})}\n\n"
+
+                    # Run NLI check and audio generation in parallel
+                    trust_result, sentence_audio = await asyncio.gather(
+                        _nli_trust_score(sentence, claim_type),
+                        generate_audio_inline(sentence, voice),
+                    )
+
+                    tier       = trust_result["tier"]
+                    confidence = trust_result["confidence"]
+                    correction = trust_result.get("correction")
+                    audit      = trust_result.get("audit")
+                    source     = trust_result.get("source", "training")
+
+                    # If uncertain AND correction exists — stream the fix
+                    display_sentence = sentence
+                    if tier == "uncertain" and correction:
+                        display_sentence = correction
+                        correction_audio = await generate_audio_inline(correction, voice)
+                        sentence_audio   = correction_audio
+
+                    chunk = {
+                        "type":        "text",
+                        "content":     display_sentence,
+                        "audio_b64":   sentence_audio,
+                        "trust_tier":  tier,           # verified | probable | uncertain
+                        "confidence":  confidence,
+                        "source_type": source,          # tavily | training | unknown
+                        "original":    sentence if (tier == "uncertain" and correction) else None,
+                        "audit":       audit,           # None or {original, issue, correction, source_label, timestamp}
+                        "claim_type":  claim_type,
+                    }
+
+                else:
+                    # Non-risky sentence — stream immediately, mark probable
+                    sentence_audio = await generate_audio_inline(sentence, voice)
+                    chunk = {
+                        "type":        "text",
+                        "content":     sentence,
+                        "audio_b64":   sentence_audio,
+                        "trust_tier":  "probable",
+                        "confidence":  85,
+                        "source_type": "training",
+                        "original":    None,
+                        "audit":       None,
+                        "claim_type":  None,
+                    }
+
                 yield f"data: {json.dumps(chunk)}\n\n"
                 await asyncio.sleep(0.008)
 
