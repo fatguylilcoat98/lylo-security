@@ -3,6 +3,8 @@ LYLO OS — routers/admin_router.py
 Endpoints: /join-waitlist, /view-waitlist, /beta-status,
            /activate-beta, /view-paid-queue, /webhook (Stripe)
 """
+import os
+import smtplib
 import json
 import logging
 import stripe
