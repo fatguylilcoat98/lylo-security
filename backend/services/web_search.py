@@ -20,8 +20,3 @@ async def search_personalized_web(query: str, location: str = "") -> str:
     except Exception as e:
         logger.error(f"Search Error: {e}")
         return ""
-
-# =============================================================================
-# AI ENGINE CALLS — DUAL-PASS CONSENSUS
-# =============================================================================
-async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash-lite"):
