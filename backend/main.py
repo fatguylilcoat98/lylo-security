@@ -2191,6 +2191,7 @@ async def chat(
     device_id:            str        = Form("unknown"),
     email_consent:        str        = Form("false"),
     voice:                str        = Form("onyx"),
+    lang:                 str        = Form("en"),
     file:                 UploadFile = File(None),
 ):
     email_lower = user_email.lower().strip()
@@ -2704,6 +2705,10 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
         index      = memory_index,
         user_name  = user_data["name"],
     )
+
+    # ── Language injection ────────────────────────────────────────────────────
+    if lang == "es":
+        system_prompt = "IMPORTANT: The user has selected Spanish. Respond ENTIRELY in Spanish (Latin American). Do not mix languages.\n\n" + system_prompt
 
     # ── Engine selection ─────────────────────────────────────────────────────
     openai_engine = (
