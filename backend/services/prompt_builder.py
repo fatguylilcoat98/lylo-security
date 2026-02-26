@@ -1,15 +1,30 @@
-"""
-LYLO OS — services/prompt_builder.py
-System prompt assembly: persona briefings, hard boundaries,
-theology block, vibe instructions, assemble_prompt().
-"""
+"""LYLO OS — services/prompt_builder.py"""
+import re
+import os
+import json
 import time
+import asyncio
+import base64
+import hashlib
 import logging
-from typing import List, Optional, Dict, Any
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
+
 from services.config import DOMAIN_ANCHORS
-
-logger = logging.getLogger("LYLO.PromptBuilder")
-
+from intelligence_data import (
+    VIBE_STYLES, VIBE_LABELS, PERSONA_DEFINITIONS, PERSONA_EXTENDED,
+    PERSONA_TIERS, INTENT_LOGIC, get_random_hook, get_all_hooks,
+    ANALOGY_BRIDGE_TRADE_CONTEXT, ACCOUNTABILITY_SENTINEL_OVERRIDE,
+    build_accountability_sentinel, PARTNER_ENERGY_DIRECTIVE,
+    EXIT_FIRST_FILTER, SENTINEL_NO_RECITE,
+    get_output_schema, build_stealth_shield,
+)
+from lylo_kernel import build_system_prompt, fetch_memory_pins, upsert_memory_pin
+logger = logging.getLogger("LYLO.Prompt")
 async def _build_chat_system_prompt(
     persona:        str,
     user_email:     str,
@@ -481,3 +496,8 @@ PRE-EXECUTION CHECKLIST:
 REQUIRED OUTPUT SCHEMA:
 {get_output_schema(persona)}
 """.strip()
+
+# =============================================================================
+# V30 INLINE TTS
+# =============================================================================
+VALID_VOICES = {"nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"}
