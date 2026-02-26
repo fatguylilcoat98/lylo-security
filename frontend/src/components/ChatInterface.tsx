@@ -1,37 +1,31 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 30.9.0 — PERSONA COUNCIL RETUNING
+// Version: 31.1.0 — STEP-BY-STEP EMERGENCY + RELIGION INTAKE + SPANISH + END SESSION PDF
 // ─────────────────────────────────────────────────────────────────────────────
-// V30.9 Changes:
+// V31.1 Changes:
+//  [V31.1-1] RELIGION Q1     — Faith question is first in intake (sets up Pastor)
+//  [V31.1-2] STEP EMERGENCY  — Emergency protocol shows one step at a time
+//                              with "Done — Next Step" button after each step
+//  [V31.1-3] END SESSION PDF — PDF only sends when user taps End Session + confirms
+//                              No more auto-spam on every message
+//  [V31.1-4] SPANISH TOGGLE  — EN/ES button in header AND login screen
+//                              All UI strings switch language
+// ─────────────────────────────────────────────────────────────────────────────
+// V30.9 Changes (preserved):
 //  [V30.9-1] BESTIE RETUNE   — Blunt, high-energy, protective. Real Talk mode.
-//                              Slang, emojis, fierce loyalty. Haters get called out.
-//  [V30.9-2] CAREER RETUNE  — Cold calculating shark. Market value, leverage,
-//                              corporate game. Zero feelings, pure strategy.
+//  [V30.9-2] CAREER RETUNE  — Cold calculating shark. Zero feelings, pure strategy.
 //  [V30.9-3] UNIQUE INTROS  — Every persona gets a distinct voice/opening hook.
-//                              No more shared "stop you right there" template.
 // ─────────────────────────────────────────────────────────────────────────────
 // V30.8 Changes (preserved):
 //  [V30.8-1] SENTINEL IMPORT — useSentinel from ../lib/useSentinel
 //  [V30.8-2] SENTINEL HOOK  — sentinel = useSentinel({ userEmail, deviceId })
 //  [V30.8-3] ENGAGEMENT RESET — sentinel.onEngagement() in handleSend finally
 //  [V30.8-4] PUSH REGISTER   — sentinel.onPermissionGranted() after permission
-// ─────────────────────────────────────────────────────────────────────────────
-// V30.2 Changes (preserved):
-//  [V30.2-1] ZERO-JUMP SCROLL — overflowAnchor: 'auto' on chat container
-//  [V30.2-2] RAF SCROLL — streamingText useEffect uses requestAnimationFrame
-//  [V30.2-3] STICKY SCROLL — only force-scroll if within 150px of bottom
-//  [V30.2-4] VAR CLEANUP — streamingMsgId only (isStreaming fully removed)
-// ─────────────────────────────────────────────────────────────────────────────
-// V30.1 Core (preserved):
-//  [V30.1-1] IMAGE SHRINK-RAY — handleImageSelect() canvas 1024px / 0.7 JPEG
-//  [V30.1-2] STREAMING PARSER — SSE getReader()+TextDecoder
-//  [V30.1-3] INSTANT AUDIO — per-sentence audio_b64 from SSE text events
-//  [V30.1-4] confidenceScore > 0 guard + onboarding map closes with })
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
-import { useSentinel } from '../lib/useSentinel'; // [V30.8-1]
+import { useSentinel } from '../lib/useSentinel';
 import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
   Shield, Wrench, Gavel, Activity, BookOpen, Laugh,
@@ -39,7 +33,7 @@ import {
   Zap, Brain, LogOut, X, ArrowRight, Briefcase, Bell, Info,
   ExternalLink, Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock,
   Compass, Star, Users, Target, Flame, Heart, Sliders, ChevronLeft, ChevronRight,
-  CheckCircle,
+  CheckCircle, Globe,
 } from 'lucide-react';
 
 const API_URL = 'https://lylo-backend.onrender.com';
@@ -74,26 +68,168 @@ interface ChatInterfaceProps {
   onLogout: () => void; onUsageUpdate?: () => void;
 }
 
-interface IntakeProfile { occupation: string; mission: string; roadblock: string; relationship: string; vibe: string; }
+interface IntakeProfile { faith: string; occupation: string; mission: string; vibe: string; relationship: string; }
 
 interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; }
 
-// ============================================================================
-// [V30.9-1] [V30.9-2] [V30.9-3] PERSONA COUNCIL — RETUNED
-//
-// BESTIE:  Blunt, high-energy, fiercely loyal. Real Talk only. Slang + emojis.
-//          Haters get called out. "Stay in your lane" = "Floor it."
-//
-// CAREER:  Cold, calculating shark. Market value + leverage + corporate warfare.
-//          Zero feelings. Pure strategy. You're an asset, not a person.
-//
-// ALL OTHERS: Every persona now has a distinct, authentic opening voice.
-//             No more shared "stop you right there" template.
-// ============================================================================
-// BASE_PERSONAS removed — using IMPORTED_PERSONAS from data/personas.ts (single source of truth)
+// [V31.1-1] NEW INTAKE QUESTIONS — Religion first, then work/mission/vibe/relationship
+// Round 1: shown on first login
+// Round 2: gentle banner after first session
+const INTAKE_QUESTIONS_R1 = [
+  {
+    id: 'faith',
+    question: 'What guides your spirit?',
+    subtitle: 'Helps your Pastor speak your language.',
+    icon: Star,
+    accentColor: 'gold',
+    options: [
+      { label: 'Christian',            emoji: '✝️',  value: 'christian' },
+      { label: 'Muslim',               emoji: '☪️',  value: 'muslim'    },
+      { label: 'Jewish',               emoji: '✡️',  value: 'jewish'    },
+      { label: 'Hindu',                emoji: '🕉️', value: 'hindu'     },
+      { label: 'Buddhist',             emoji: '☸️',  value: 'buddhist'  },
+      { label: 'Spiritual / No label', emoji: '🌿',  value: 'spiritual' },
+    ],
+    allowCustom: true,
+    customPlaceholder: 'My faith is…',
+  },
+  {
+    id: 'occupation',
+    question: 'What do you do for work?',
+    subtitle: 'Calibrates your personal AI Task Force.',
+    icon: Briefcase,
+    accentColor: 'blue',
+    options: [
+      { label: 'Professional / Employee',    emoji: '💼', value: 'professional' },
+      { label: 'Entrepreneur / Biz Owner',   emoji: '🚀', value: 'entrepreneur' },
+      { label: 'Student',                    emoji: '🎓', value: 'student'      },
+      { label: 'Parent / Caregiver',         emoji: '🏠', value: 'caregiver'    },
+      { label: 'Job Seeker',                 emoji: '🔍', value: 'job_seeker'   },
+      { label: 'Retired',                    emoji: '🌅', value: 'retired'      },
+    ],
+    allowCustom: true,
+    customPlaceholder: 'I work as…',
+  },
+  {
+    id: 'mission',
+    question: 'Your #1 mission right now?',
+    subtitle: 'We route your council around this objective.',
+    icon: Target,
+    accentColor: 'green',
+    options: [
+      { label: 'Build Wealth',           emoji: '💰', value: 'build_wealth'    },
+      { label: 'Protect My Family',      emoji: '🛡️', value: 'protect_family'  },
+      { label: 'Advance My Career',      emoji: '📈', value: 'career_growth'   },
+      { label: 'Health & Wellness',      emoji: '💪', value: 'health_wellness' },
+      { label: 'Legal / Financial Help', emoji: '⚖️', value: 'legal_financial' },
+      { label: 'Personal Growth',        emoji: '🌱', value: 'personal_growth' },
+    ],
+    allowCustom: true,
+    customPlaceholder: 'My mission is…',
+  },
+  {
+    id: 'vibe',
+    question: 'How should your council talk to you?',
+    subtitle: 'Every advisor adapts to your style.',
+    icon: Sliders,
+    accentColor: 'purple',
+    options: [
+      { label: 'Direct & No Fluff',   emoji: '⚡', value: 'standard'  },
+      { label: 'Chill & Easy',        emoji: '😎', value: 'chill'     },
+      { label: 'Warm & Supportive',   emoji: '🌸', value: 'nurturing' },
+      { label: 'Zero Filter',         emoji: '🔥', value: 'blunt'     },
+      { label: 'Structured & Cited',  emoji: '📚', value: 'academic'  },
+      { label: 'Maximum Urgency',     emoji: '🎯', value: 'intense'   },
+    ],
+    allowCustom: false,
+    customPlaceholder: '',
+  },
+  {
+    id: 'relationship',
+    question: 'Relationship status?',
+    subtitle: 'Advisors calibrate tone to your situation.',
+    icon: Heart,
+    accentColor: 'pink',
+    options: [
+      { label: 'Single',              emoji: '🎯', value: 'single'      },
+      { label: 'In a Relationship',   emoji: '💛', value: 'relationship' },
+      { label: 'Married',             emoji: '💍', value: 'married'      },
+      { label: "It's Complicated",    emoji: '🌀', value: 'complicated'  },
+      { label: 'Divorced / Separated',emoji: '🔓', value: 'divorced'     },
+      { label: 'Prefer Not to Say',   emoji: '🔒', value: 'private'      },
+    ],
+    allowCustom: false,
+    customPlaceholder: '',
+  },
+];
 
-// [V30.9-3] Adapted pastor variants also get unique hooks
-
+const INTAKE_QUESTIONS_R2 = [
+  {
+    id: 'housing',
+    question: 'Do you own or rent?',
+    subtitle: 'Helps your Lawyer and Wealth Architect give specific advice.',
+    icon: Shield,
+    accentColor: 'blue',
+    options: [
+      { label: 'I Own My Home',           emoji: '🏠', value: 'own'    },
+      { label: 'I Rent',                  emoji: '🔑', value: 'rent'   },
+      { label: 'Live With Family / Other',emoji: '👨‍👩‍👧', value: 'other' },
+    ],
+    allowCustom: true, customPlaceholder: 'My situation is…',
+  },
+  {
+    id: 'children',
+    question: 'Do you have children?',
+    subtitle: '',
+    icon: Heart,
+    accentColor: 'pink',
+    options: [
+      { label: 'Yes, young kids (under 12)', emoji: '🧒', value: 'young_kids' },
+      { label: 'Yes, teenagers or adults',   emoji: '👦', value: 'older_kids' },
+      { label: 'No children',                emoji: '🚫', value: 'none'       },
+    ],
+    allowCustom: true, customPlaceholder: 'Tell us more…',
+  },
+  {
+    id: 'health_focus',
+    question: 'Any ongoing health focus?',
+    subtitle: '',
+    icon: Activity,
+    accentColor: 'green',
+    options: [
+      { label: 'Fitness & Weight Loss',   emoji: '💪', value: 'fitness'       },
+      { label: 'Managing a Condition',    emoji: '🏥', value: 'condition'     },
+      { label: 'Mental Health & Stress',  emoji: '🧠', value: 'mental_health' },
+    ],
+    allowCustom: true, customPlaceholder: 'My health focus is…',
+  },
+  {
+    id: 'finances',
+    question: 'Finances right now?',
+    subtitle: 'Your Wealth Architect calibrates to your starting point.',
+    icon: Target,
+    accentColor: 'gold',
+    options: [
+      { label: 'Stable, looking to grow',  emoji: '📊', value: 'stable'     },
+      { label: 'Getting by, want to improve', emoji: '💡', value: 'improving' },
+      { label: 'Struggling, need a plan', emoji: '🆘', value: 'struggling'  },
+    ],
+    allowCustom: true, customPlaceholder: 'My situation is…',
+  },
+  {
+    id: 'location',
+    question: 'What state do you live in?',
+    subtitle: 'State-specific legal and financial advice.',
+    icon: Compass,
+    accentColor: 'indigo',
+    options: [
+      { label: 'California', emoji: '🌴', value: 'CA' },
+      { label: 'Texas',      emoji: '⭐', value: 'TX' },
+      { label: 'Florida',    emoji: '☀️', value: 'FL' },
+    ],
+    allowCustom: true, customPlaceholder: 'I live in…',
+  },
+];
 
 const VIBE_OPTIONS = [
   { value: 'standard', label: 'Standard' }, { value: 'chill', label: 'Chill' },
@@ -102,14 +238,6 @@ const VIBE_OPTIONS = [
 ];
 
 const LEGACY_VIBE_MAP: Record<string, string> = { roast: 'blunt', business: 'academic' };
-
-const INTAKE_QUESTIONS = [
-  { id: 'occupation', question: 'What do you do for work?', subtitle: 'Calibrates your personal AI Task Force.', icon: Briefcase, accentColor: 'blue', options: [{ label: 'Professional', emoji: '💼', value: 'professional' }, { label: 'Entrepreneur', emoji: '🚀', value: 'entrepreneur' }, { label: 'Student', emoji: '🎓', value: 'student' }, { label: 'Parent / Caregiver', emoji: '🏠', value: 'caregiver' }, { label: 'Job Seeker', emoji: '🔍', value: 'job_seeker' }, { label: 'Retired', emoji: '🌅', value: 'retired' }] },
-  { id: 'mission', question: 'Your #1 mission right now?', subtitle: 'We route your council around this objective.', icon: Target, accentColor: 'green', options: [{ label: 'Build Wealth', emoji: '💰', value: 'build_wealth' }, { label: 'Protect My Family', emoji: '🛡️', value: 'protect_family' }, { label: 'Advance My Career', emoji: '📈', value: 'career_growth' }, { label: 'Health & Wellness', emoji: '💪', value: 'health_wellness' }, { label: 'Legal or Financial Help', emoji: '⚖️', value: 'legal_financial' }, { label: 'Personal Growth', emoji: '🌱', value: 'personal_growth' }] },
-  { id: 'roadblock', question: "What's standing in your way?", subtitle: 'Your council focuses firepower here.', icon: Flame, accentColor: 'red', options: [{ label: 'Money', emoji: '💸', value: 'money' }, { label: 'Time', emoji: '⏰', value: 'time' }, { label: 'Knowledge', emoji: '🧠', value: 'knowledge' }, { label: 'Stress / Burnout', emoji: '🔥', value: 'stress' }, { label: 'Relationships', emoji: '💔', value: 'relationships' }, { label: 'Systems / Red Tape', emoji: '🏛️', value: 'bureaucracy' }] },
-  { id: 'relationship', question: 'Relationship status?', subtitle: 'Advisors calibrate tone to your situation.', icon: Heart, accentColor: 'pink', options: [{ label: 'Single', emoji: '🎯', value: 'single' }, { label: 'In a Relationship', emoji: '💛', value: 'relationship' }, { label: 'Married', emoji: '💍', value: 'married' }, { label: 'Divorced / Separated', emoji: '🔓', value: 'divorced' }, { label: "It's Complicated", emoji: '🌀', value: 'complicated' }, { label: 'Prefer Not to Say', emoji: '🔒', value: 'private' }] },
-  { id: 'vibe', question: 'How should your council talk to you?', subtitle: 'Every advisor adapts to your style.', icon: Sliders, accentColor: 'purple', options: [{ label: 'Direct & Helpful', emoji: '🎯', value: 'standard' }, { label: 'Chill & Easy', emoji: '😎', value: 'chill' }, { label: 'Maximum Urgency', emoji: '⚡', value: 'intense' }, { label: 'Warm & Supportive', emoji: '🌸', value: 'nurturing' }, { label: 'Zero Filter', emoji: '🔥', value: 'blunt' }, { label: 'Structured & Cited', emoji: '📚', value: 'academic' }] },
-];
 
 const COLOR_MAP: Record<string, Record<string, string>> = {
   blue:   { border: 'border-blue-400',   glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]',  bg: 'bg-blue-500',   text: 'text-blue-400',   selected: 'border-blue-400 bg-blue-500/20',    ring: 'hover:border-blue-400/60 hover:bg-blue-500/10'    },
@@ -125,6 +253,58 @@ const COLOR_MAP: Record<string, Record<string, string>> = {
 };
 
 const getColor = (color: string, key: string) => COLOR_MAP[color]?.[key] ?? COLOR_MAP.blue[key];
+
+// [V31.1-4] UI STRINGS — English + Spanish
+const UI_STRINGS: Record<string, Record<string, string>> = {
+  en: {
+    welcome:          'Welcome to LYLO',
+    tagline:          'Your Digital Bodyguard',
+    login_prompt:     'Enter your email to access your council',
+    login_button:     'Access My Council',
+    lang_toggle:      'Español',
+    end_session:      'End Session',
+    send_report:      'Send Session Report',
+    report_prompt:    'Would you like this session sent to your email?',
+    report_yes:       'Yes, send it',
+    report_no:        'No thanks',
+    complete_profile: 'Complete Your Profile',
+    profile_prompt:   '5 more questions · sharpen your council',
+    profile_cta:      "Let's Do It",
+    profile_skip:     'Maybe Later',
+    emerg_next:       'Done — Next Step',
+    emerg_done:       'All Steps Complete ✓',
+    step_of:          'of',
+    q_round1:         'Quick Start · Question',
+    q_round2:         'Profile · Question',
+    custom_answer:    'Type your own answer…',
+    skip:             'Skip',
+    back:             'Back',
+  },
+  es: {
+    welcome:          'Bienvenido a LYLO',
+    tagline:          'Tu Guardaespaldas Digital',
+    login_prompt:     'Ingresa tu correo para acceder a tu consejo',
+    login_button:     'Acceder a Mi Consejo',
+    lang_toggle:      'English',
+    end_session:      'Terminar Sesión',
+    send_report:      'Enviar Reporte de Sesión',
+    report_prompt:    '¿Quieres que te enviemos el reporte de esta sesión?',
+    report_yes:       'Sí, envíalo',
+    report_no:        'No, gracias',
+    complete_profile: 'Completa Tu Perfil',
+    profile_prompt:   '5 preguntas más · mejora tu consejo',
+    profile_cta:      'Vamos',
+    profile_skip:     'Quizás Después',
+    emerg_next:       'Listo — Siguiente Paso',
+    emerg_done:       'Todos los Pasos Completados ✓',
+    step_of:          'de',
+    q_round1:         'Inicio Rápido · Pregunta',
+    q_round2:         'Perfil · Pregunta',
+    custom_answer:    'Escribe tu propia respuesta…',
+    skip:             'Omitir',
+    back:             'Atrás',
+  },
+};
 
 const getDeviceId = () => {
   let id = localStorage.getItem('lylo_device_id');
@@ -235,7 +415,6 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
   return { enqueue, push, stop, currentAudioRef };
 }
 
-// [V30.2-3] STICKY SCROLL: only scrolls if user is within threshold px of bottom
 function scrollIfNearBottom(el: HTMLDivElement, threshold = 150) {
   if (el.scrollHeight - el.scrollTop - el.clientHeight <= threshold) {
     el.scrollTop = el.scrollHeight;
@@ -250,32 +429,34 @@ function ChatInterface({
 }: ChatInterfaceProps) {
 
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
-
-  // ── SINGLE SOURCE OF TRUTH: always use IMPORTED_PERSONAS from data/personas.ts ──
-  // This is the same list Dashboard and Layout use — no more two separate lists getting out of sync.
   const PERSONAS = IMPORTED_PERSONAS;
 
-  // Read active persona from localStorage so Dashboard, Layout, and ChatInterface are always in sync
   const getPersonaFromStorage = (): PersonaConfig => {
     const saved = localStorage.getItem('lylo_selected_persona');
-    if (saved) {
-      const found = PERSONAS.find(p => p.id === saved);
-      if (found) return found;
-    }
+    if (saved) { const found = PERSONAS.find(p => p.id === saved); if (found) return found; }
     return initialPersona ?? PERSONAS[0];
   };
 
   const [activePersona, setActivePersona] = useState<PersonaConfig>(getPersonaFromStorage);
 
-  // Re-sync whenever parent prop changes (user clicks a seat in the sidebar)
   useEffect(() => {
     const saved = localStorage.getItem('lylo_selected_persona');
     const target = saved ? PERSONAS.find(p => p.id === saved) : null;
     const desired = target ?? initialPersona ?? PERSONAS[0];
-    if (desired.id !== activePersona.id) {
-      setActivePersona(desired);
-    }
+    if (desired.id !== activePersona.id) setActivePersona(desired);
   }, [initialPersona?.id]);
+
+  // [V31.1-4] Language state
+  const [lang, setLang] = useState<'en' | 'es'>(() =>
+    (localStorage.getItem('lylo_lang') as 'en' | 'es') || 'en'
+  );
+  const t = (key: string): string => UI_STRINGS[lang]?.[key] ?? UI_STRINGS.en[key] ?? key;
+  const toggleLang = () => {
+    const next: 'en' | 'es' = lang === 'en' ? 'es' : 'en';
+    setLang(next);
+    localStorage.setItem('lylo_lang', next);
+  };
+
   const [messages, setMessages]                         = useState<Message[]>([]);
   const [input, setInput]                               = useState('');
   const [loading, setLoading]                           = useState(false);
@@ -300,6 +481,9 @@ function ChatInterface({
   const [showPersonaGrid, setShowPersonaGrid]           = useState(true);
   const [showOnboarding, setShowOnboarding]             = useState(false);
   const [onboardingStep, setOnboardingStep]             = useState(0);
+  const [onboardingRound, setOnboardingRound]           = useState<1 | 2>(1);
+  const [showRound2Prompt, setShowRound2Prompt]         = useState(false);
+  const [customAnswer, setCustomAnswer]                 = useState('');
   const [deviceId]                                      = useState(() => getDeviceId());
   const [emailConsent, setEmailConsent]                 = useState(false);
   const [streamingMsgId, setStreamingMsgId]             = useState<string | null>(null);
@@ -308,6 +492,17 @@ function ChatInterface({
   const [installMethod, setInstallMethod]               = useState<'prompt' | 'manual_ios' | 'manual_android'>('manual_android');
   const [showInstallModal, setShowInstallModal]         = useState(false);
   const [canInstall, setCanInstall]                     = useState(false);
+
+  // [V31.1-2] Emergency step-by-step state
+  const [showEmergency, setShowEmergency]               = useState(false);
+  const [emergencySteps, setEmergencySteps]             = useState<string[]>([]);
+  const [emergencyStep, setEmergencyStep]               = useState(0);
+  const [emergencyTitle, setEmergencyTitle]             = useState('');
+  const [emergencyWarning, setEmergencyWarning]         = useState('');
+
+  // [V31.1-3] End Session + PDF modal state
+  const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
+  const [sessionContent, setSessionContent]             = useState('');
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -326,8 +521,6 @@ function ChatInterface({
 
   const handleSpeakingChange = useCallback((v: boolean) => setIsSpeaking(v), []);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
-
-  // [V30.8-2] SENTINEL HOOK — wired to existing userEmail + deviceId state
   const sentinel = useSentinel({ userEmail, deviceId });
 
   // PWA install prompt
@@ -367,7 +560,13 @@ function ChatInterface({
     if ('Notification' in window && Notification.permission === 'granted') setNotificationsEnabled(true);
     const savedIntake = localStorage.getItem(`lylo_intake_${emailRaw}`);
     if (savedIntake) { const parsed: Partial<IntakeProfile> = JSON.parse(savedIntake); setIntakeProfile(parsed); if (parsed.vibe) setCommunicationStyle(parsed.vibe); }
-    const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`); if (!hasOnboarded) setShowOnboarding(true);
+    const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
+    if (!hasOnboarded) { setShowOnboarding(true); setOnboardingRound(1); }
+    else {
+      // Check if round 2 is pending
+      const r2pending = localStorage.getItem(`lylo_round2_pending_${emailRaw}`);
+      if (r2pending) setShowRound2Prompt(true);
+    }
   }, [userEmail]);
 
   // Prefetch persona hooks
@@ -396,45 +595,37 @@ function ChatInterface({
       if (showDropdown) { setShowDropdown(false); return; }
       if (showCameraMenu) { setShowCameraMenu(false); return; }
       if (showCrisisShield) { setShowCrisisShield(false); return; }
+      if (showEmergency) { setShowEmergency(false); return; }
       if (!showPersonaGrid) { handleInternalBack(); return; }
       alert('Use the Logout button to exit securely.');
     };
     window.addEventListener('beforeunload', onUnload); window.addEventListener('popstate', onPop); lock();
     return () => { window.removeEventListener('beforeunload', onUnload); window.removeEventListener('popstate', onPop); };
-  }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield]);
+  }, [showPersonaGrid, showOnboarding, showDropdown, showCameraMenu, showCrisisShield, showEmergency]);
 
-  // Stop audio when app is backgrounded
   useEffect(() => {
     const stopOnHide = () => { aqm.stop(); setIsSpeaking(false); };
     const onVisibility = () => { if (document.hidden) stopOnHide(); };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', stopOnHide);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', stopOnHide);
-    };
+    return () => { document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', stopOnHide); };
   }, []);
 
-  // [V30.3] Hard-scroll ONLY when message count increases
   useEffect(() => {
     const newCount = messages.length;
     const isNewMsg = newCount > msgCountRef.current;
     msgCountRef.current = newCount;
     if ((isNewMsg || previewUrl) && chatContainerRef.current) {
-      requestAnimationFrame(() => {
-        if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      });
+      requestAnimationFrame(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; });
     }
   }, [messages, previewUrl]);
 
-  // Hard scroll when action-trigger button appears
   useEffect(() => {
     const lastBot = [...messages].reverse().find(m => m.sender === 'bot');
     if (!lastBot || !(lastBot as any).actionTrigger) return;
     requestAnimationFrame(() => { if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; });
   }, [messages, streamingMsgId]);
 
-  // [V30.2-2 + V30.2-3] RAF-based sticky scroll during SSE stream
   useEffect(() => {
     if (!streamingText || !chatContainerRef.current) return;
     const el = chatContainerRef.current;
@@ -443,60 +634,40 @@ function ChatInterface({
     return () => { if (rafScrollRef.current !== null) { cancelAnimationFrame(rafScrollRef.current); rafScrollRef.current = null; } };
   }, [streamingText]);
 
-  // Image preview URL lifecycle
   useEffect(() => {
     if (!selectedImage) { setPreviewUrl(null); return; }
     const url = URL.createObjectURL(selectedImage); setPreviewUrl(url); return () => URL.revokeObjectURL(url);
   }, [selectedImage]);
 
   const playAudioSafely = (audio: HTMLAudioElement) => {
-    aqm.stop();
-    aqm.currentAudioRef.current = audio;
-    setIsSpeaking(true);
+    aqm.stop(); aqm.currentAudioRef.current = audio; setIsSpeaking(true);
     audio.onended = () => { aqm.currentAudioRef.current = null; setIsSpeaking(false); };
     audio.play().catch(e => { console.warn('[AUDIO] Blocked:', e); setIsSpeaking(false); });
   };
 
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
-    streamingTextRef.current = '';
-    setStreamingText('');
-    setStreamingMsgId(msgId);
+    streamingTextRef.current = ''; setStreamingText(''); setStreamingMsgId(msgId);
     const startTyping = (msPerChar: number) => {
       let i = 0;
       typewriterRef.current = setInterval(() => {
         i++;
         const slice = text.slice(0, i);
-        streamingTextRef.current = slice;
-        setStreamingText(slice);
-        if (i >= text.length) {
-          clearInterval(typewriterRef.current!);
-          typewriterRef.current = null;
-          setStreamingMsgId(null);
-          setStreamingText('');
-        }
+        streamingTextRef.current = slice; setStreamingText(slice);
+        if (i >= text.length) { clearInterval(typewriterRef.current!); typewriterRef.current = null; setStreamingMsgId(null); setStreamingText(''); }
       }, msPerChar);
     };
     if (audioEl && isVoiceEnabled) {
-      const kick = () => {
-        const ms = Math.max(18, (audioEl.duration * 1000) / text.length);
-        playAudioSafely(audioEl);
-        startTyping(ms);
-      };
+      const kick = () => { const ms = Math.max(18, (audioEl.duration * 1000) / text.length); playAudioSafely(audioEl); startTyping(ms); };
       if (isFinite(audioEl.duration) && audioEl.duration > 0) { kick(); }
-      else {
-        audioEl.addEventListener('loadedmetadata', kick, { once: true });
-        setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200);
-      }
-    } else {
-      startTyping(readingMode === 'fast' ? 0 : 28);
-    }
+      else { audioEl.addEventListener('loadedmetadata', kick, { once: true }); setTimeout(() => { if (streamingTextRef.current === '') { startTyping(28); audioEl.play().catch(() => {}); } }, 1200); }
+    } else { startTyping(readingMode === 'fast' ? 0 : 28); }
   };
 
   const buildRecognition = (): any => {
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
-    const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
+    const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
       let interim = '', final = '';
@@ -528,7 +699,6 @@ function ChatInterface({
     }
   };
 
-  // [V30.1-1] IMAGE SHRINK-RAY
   const handleImageSelect = (file: File | null | undefined) => {
     if (!file) return;
     const MAX_DIM = 1024; const img = new window.Image(); const objUrl = URL.createObjectURL(file);
@@ -546,14 +716,17 @@ function ChatInterface({
       canvas.toBlob(blob => {
         if (!blob) { setSelectedImage(file); return; }
         const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
-        console.log(`[IMG] ${(file.size/1024).toFixed(0)}KB → ${(compressed.size/1024).toFixed(0)}KB (${width}×${height})`);
         setSelectedImage(compressed);
       }, 'image/jpeg', 0.7);
     };
     img.onerror = () => { URL.revokeObjectURL(objUrl); setSelectedImage(file); }; img.src = objUrl;
   };
 
-  // [V30.1-2] HANDLE SEND — SSE getReader() Streaming Parser
+  // [V31.1-3] Collect session content as messages arrive
+  const appendSessionContent = (content: string, sender: 'user' | 'bot') => {
+    if (content.trim()) setSessionContent(prev => prev + (prev ? '\n' : '') + `[${sender.toUpperCase()}]: ${content}`);
+  };
+
   const handleSend = async () => {
     const text = inputTextRef.current.trim() || input.trim();
     if (!text && !selectedImage) return;
@@ -562,6 +735,7 @@ function ChatInterface({
     const imgPreview = previewUrl;
     const userMsg: Message = { id: Date.now().toString(), content: text || 'Analyzing image…', sender: 'user', timestamp: new Date(), imageUrl: imgPreview };
     setMessages(prev => [...prev, userMsg]);
+    appendSessionContent(text || 'Analyzing image…', 'user');
     try {
       const botMsgId = `bot-${Date.now()}`;
       const voiceToUse = activePersona.id === 'bestie' ? (bestieConfig?.voiceId ?? 'nova') : (activePersona.fixedVoice ?? 'onyx');
@@ -597,17 +771,23 @@ function ChatInterface({
         }
       }
       const finalText = fullAnswer.trim();
+      appendSessionContent(finalText, 'bot');
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
 
-      // ── Emergency Auto-Switch — update UI to the persona that handled the emergency ──
+      // Emergency auto-switch persona
       if (metaData?.emergency && metaData?.persona_switched && metaData?.switched_persona) {
         const emergencyPersona = PERSONAS.find(p => p.id === metaData.switched_persona);
-        if (emergencyPersona) {
-          setActivePersona(emergencyPersona);
-          localStorage.setItem('lylo_selected_persona', emergencyPersona.id);
-          onPersonaChange(emergencyPersona);
-        }
+        if (emergencyPersona) { setActivePersona(emergencyPersona); localStorage.setItem('lylo_selected_persona', emergencyPersona.id); onPersonaChange(emergencyPersona); }
+      }
+
+      // [V31.1-2] Show step-by-step emergency UI if steps are present
+      if (metaData?.emergency && metaData?.emergency_steps?.length) {
+        setEmergencySteps(metaData.emergency_steps);
+        setEmergencyStep(0);
+        setEmergencyTitle(metaData.emergency_title || 'EMERGENCY PROTOCOL');
+        setEmergencyWarning(metaData.emergency_warning || '');
+        setShowEmergency(true);
       }
 
       setStreamingMsgId(null); setStreamingText('');
@@ -615,9 +795,8 @@ function ChatInterface({
     } catch (e) {
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
     } finally {
-      setSelectedImage(null);
-      setEmailConsent(false);
-      sentinel.onEngagement(); // [V30.8-3] Reset Sentinel consecutive_ignored counter
+      setSelectedImage(null); setEmailConsent(false);
+      sentinel.onEngagement();
     }
   };
 
@@ -659,11 +838,10 @@ function ChatInterface({
     const bp = PERSONAS.find(p => p.id === 'bestie'); if (bp) handlePersonaChange(bp);
   };
 
-  const handleInternalBack = () => { setMessages([]); setShowPersonaGrid(true); aqm.stop(); setIsSpeaking(false); };
+  const handleInternalBack = () => { setMessages([]); setShowPersonaGrid(true); setSessionContent(''); aqm.stop(); setIsSpeaking(false); };
   const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
   const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
-  // [V30.8-4] PUSH PERMISSION — registers VAPID subscription with Sentinel backend
   const requestMobileAlerts = async () => {
     if (!('Notification' in window)) { alert('Push notifications not supported.'); return; }
     if (Notification.permission === 'granted') { setNotificationsEnabled(true); return; }
@@ -671,10 +849,8 @@ function ChatInterface({
     if (p === 'granted') {
       setNotificationsEnabled(true);
       new Notification('LYLO Alerts Active 🛡️', { body: 'Mission reminders enabled.', icon: '/logo.png' });
-      sentinel.onPermissionGranted(); // [V30.8-4] Register VAPID push subscription
-    } else {
-      setNotificationsEnabled(false);
-    }
+      sentinel.onPermissionGranted();
+    } else { setNotificationsEnabled(false); }
   };
 
   const scheduleMobileReminder = (msg: string, minutes = 30) => {
@@ -684,6 +860,22 @@ function ChatInterface({
     }
     setTimeout(() => new Notification('⏰ LYLO Reminder', { body: msg, icon: '/logo.png' }), minutes * 60000);
     new Notification(`✅ Reminder Set — ${minutes} min`, { body: `"${msg.slice(0, 80)}..."`, icon: '/logo.png' });
+  };
+
+  // [V31.1-3] End Session handler — shows PDF confirm modal
+  const handleEndSession = () => { setShowDropdown(false); setShowEndSessionModal(true); };
+
+  // [V31.1-3] Send session report to backend
+  const sendSessionReport = async () => {
+    setShowEndSessionModal(false);
+    if (!sessionContent.trim()) { setSessionContent(''); return; }
+    try {
+      const fd = new FormData();
+      fd.append('user_email', userEmail); fd.append('persona', activePersona.id);
+      fd.append('content', sessionContent); fd.append('user_name', userName);
+      await fetch(`${API_URL}/send-session-report`, { method: 'POST', body: fd });
+    } catch (e) { console.warn('[PDF] send failed:', e); }
+    setSessionContent('');
   };
 
   const handleEmailDispatch = async (content: string) => {
@@ -707,30 +899,49 @@ function ChatInterface({
     } catch {}
   };
 
-  const completeOnboarding = () => { localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true'); setShowOnboarding(false); };
+  const completeRound1 = () => {
+    localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
+    localStorage.setItem(`lylo_round2_pending_${userEmail.toLowerCase()}`, 'true');
+    setShowOnboarding(false);
+    // Don't show round 2 prompt immediately — show it after their first real session
+  };
+
+  const completeRound2 = () => {
+    localStorage.removeItem(`lylo_round2_pending_${userEmail.toLowerCase()}`);
+    setShowOnboarding(false); setShowRound2Prompt(false);
+  };
+
   const getDynamicFontSize = () => { switch (fontLevel) { case 2: return 'text-lg leading-relaxed'; case 3: return 'text-2xl leading-relaxed tracking-wide'; case 4: return 'text-4xl leading-loose tracking-wide font-black'; default: return 'text-sm leading-normal'; } };
   const getInputFontSize = () => { switch (fontLevel) { case 2: return 'text-lg'; case 3: return 'text-xl'; case 4: return 'text-2xl'; default: return 'text-sm'; } };
 
   // ==========================================================================
-  // ONBOARDING
+  // [V31.1-1] ONBOARDING — Round 1 & 2
   // ==========================================================================
   if (showOnboarding) {
-    const TOTAL = INTAKE_QUESTIONS.length;
+    const questions = onboardingRound === 1 ? INTAKE_QUESTIONS_R1 : INTAKE_QUESTIONS_R2;
+    const TOTAL = questions.length;
     const isQ = onboardingStep >= 1 && onboardingStep <= TOTAL;
-    const currentQ = isQ ? INTAKE_QUESTIONS[onboardingStep - 1] : null;
+    const currentQ = isQ ? questions[onboardingStep - 1] : null;
     const progress = onboardingStep === 0 ? 0 : Math.round((onboardingStep / (TOTAL + 1)) * 100);
     const qScheme = currentQ ? (COLOR_MAP[currentQ.accentColor] ?? COLOR_MAP.blue) : COLOR_MAP.blue;
     const qCurrent = currentQ ? intakeProfile[currentQ.id as keyof IntakeProfile] : undefined;
+    const roundLabel = onboardingRound === 1 ? t('q_round1') : t('q_round2');
+
     return (
       <div className="fixed inset-0 bg-[#080808] flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
+        {/* Language toggle on intake screen */}
+        <button onClick={toggleLang} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-xs font-bold hover:bg-white/10 transition-all">
+          <Globe className="w-3.5 h-3.5" /> {t('lang_toggle')}
+        </button>
+
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full bg-blue-600/5 blur-[120px]" />
-          <div className="absolute bottom-1/4 left-1/4 w-[250px] h-[250px] rounded-full bg-indigo-600/4 blur-[80px]" />
         </div>
         <div className="w-full max-w-md relative z-10">
           <div className="w-full h-[2px] bg-white/5 rounded-full mb-7 overflow-hidden">
             <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${progress}%` }} />
           </div>
+
           {onboardingStep === 0 && (
             <div className="animate-in fade-in zoom-in-95 duration-300">
               <div className="text-center mb-8">
@@ -755,18 +966,27 @@ function ChatInterface({
               <p className="text-center text-gray-600 text-xs mt-4 uppercase tracking-widest font-bold">5 questions · 30 seconds</p>
             </div>
           )}
+
           {isQ && currentQ && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-              <span className={`text-xs font-black uppercase tracking-[0.2em] ${qScheme.text}`}>Question {onboardingStep} of {TOTAL}</span>
+              <span className={`text-xs font-black uppercase tracking-[0.2em] ${qScheme.text}`}>{roundLabel} {onboardingStep} of {TOTAL}</span>
               <h2 className="text-white font-black text-2xl leading-tight mt-1 mb-1">{currentQ.question}</h2>
-              <p className="text-gray-500 text-xs mb-6 leading-relaxed">{currentQ.subtitle}</p>
-              <div className="grid grid-cols-2 gap-2 mb-5">
+              {'subtitle' in currentQ && currentQ.subtitle && <p className="text-gray-500 text-xs mb-6 leading-relaxed">{currentQ.subtitle}</p>}
+              <div className="grid grid-cols-2 gap-2 mb-4">
                 {currentQ.options.map(opt => {
                   const isSelected = qCurrent === opt.value;
                   return (
                     <button
                       key={opt.value}
-                      onClick={async () => { await saveIntakeAnswer(currentQ.id, opt.value); setTimeout(() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else setTimeout(completeOnboarding, 400); }, 180); }}
+                      onClick={async () => {
+                        await saveIntakeAnswer(currentQ.id, opt.value);
+                        setCustomAnswer('');
+                        setTimeout(() => {
+                          if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
+                          else if (onboardingRound === 1) completeRound1();
+                          else completeRound2();
+                        }, 180);
+                      }}
                       className={`p-4 rounded-2xl border text-left transition-all duration-100 active:scale-[0.96] ${isSelected ? qScheme.selected : `bg-white/[0.03] border-white/[0.08] ${qScheme.ring}`}`}
                     >
                       <div className="text-xl mb-2 leading-none">{opt.emoji}</div>
@@ -775,11 +995,55 @@ function ChatInterface({
                   );
                 })}
               </div>
+
+              {'allowCustom' in currentQ && currentQ.allowCustom && (
+                <div className="flex gap-2 mb-4">
+                  <input
+                    value={customAnswer}
+                    onChange={e => setCustomAnswer(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter' && customAnswer.trim()) {
+                        await saveIntakeAnswer(currentQ.id, customAnswer.trim());
+                        setCustomAnswer('');
+                        if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
+                        else if (onboardingRound === 1) completeRound1();
+                        else completeRound2();
+                      }
+                    }}
+                    placeholder={'customPlaceholder' in currentQ ? currentQ.customPlaceholder : t('custom_answer')}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none placeholder-gray-600"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!customAnswer.trim()) return;
+                      await saveIntakeAnswer(currentQ.id, customAnswer.trim());
+                      setCustomAnswer('');
+                      if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
+                      else if (onboardingRound === 1) completeRound1();
+                      else completeRound2();
+                    }}
+                    className="px-4 py-3 bg-blue-600 rounded-xl text-white font-bold text-sm hover:bg-blue-500 transition-all"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
               <div className="flex gap-3">
                 {onboardingStep > 1 && (
-                  <button onClick={() => setOnboardingStep(s => s - 1)} className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all"><ChevronLeft className="w-4 h-4" /> Back</button>
+                  <button onClick={() => { setOnboardingStep(s => s - 1); setCustomAnswer(''); }} className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all"><ChevronLeft className="w-4 h-4" /> {t('back')}</button>
                 )}
-                <button onClick={() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else completeOnboarding(); }} className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all">Skip <ChevronRight className="w-4 h-4" /></button>
+                <button
+                  onClick={() => {
+                    setCustomAnswer('');
+                    if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
+                    else if (onboardingRound === 1) completeRound1();
+                    else completeRound2();
+                  }}
+                  className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
+                >
+                  {t('skip')} <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             </div>
           )}
@@ -815,6 +1079,71 @@ function ChatInterface({
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
 
+      {/* [V31.1-2] EMERGENCY STEP-BY-STEP OVERLAY */}
+      {showEmergency && emergencySteps.length > 0 && (
+        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[100010] p-4">
+          <div className="bg-[#0a0a0a] border border-red-500 rounded-2xl max-w-md w-full p-6 shadow-[0_0_60px_rgba(239,68,68,0.2)]">
+            <div className="text-red-400 font-bold text-[10px] tracking-widest uppercase mb-1">🚨 Emergency Protocol</div>
+            <h2 className="text-white font-black text-xl mb-4 leading-tight">{emergencyTitle}</h2>
+            <div className="flex items-center gap-2 text-[11px] text-gray-500 font-bold uppercase tracking-widest mb-2">
+              <span className="text-[#39FF14]">Step {emergencyStep + 1}</span>
+              <span>{t('step_of')} {emergencySteps.length}</span>
+            </div>
+            <div className="w-full bg-gray-800 rounded-full h-1.5 mb-5 overflow-hidden">
+              <div className="bg-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${((emergencyStep + 1) / emergencySteps.length) * 100}%` }} />
+            </div>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 mb-5">
+              <div className="text-red-400 font-black text-xs uppercase tracking-widest mb-2">STEP {emergencyStep + 1}</div>
+              <p className="text-white text-base leading-relaxed font-semibold">{emergencySteps[emergencyStep]}</p>
+            </div>
+            {emergencyStep === emergencySteps.length - 1 && emergencyWarning && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-5">
+                <p className="text-yellow-400 text-sm font-semibold">⚠️ {emergencyWarning}</p>
+              </div>
+            )}
+            {emergencyStep < emergencySteps.length - 1 ? (
+              <button
+                onClick={() => setEmergencyStep(s => s + 1)}
+                className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-base transition-all active:scale-95"
+              >
+                ✅ {t('emerg_next')}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowEmergency(false)}
+                className="w-full py-4 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black font-black rounded-xl text-base transition-all active:scale-95"
+              >
+                {t('emerg_done')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* [V31.1-3] END SESSION PDF MODAL */}
+      {showEndSessionModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100009] p-4">
+          <div className="bg-[#0a0a0a] border border-[#39FF14]/30 rounded-2xl max-w-sm w-full p-6 shadow-[0_0_40px_rgba(57,255,20,0.1)]">
+            <h3 className="text-white font-black text-lg mb-2">📄 {t('send_report')}</h3>
+            <p className="text-gray-400 text-sm mb-6">{t('report_prompt')}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={sendSessionReport}
+                className="flex-1 py-3 bg-[#39FF14] text-black font-black rounded-xl text-sm hover:bg-[#39FF14]/90 transition-all active:scale-95"
+              >
+                {t('report_yes')}
+              </button>
+              <button
+                onClick={() => { setShowEndSessionModal(false); setSessionContent(''); }}
+                className="flex-1 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-all active:scale-95"
+              >
+                {t('report_no')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOP BAR */}
       <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
@@ -838,23 +1167,54 @@ function ChatInterface({
                 <div className="mb-6 space-y-3">
                   <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Type className="w-5 h-5 text-blue-400" /><span className="font-bold">Text Size</span></div><span className="text-xs font-black uppercase tracking-widest text-gray-400">Level {fontLevel}</span></button>
                   <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3">{isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}<span className="font-bold">Voice Output</span></div><span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'OFF'}</span></button>
-                  <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(0); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Info className="w-5 h-5 text-blue-400" /><span className="font-bold">Rebuild My Profile</span></div></button>
+                  <button onClick={toggleLang} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Globe className="w-5 h-5 text-yellow-400" /><span className="font-bold">Language</span></div><span className="text-xs font-black uppercase tracking-widest text-yellow-400">{lang.toUpperCase()}</span></button>
+                  <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(0); setOnboardingRound(1); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Info className="w-5 h-5 text-blue-400" /><span className="font-bold">Rebuild My Profile</span></div></button>
                   {canInstall && (<button onClick={() => { setShowDropdown(false); handleInstallClick(); }} className="w-full p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl text-white flex items-center justify-between hover:bg-blue-600/20 transition-colors"><div className="flex items-center gap-3"><ArrowRight className="w-5 h-5 text-blue-400" /><span className="font-bold">Install LYLO OS</span></div><span className="text-[9px] text-blue-400 font-black uppercase tracking-widest">Home Screen</span></button>)}
+                  {/* [V31.1-3] End Session button */}
+                  <button onClick={handleEndSession} className="w-full p-4 bg-red-500/5 border border-red-500/20 rounded-xl text-red-400 flex items-center gap-3 hover:bg-red-500/10 transition-colors font-bold"><X className="w-5 h-5" /> {t('end_session')}</button>
                 </div>
                 <button onClick={onLogout} className="w-full p-4 text-red-500 font-black uppercase flex items-center justify-center gap-2 border border-red-500/20 rounded-xl"><LogOut className="w-4 h-4" /> Terminate Session</button>
               </div>
             )}
           </div>
+
           <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
             <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">L<span className={getColor(activePersona.color, 'text')}>Y</span>LO</h1>
             <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
           </div>
+
           <div className="flex items-center gap-2 z-10">
+            {/* [V31.1-4] Language toggle in header */}
+            <button onClick={toggleLang} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-[10px] font-black uppercase hover:text-white hover:bg-white/10 transition-all">{lang === 'en' ? 'ES' : 'EN'}</button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
         </div>
       </div>
+
+      {/* [V31.1-1] Round 2 gentle reminder banner */}
+      {showRound2Prompt && !showPersonaGrid && (
+        <div className="mx-3 mt-2 p-3 bg-[#39FF14]/5 border border-[#39FF14]/20 rounded-xl flex items-center justify-between flex-shrink-0">
+          <div>
+            <p className="text-[#39FF14] text-xs font-black">{t('complete_profile')}</p>
+            <p className="text-gray-500 text-[10px] mt-0.5">{t('profile_prompt')}</p>
+          </div>
+          <div className="flex gap-2 ml-3">
+            <button
+              onClick={() => { setOnboardingRound(2); setOnboardingStep(1); setShowRound2Prompt(false); setShowOnboarding(true); }}
+              className="px-3 py-1.5 bg-[#39FF14] text-black text-[10px] font-black rounded-lg whitespace-nowrap"
+            >
+              {t('profile_cta')}
+            </button>
+            <button
+              onClick={() => setShowRound2Prompt(false)}
+              className="px-3 py-1.5 bg-gray-800 text-gray-400 text-[10px] font-bold rounded-lg"
+            >
+              {t('profile_skip')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CRISIS SHIELD */}
       {showCrisisShield && (
@@ -892,8 +1252,7 @@ function ChatInterface({
         </div>
       )}
 
-      {/* CHAT AREA
-          [V30.2-1] overflowAnchor: 'auto' — pins scroll to bottom content */}
+      {/* CHAT AREA */}
       <div
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto relative p-4 space-y-6"
@@ -901,19 +1260,12 @@ function ChatInterface({
       >
         {showPersonaGrid && (
           <div className="grid grid-cols-2 gap-3">
-            {PERSONAS.map(p => {
-              const isBase = true; // all personas from single source
-              const isAdapted = p.id === 'pastor' && !isBase;
-              return (
-                <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
-                  <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
-                  <div className="text-center">
-                    <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight">{p.name}</span>
-                    {isAdapted && <span className="text-[8px] text-yellow-400/80 font-bold uppercase tracking-widest mt-1 block">Adapted ✦</span>}
-                  </div>
-                </button>
-              );
-            })}
+            {PERSONAS.map(p => (
+              <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
+                <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
+                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{p.name}</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -1020,7 +1372,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v30.9</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.1</p>
           </div>
         </div>
       </div>
