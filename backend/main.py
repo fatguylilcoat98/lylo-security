@@ -2132,6 +2132,53 @@ def build_emergency_response(protocol: dict, user_name: str, persona: str) -> di
 # =============================================================================
 # MAIN CHAT GATEWAY — 12-SEAT BOARD (V31.0)
 # =============================================================================
+@app.post("/generate-audio")
+async def generate_audio(
+    text:  str = Form(...),
+    voice: str = Form("onyx"),
+):
+    """Generates TTS audio and returns base64 encoded mp3."""
+    try:
+        audio_b64 = await generate_audio_inline(text, voice)
+        return {"audio_b64": audio_b64}
+    except Exception as e:
+        logger.warning(f"⚠️ generate-audio error: {e}")
+        return {"audio_b64": ""}
+
+
+@app.post("/persona-hook")
+async def persona_hook(
+    persona:    str = Form(...),
+    user_email: str = Form(""),
+):
+    """Returns a personalized opening hook for the given persona."""
+    try:
+        user_id   = create_user_id(user_email.lower().strip())
+        user_data = ELITE_USERS.get(user_email.lower().strip(), {"name": "Protected User"})
+        user_name = user_data.get("name", "Protected User")
+
+        # Try to get a fresh hook from the LLM
+        PERSONA_HOOKS = {
+            "mechanic":  f"Alright {user_name}, I'm under the hood. What's the problem?",
+            "doctor":    f"{user_name}, I'm here. Tell me what's going on with you.",
+            "lawyer":    f"{user_name}, Legal Shield active. What situation are we handling?",
+            "wealth":    f"{user_name}, Wealth Architect online. Let's talk strategy.",
+            "therapist": f"I'm here, {user_name}. Take your time — what's on your mind?",
+            "career":    f"{user_name}, Career Coach locked in. What's your next move?",
+            "tutor":     f"Ready to learn, {user_name}? What are we tackling today?",
+            "vitality":  f"{user_name}, Vitality Coach here. How's your body feeling?",
+            "hype":      f"LET'S GO {user_name}! Hype Engine is LIVE — what's the mission?",
+            "bestie":    f"Hey {user_name}! Your bestie is here — spill it, what's going on?",
+            "pastor":    f"Peace to you, {user_name}. What's weighing on your spirit today?",
+            "guardian":  f"{user_name}, Guardian online. Your digital perimeter is secure. What's the threat?",
+        }
+        hook = PERSONA_HOOKS.get(persona, f"Hello {user_name}, I'm ready to help.")
+        return {"hook": hook}
+    except Exception as e:
+        logger.warning(f"⚠️ persona-hook error: {e}")
+        return {"hook": "I'm ready. What do you need?"}
+
+
 @app.post("/chat")
 async def chat(
     msg:                  str        = Form(""),
@@ -2472,6 +2519,16 @@ async def chat(
         },
     }
 
+    # ── Image processing ─────────────────────────────────────────────────────
+    image_b64 = None
+    if file and file.filename:
+        try:
+            raw_bytes = await file.read()
+            image_b64 = base64.b64encode(raw_bytes).decode("utf-8")
+        except Exception as e:
+            logger.warning(f"⚠️ Image read failed: {e}")
+            image_b64 = None
+
     msg_lower = msg.lower()
 
     # ── Emergency Protocol Detection — FIRES FIRST, auto-switches persona ──
@@ -2585,7 +2642,7 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 _client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=120,
-                    messages=[{{"role": "user", "content": prompt}}],
+                    messages=[{"role": "user", "content": prompt}],
                 ),
                 timeout=4.0
             )
@@ -2597,7 +2654,7 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 correct = result.get("correct_persona", "")
                 reason  = result.get("reason", "")
                 logger.info(f"🛡️ Claude Domain Check: [{persona}→{correct}] {reason}")
-                return {{"correct_persona": correct, "reason": reason}}
+                return {"correct_persona": correct, "reason": reason}
             return None
         except asyncio.TimeoutError:
             logger.warning("⚠️ Claude domain check timed out — passing through")
