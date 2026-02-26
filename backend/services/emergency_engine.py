@@ -436,12 +436,3 @@ def build_emergency_response(protocol: dict, user_name: str, persona: str) -> di
         "emergency_warning": warning,
         "emergency_intro":  intro,
     }
-
-# =============================================================================
-# MAIN CHAT GATEWAY — 12-SEAT BOARD (V31.0)
-# =============================================================================
-# =============================================================================
-# PROMPT INJECTION DETECTOR — fires before the LLM race
-# Multi-layer: exact phrases + semantic groups + pattern combinations
-# =============================================================================
-def detect_prompt_injection(message: str) -> str | None:
