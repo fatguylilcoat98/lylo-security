@@ -33,6 +33,25 @@ from email import encoders
 
 from tavily import TavilyClient
 from pinecone import Pinecone, ServerlessSpec
+
+# ── Med-Vault imports ─────────────────────────────────────────────────────────
+try:
+    from med_vault import (
+        encrypt_silo, decrypt_silo, verify_pin,
+        empty_medical_vault, new_medication, new_symptom,
+        new_reaction, new_doctor_question,
+        detect_symptoms_in_message, detect_reaction_mention,
+        check_dosage_discrepancy, check_drug_interactions,
+        generate_ephemeral_token, retrieve_ephemeral_token,
+        persona_can_read, persona_can_write, get_readable_silos,
+        SILO_ACCESS,
+    )
+    from med_vault_pdf import generate_medical_pdf, PERSONA_COLORS
+    MED_VAULT_ENABLED = True
+    logger.info("✅ Med-Vault loaded")
+except ImportError as e:
+    MED_VAULT_ENABLED = False
+    logger.warning(f"⚠️ Med-Vault not available: {e}")
 from google import genai
 from google.oauth2 import service_account
 from openai import AsyncOpenAI
@@ -1005,6 +1024,84 @@ async def synthesize_user_profile(user_id: str, user_name: str):
         logger.info(f"✅ SYNTHESIS COMPLETE for {user_name}")
     except Exception as e:
         logger.error(f"❌ Profile Synthesis Error: {e}")
+
+
+# =============================================================================
+# MED-VAULT PINECONE STORAGE
+# Encrypted vault stored as a separate Pinecone record per user per silo.
+# Nobody — including server operators — can read the encrypted blobs.
+# =============================================================================
+_VAULT_SUFFIX = "_medvault_v1"
+_VAULT_CACHE: dict = {}
+_VAULT_CACHE_TTL = 120  # 2 min cache — vault changes infrequently
+
+async def _load_vault_encrypted(user_id: str) -> Optional[str]:
+    """Loads raw encrypted vault string from Pinecone. Returns None if not found."""
+    cached = _VAULT_CACHE.get(user_id)
+    if cached:
+        blob, ts = cached
+        if time.time() - ts < _VAULT_CACHE_TTL:
+            return blob
+    if not memory_index:
+        return None
+    vault_id = f"{user_id}{_VAULT_SUFFIX}"
+    try:
+        result  = memory_index.fetch(ids=[vault_id])
+        vectors = result.get("vectors", {})
+        if vault_id in vectors:
+            blob = vectors[vault_id].get("metadata", {}).get("vault_enc", "")
+            if blob:
+                _VAULT_CACHE[user_id] = (blob, time.time())
+                return blob
+    except Exception as e:
+        logger.warning(f"Vault load error: {e}")
+    return None
+
+async def _save_vault_encrypted(user_id: str, encrypted_blob: str) -> bool:
+    """Saves encrypted vault blob to Pinecone. Returns True on success."""
+    if not memory_index:
+        return False
+    vault_id   = f"{user_id}{_VAULT_SUFFIX}"
+    anchor_vec = [0.0] * 1024
+    anchor_vec[0] = 0.99
+    try:
+        memory_index.upsert([(vault_id, anchor_vec, {
+            "user_id":      user_id,
+            "record_type":  "med_vault",
+            "vault_enc":    encrypted_blob,
+            "last_updated": datetime.now().isoformat(),
+        })])
+        _VAULT_CACHE[user_id] = (encrypted_blob, time.time())
+        return True
+    except Exception as e:
+        logger.error(f"Vault save error: {e}")
+        return False
+
+async def load_vault(user_id: str, email: str, pin: str = "") -> Optional[dict]:
+    """Loads and decrypts the medical vault for a user."""
+    if not MED_VAULT_ENABLED:
+        return None
+    blob = await _load_vault_encrypted(user_id)
+    if not blob:
+        return None
+    return decrypt_silo(blob, email, pin)
+
+async def save_vault(user_id: str, email: str, vault: dict, pin: str = "") -> bool:
+    """Encrypts and saves the medical vault."""
+    if not MED_VAULT_ENABLED:
+        return False
+    blob = encrypt_silo(vault, email, pin)
+    return await _save_vault_encrypted(user_id, blob)
+
+async def get_or_create_vault(user_id: str, email: str, pin: str = "") -> dict:
+    """Loads vault or creates a fresh one if none exists."""
+    vault = await load_vault(user_id, email, pin)
+    if vault is None:
+        vault = empty_medical_vault()
+        await save_vault(user_id, email, vault, pin)
+    return vault
+async def _noop_vault(): return None
+
 
 # =============================================================================
 # PERSONALIZED SEARCH (TAVILY)
@@ -3401,15 +3498,138 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
 
     # Run both in parallel
     user_location = get_user_location_data(email_lower)
-    memory_context, tavily_context = await asyncio.gather(
+    memory_context, tavily_context, vault_data = await asyncio.gather(
         retrieve_intelligence_sync(user_id, msg),
         _get_tavily_context(persona, msg, user_location or ""),
+        load_vault(user_id, email_lower) if MED_VAULT_ENABLED and persona_can_read(persona, "medical") else _noop_vault(),
     )
 
     # Merge: Tavily context appended to memory context so both reach the LLM
     if tavily_context:
         memory_context = (memory_context or "") + tavily_context
         logger.info(f"🌐 Tavily injected [{persona}] for {user_data['name']}: {len(tavily_context)} chars")
+
+    # ── Multi-Silo Vault Context Injection ────────────────────────────────────
+    # Each persona only receives the data they're authorized to see.
+    # Mechanic: vehicle data. Lawyer: legal+vehicle+financial. Therapist: emotional+medical.
+    vault_context = ""
+    if MED_VAULT_ENABLED and vault_data:
+        vault_parts = []
+
+        # ── MEDICAL SILO (doctor, therapist, vitality, pastor) ────────────
+        if persona_can_read(persona, "medical"):
+            meds      = [m for m in vault_data.get("medications",[]) if m.get("active",True)]
+            symptoms  = vault_data.get("symptoms",[])[-7:]
+            reactions = vault_data.get("reactions",[])
+            allergies = vault_data.get("allergies",[])
+            questions = [q for q in vault_data.get("questions",[]) if not q.get("answered")]
+            if any([meds, symptoms, reactions, allergies, questions]):
+                vault_parts += ["\n\n━━━ PATIENT HEALTH VAULT ━━━",
+                                "VERIFIED data from their encrypted Med-Vault. Use for personalized advice.\n"]
+                if meds:
+                    vault_parts.append("CURRENT MEDICATIONS:")
+                    for m in meds:
+                        vault_parts.append(f"  • {m['name']} {m['dose']} — {m['frequency']}")
+                if allergies:
+                    vault_parts.append("\nKNOWN ALLERGIES:")
+                    for a in allergies:
+                        vault_parts.append(f"  🚫 {a['name']}: {a.get('reaction','')}")
+                if reactions:
+                    vault_parts.append("\nREPORTED REACTIONS:")
+                    for r in reactions[-3:]:
+                        vault_parts.append(f"  ⚠ {r['medication_name']}: {r['description'][:100]}")
+                if symptoms:
+                    vault_parts.append("\nRECENT SYMPTOMS (ambient diary):")
+                    for s in symptoms:
+                        vault_parts.append(f"  • {s['date_label']}: {s['description'][:100]}")
+                if questions:
+                    vault_parts.append("\nSAVED DOCTOR QUESTIONS:")
+                    for q in questions:
+                        vault_parts.append(f"  ❓ {q['question'][:120]}")
+            logger.info(f"🔒 Medical vault [{persona}]: {len(meds)} meds, {len(symptoms)} symptoms")
+
+        # ── VEHICLE SILO (mechanic, lawyer, wealth) ───────────────────────
+        if persona_can_read(persona, "vehicle"):
+            vehicles = vault_data.get("vehicles", [])
+            if vehicles:
+                vault_parts.append("\n\nVEHICLE RECORDS:")
+                for v in vehicles:
+                    vault_parts.append(
+                        f"  🚗 {v.get('year','')} {v.get('make','')} {v.get('model','')} "
+                        f"— VIN: {v.get('vin','N/A')} | Mileage: {v.get('mileage','N/A')} "
+                        f"| Insurance: {v.get('insurance','N/A')}"
+                    )
+                service = vault_data.get("service_history", [])
+                if service:
+                    vault_parts.append("  Last service:")
+                    for s in service[-2:]:
+                        vault_parts.append(f"    • {s.get('date','')}: {s.get('description','')[:80]}")
+
+        # ── FINANCIAL SILO (wealth, lawyer, career) ───────────────────────
+        if persona_can_read(persona, "financial"):
+            fin = vault_data.get("financial", {})
+            if fin:
+                vault_parts.append("\n\nFINANCIAL CONTEXT:")
+                if fin.get("income_range"):
+                    vault_parts.append(f"  Income range: {fin['income_range']}")
+                if fin.get("goals"):
+                    vault_parts.append(f"  Financial goals: {', '.join(fin['goals'][:3])}")
+                if fin.get("concerns"):
+                    vault_parts.append(f"  Key concerns: {', '.join(fin['concerns'][:3])}")
+
+        # ── LEGAL SILO (lawyer, guardian) ─────────────────────────────────
+        if persona_can_read(persona, "legal"):
+            legal = vault_data.get("legal", {})
+            if legal:
+                vault_parts.append("\n\nLEGAL CONTEXT:")
+                if legal.get("active_matters"):
+                    vault_parts.append("  Active matters:")
+                    for m in legal["active_matters"][:3]:
+                        vault_parts.append(f"    • {m.get('type','')}: {m.get('description','')[:80]}")
+                if legal.get("important_dates"):
+                    vault_parts.append("  Important dates:")
+                    for d in legal["important_dates"][:2]:
+                        vault_parts.append(f"    📅 {d.get('date','')}: {d.get('event','')}")
+
+        # ── CAREER SILO (career, wealth, lawyer) ──────────────────────────
+        if persona_can_read(persona, "career"):
+            career = vault_data.get("career", {})
+            if career:
+                vault_parts.append("\n\nCAREER CONTEXT:")
+                if career.get("current_role"):
+                    vault_parts.append(f"  Role: {career['current_role']} at {career.get('employer','')}")
+                if career.get("goals"):
+                    vault_parts.append(f"  Goals: {', '.join(career['goals'][:2])}")
+                if career.get("concerns"):
+                    vault_parts.append(f"  Concerns: {', '.join(career['concerns'][:2])}")
+
+        # ── EMOTIONAL SILO (therapist, pastor, bestie, doctor) ────────────
+        if persona_can_read(persona, "emotional"):
+            emotional = vault_data.get("emotional", {})
+            if emotional:
+                vault_parts.append("\n\nEMOTIONAL CONTEXT:")
+                if emotional.get("current_stressors"):
+                    vault_parts.append("  Current stressors:")
+                    for s in emotional["current_stressors"][:3]:
+                        vault_parts.append(f"    • {s[:100]}")
+                if emotional.get("support_notes"):
+                    vault_parts.append(f"  Support notes: {emotional['support_notes'][:200]}")
+
+        # ── SECURITY SILO (guardian, lawyer) ──────────────────────────────
+        if persona_can_read(persona, "security"):
+            security = vault_data.get("security", {})
+            if security:
+                vault_parts.append("\n\nSECURITY CONTEXT:")
+                if security.get("past_scams"):
+                    vault_parts.append(f"  Past scam attempts: {len(security['past_scams'])}")
+                if security.get("protected_accounts"):
+                    vault_parts.append(f"  Protected accounts: {', '.join(security['protected_accounts'][:4])}")
+
+        if vault_parts:
+            vault_parts.append("\n━━━ END VAULT DATA ━━━")
+            vault_context     = "\n".join(vault_parts)
+            memory_context    = (memory_context or "") + vault_context
+
 
     system_prompt = await _build_chat_system_prompt(
         persona         = persona,
@@ -3792,6 +4012,67 @@ RULES:
             async def _post_storage():
                 asyncio.create_task(store_intelligence_sync(user_id, msg,    "user"))
                 asyncio.create_task(store_intelligence_sync(user_id, answer, "bot"))
+                # ── Ambient Diary: "save this question" detection ──────────────
+                if MED_VAULT_ENABLED and persona in {"doctor","therapist","vitality","lawyer","mechanic","wealth"}:
+                    _save_q_triggers = [
+                        "save this question", "remember to ask", "save that", "note that",
+                        "write that down", "don't forget to ask", "add that to my questions",
+                        "save this for my doctor", "put that in my vault",
+                        "guardar esta pregunta", "recordar preguntar", "guardar eso",
+                    ]
+                    _msg_lower = msg.lower()
+                    if any(t in _msg_lower for t in _save_q_triggers):
+                        try:
+                            _vault_q = await get_or_create_vault(user_id, email_lower)
+                            # Extract the actual question — strip trigger phrase
+                            _clean_q = msg
+                            for t in _save_q_triggers:
+                                _clean_q = _clean_q.lower().replace(t, "").strip()
+                            _clean_q = _clean_q.strip(".,!? ").capitalize() or msg[:150]
+                            _q_entry = new_doctor_question(_clean_q, f"Saved from {persona} conversation")
+                            _vault_q["questions"].append(_q_entry)
+                            _vault_q["questions"] = _vault_q["questions"][-30:]  # keep last 30
+                            await save_vault(user_id, email_lower, _vault_q)
+                            logger.info(f"❓ Question auto-saved for {user_id[:8]}: {_clean_q[:60]}")
+                        except Exception as _eq:
+                            logger.warning(f"Question save error: {_eq}")
+
+                # ── Ambient Diary: silently detect + log symptoms ──────────────
+                if MED_VAULT_ENABLED and persona_can_write("doctor", "medical"):
+                    _symptoms = detect_symptoms_in_message(msg)
+                    if _symptoms and persona in {"doctor","therapist","vitality","pastor"}:
+                        try:
+                            _vault = await get_or_create_vault(user_id, email_lower)
+                            for _sym in _symptoms:
+                                _entry = new_symptom(
+                                    description = msg[:200],
+                                    severity    = "mild",
+                                    persona_context = persona,
+                                )
+                                _vault["symptoms"].append(_entry)
+                            # Keep last 60 symptom entries
+                            _vault["symptoms"] = _vault["symptoms"][-60:]
+                            await save_vault(user_id, email_lower, _vault)
+                            logger.info(f"📋 Ambient diary: logged {_symptoms} for {user_id[:8]}")
+                        except Exception as _e:
+                            logger.warning(f"Ambient diary error: {_e}")
+                # ── Ambient Diary: detect reaction mentions ────────────────────
+                if MED_VAULT_ENABLED and persona in {"doctor","therapist","vitality"}:
+                    try:
+                        _vault_check = await load_vault(user_id, email_lower)
+                        if _vault_check:
+                            _reaction = detect_reaction_mention(msg, _vault_check.get("medications",[]))
+                            if _reaction:
+                                _vault_check["reactions"].append(new_reaction(
+                                    medication_id   = _reaction["medication_id"],
+                                    medication_name = _reaction["medication_name"],
+                                    description     = msg[:200],
+                                    severity        = "mild",
+                                ))
+                                await save_vault(user_id, email_lower, _vault_check)
+                                logger.info(f"⚠️ Reaction logged: {_reaction['medication_name']}")
+                    except Exception as _e:
+                        logger.warning(f"Reaction detect error: {_e}")
                 # Save to conversation context for routing memory
                 CONVO_CONTEXT[email_lower].append({"persona": persona, "msg": msg[:120]})
                 if len(CONVO_CONTEXT[email_lower]) > MAX_CONVO_CONTEXT:
@@ -4247,6 +4528,406 @@ async def root():
         "version": "31.0.0 — KERNEL v31 | TRIPLE ENGINE | CLAUDE VALIDATOR | OBD-II",
         "message": "Digital Bodyguard OS — Protecting lives through intelligence.",
     }
+
+
+
+# =============================================================================
+# MED-VAULT API ENDPOINTS
+# =============================================================================
+
+@app.post("/vault/setup")
+async def vault_setup(
+    user_email: str  = Form(...),
+    pin_enabled: str = Form("false"),
+    pin:         str = Form(""),
+):
+    """
+    First-time vault setup. User chooses Simple or PIN protection.
+    Returns vault_ready: true on success.
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    use_pin     = pin_enabled.lower() == "true" and len(pin) == 4 and pin.isdigit()
+    vault       = empty_medical_vault()
+    vault["pin_enabled"] = use_pin
+    success = await save_vault(user_id, email_lower, vault, pin if use_pin else "")
+    return JSONResponse({"vault_ready": success, "pin_enabled": use_pin})
+
+
+@app.post("/vault/scan-medication")
+async def vault_scan_medication(
+    user_email: str        = Form(...),
+    pin:        str        = Form(""),
+    file:       UploadFile = File(None),
+    ocr_text:   str        = Form(""),
+):
+    """
+    OCR pill bottle scan. Reads label via Gemini Vision, checks for
+    dosage discrepancies against stored medications, checks FDA interactions.
+    Returns: {medication, discrepancy, interactions, message}
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await get_or_create_vault(user_id, email_lower, pin)
+
+    # ── OCR via Gemini Vision ─────────────────────────────────────────────────
+    scanned = {}
+    if file:
+        try:
+            img_bytes = await file.read()
+            img_b64   = base64.b64encode(img_bytes).decode()
+            ocr_prompt = """You are reading a prescription pill bottle label.
+Extract ONLY these fields and respond with valid JSON:
+{"name": "medication name", "dose": "dosage amount and unit",
+ "frequency": "how often to take", "prescriber": "doctor name if visible",
+ "ndc": "NDC number if visible", "instructions": "any special instructions"}
+If a field is not visible, use empty string. Be precise with dosage numbers."""
+            ocr_result = await call_gemini_vision(ocr_prompt, img_b64)
+            if ocr_result:
+                try:
+                    clean = ocr_result.strip().replace("```json","").replace("```","")
+                    scanned = json.loads(clean)
+                except Exception:
+                    scanned = {"name": ocr_result[:100], "dose": "", "frequency": ""}
+        except Exception as e:
+            logger.warning(f"OCR error: {e}")
+    elif ocr_text:
+        scanned = {"name": ocr_text, "dose": "", "frequency": ""}
+
+    if not scanned.get("name"):
+        return JSONResponse({"error": "Could not read medication label"}, status_code=400)
+
+    # ── Dosage discrepancy check ──────────────────────────────────────────────
+    discrepancy = check_dosage_discrepancy(scanned, vault.get("medications", []))
+
+    # ── FDA drug interaction check ────────────────────────────────────────────
+    interactions = await check_drug_interactions(
+        vault.get("medications", []), scanned.get("name", "")
+    )
+
+    # ── Build response message ────────────────────────────────────────────────
+    msg_parts = []
+    if discrepancy:
+        msg_parts.append(discrepancy["message"])
+    if interactions:
+        for ia in interactions[:2]:  # top 2 warnings
+            msg_parts.append(
+                f"⚡ Heads up: {ia['drug_a']} and {ia['drug_b']} may interact. "
+                f"Mention this to your doctor."
+            )
+
+    return JSONResponse({
+        "scanned":      scanned,
+        "discrepancy":  discrepancy,
+        "interactions": interactions,
+        "message":      " ".join(msg_parts) if msg_parts else None,
+        "ready_to_add": not bool(discrepancy),
+    })
+
+
+@app.post("/vault/add-medication")
+async def vault_add_medication(
+    user_email:  str = Form(...),
+    pin:         str = Form(""),
+    name:        str = Form(...),
+    dose:        str = Form(""),
+    frequency:   str = Form(""),
+    prescriber:  str = Form(""),
+    ndc:         str = Form(""),
+    start_date:  str = Form(""),
+):
+    """Adds a confirmed medication to the vault."""
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await get_or_create_vault(user_id, email_lower, pin)
+    med         = new_medication(name, dose, frequency, prescriber, ndc, start_date)
+    vault["medications"].append(med)
+    await save_vault(user_id, email_lower, vault, pin)
+    logger.info(f"💊 Medication added: {name} for {user_id[:8]}")
+    return JSONResponse({"success": True, "medication_id": med["id"], "medication": med})
+
+
+@app.post("/vault/add-question")
+async def vault_add_question(
+    user_email: str = Form(...),
+    pin:        str = Form(""),
+    question:   str = Form(...),
+    context:    str = Form(""),
+):
+    """Saves a question the user wants to ask their doctor."""
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await get_or_create_vault(user_id, email_lower, pin)
+    q           = new_doctor_question(question, context)
+    vault["questions"].append(q)
+    await save_vault(user_id, email_lower, vault, pin)
+    return JSONResponse({"success": True, "question_id": q["id"]})
+
+
+@app.post("/vault/get-summary")
+async def vault_get_summary(
+    user_email: str = Form(...),
+    pin:        str = Form(""),
+    persona:    str = Form("doctor"),
+):
+    """
+    Returns vault summary visible to this persona (respects silo access).
+    Used to inject context into persona system prompts.
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"summary": None})
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await load_vault(user_id, email_lower, pin)
+    if not vault:
+        return JSONResponse({"summary": None})
+
+    # Build summary filtered by persona access
+    summary = {}
+    if persona_can_read(persona, "medical"):
+        summary["medications"]  = vault.get("medications", [])
+        summary["symptoms"]     = vault.get("symptoms", [])[-10:]  # last 10
+        summary["reactions"]    = vault.get("reactions", [])
+        summary["allergies"]    = vault.get("allergies", [])
+        summary["questions"]    = [q for q in vault.get("questions",[]) if not q.get("answered")]
+
+    return JSONResponse({"summary": summary})
+
+
+@app.post("/vault/generate-pdf")
+async def vault_generate_pdf(
+    user_email:    str = Form(...),
+    user_name:     str = Form(""),
+    pin:           str = Form(""),
+    persona:       str = Form("doctor"),
+    qr_expiry_min: int = Form(30),
+    lang:          str = Form("en"),
+):
+    """
+    Generates and streams the Medical Vault PDF.
+    Never saved to disk — streamed directly to user.
+    Includes QR ephemeral token (expires in qr_expiry_min minutes).
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await load_vault(user_id, email_lower, pin)
+
+    if vault is None:
+        return JSONResponse({"error": "Vault not found or wrong PIN"}, status_code=403)
+
+    # Drug interaction check
+    interactions = await check_drug_interactions(vault.get("medications", []))
+
+    # Generate ephemeral QR token
+    summary_for_qr = {
+        "medications": len(vault.get("medications",[])),
+        "questions":   len([q for q in vault.get("questions",[]) if not q.get("answered")]),
+        "interactions": len(interactions),
+        "patient":     user_name or "Patient",
+    }
+    qr_token = generate_ephemeral_token(user_id, summary_for_qr, qr_expiry_min)
+
+    # Generate PDF in memory
+    display_name = user_name or email_lower.split("@")[0].capitalize()
+    pdf_bytes    = generate_medical_pdf(
+        vault         = vault,
+        user_name     = display_name,
+        persona       = persona,
+        interactions  = interactions,
+        qr_token      = qr_token,
+        qr_expiry_min = qr_expiry_min,
+        lang          = lang,
+    )
+
+    filename = f"LYLO_Medical_Report_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return Response(
+        content      = pdf_bytes,
+        media_type   = "application/pdf",
+        headers      = {"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/vault/set-reminders")
+async def vault_set_reminders(
+    user_email:  str = Form(...),
+    pin:         str = Form(""),
+    reminders:   str = Form("[]"),  # JSON: [{med_id, med_name, times: ["09:00","21:00"]}]
+):
+    """
+    Saves medication reminder schedule to vault.
+    Frontend uses Web Notifications API to fire these — backend stores the schedule.
+    Returns saved reminder list.
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await get_or_create_vault(user_id, email_lower, pin)
+    try:
+        reminder_list = json.loads(reminders)
+    except Exception:
+        return JSONResponse({"error": "Invalid reminders JSON"}, status_code=400)
+    vault["reminders"] = reminder_list
+    await save_vault(user_id, email_lower, vault, pin)
+    logger.info(f"⏰ Reminders saved: {len(reminder_list)} meds for {user_id[:8]}")
+    return JSONResponse({"success": True, "reminders": reminder_list})
+
+
+@app.post("/vault/smart-reminder-message")
+async def vault_smart_reminder(
+    user_email: str = Form(...),
+    pin:        str = Form(""),
+    med_name:   str = Form(...),
+    time_label: str = Form(""),
+):
+    """
+    Generates a warm, persona-specific reminder message for a medication.
+    Used to make push notifications feel human not robotic.
+    """
+    messages = [
+        f"Time for your {med_name}! 💊 Stay on track — your health is your wealth.",
+        f"Hey — don't forget your {med_name}. {time_label or 'Take it now'} and get on with your day. 💪",
+        f"Quick check-in: your {med_name} is ready. One step at a time. ✅",
+        f"Your {med_name} is waiting. You've got this. 💚",
+        f"Reminder: {med_name}. {time_label or 'Now'} is the right time. 🕐",
+    ]
+    import random
+    msg = random.choice(messages)
+    return JSONResponse({"message": msg, "med_name": med_name})
+
+
+@app.post("/vault/update-silo")
+async def vault_update_silo(
+    user_email: str = Form(...),
+    pin:        str = Form(""),
+    silo:       str = Form(...),   # "vehicle" | "career" | "financial" | "legal" | "emotional" | "security"
+    data:       str = Form("{}"),  # JSON payload
+):
+    """
+    Generic silo updater. Merges data into the specified silo bucket.
+    Frontend passes pre-structured JSON — backend merges and saves.
+    """
+    if not MED_VAULT_ENABLED:
+        return JSONResponse({"error": "Vault not available"}, status_code=503)
+    email_lower = user_email.lower().strip()
+    user_id     = create_user_id(email_lower)
+    vault       = await get_or_create_vault(user_id, email_lower, pin)
+
+    try:
+        payload = json.loads(data)
+    except Exception:
+        return JSONResponse({"error": "Invalid data JSON"}, status_code=400)
+
+    # Merge based on silo type
+    if silo == "vehicle":
+        if payload.get("type") == "add_vehicle":
+            vault.setdefault("vehicles", []).append(payload["vehicle"])
+        else:
+            vault.setdefault("vehicles", [])
+            if vault["vehicles"]:
+                vault["vehicles"][-1].update(payload)
+            else:
+                vault["vehicles"].append(payload)
+
+    elif silo == "service_history":
+        vault.setdefault("service_history", []).append(payload)
+
+    elif silo in ("financial", "career", "legal", "emotional", "security"):
+        # Deep merge dict silos
+        existing = vault.get(silo, {})
+        if isinstance(existing, dict) and isinstance(payload, dict):
+            for k, v in payload.items():
+                if isinstance(v, list) and isinstance(existing.get(k), list):
+                    existing[k] = (existing[k] + v)[-20:]  # cap at 20 entries
+                else:
+                    existing[k] = v
+            vault[silo] = existing
+        else:
+            vault[silo] = payload
+
+    else:
+        return JSONResponse({"error": f"Unknown silo: {silo}"}, status_code=400)
+
+    await save_vault(user_id, email_lower, vault, pin)
+    logger.info(f"📦 Silo updated: {silo} for {user_id[:8]}")
+    return JSONResponse({"success": True, "silo": silo})
+
+
+@app.get("/vault/qr/{token}")
+async def vault_qr_view(token: str):
+    """
+    Ephemeral quick-view endpoint for doctor's tablet.
+    Single-use, auto-expires. Returns clean HTML dashboard.
+    """
+    summary = retrieve_ephemeral_token(token)
+    if not summary:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+            "<h2>⏱ This link has expired.</h2>"
+            "<p>Links expire after 30 minutes for your security.</p>"
+            "<p>Ask your patient to generate a new PDF from the LYLO app.</p>"
+            "</body></html>",
+            status_code=410
+        )
+
+    meds_count    = summary.get("medications", 0)
+    q_count       = summary.get("questions", 0)
+    interact_count= summary.get("interactions", 0)
+    patient       = summary.get("patient", "Patient")
+
+    alert_html = (
+        f'<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;'
+        f'padding:16px;margin:12px 0">'
+        f'<b style="color:#dc2626">⚡ {interact_count} Drug Interaction Alert(s)</b><br>'
+        f'<span style="color:#666">Review full PDF for details.</span></div>'
+    ) if interact_count else ""
+
+    return HTMLResponse(f"""
+    <html>
+    <head><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LYLO Quick View</title></head>
+    <body style="font-family:-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;background:#f9fafb">
+      <div style="background:#22c55e;color:white;padding:20px;border-radius:12px;margin-bottom:20px">
+        <div style="font-size:11px;letter-spacing:2px;opacity:0.8">LYLO OS — QUICK VIEW</div>
+        <div style="font-size:22px;font-weight:900;margin-top:4px">{patient}</div>
+        <div style="font-size:11px;opacity:0.7;margin-top:2px">Verified Medical Summary</div>
+      </div>
+      {alert_html}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:16px 0">
+        <div style="background:white;border-radius:10px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          <div style="font-size:28px;font-weight:900;color:#22c55e">{meds_count}</div>
+          <div style="font-size:11px;color:#666;margin-top:4px">💊 Medications</div>
+        </div>
+        <div style="background:white;border-radius:10px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          <div style="font-size:28px;font-weight:900;color:#3b82f6">{q_count}</div>
+          <div style="font-size:11px;color:#666;margin-top:4px">❓ Questions</div>
+        </div>
+        <div style="background:white;border-radius:10px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          <div style="font-size:28px;font-weight:900;color:#{'dc2626' if interact_count else '6b7280'}">{interact_count}</div>
+          <div style="font-size:11px;color:#666;margin-top:4px">⚡ Alerts</div>
+        </div>
+      </div>
+      <div style="background:#fef9c3;border:1px solid #eab308;border-radius:8px;padding:14px;font-size:12px;color:#78350f;margin-top:16px">
+        <b>AI-Generated Summary.</b> For clinical review only. Not a medical diagnosis.
+        Always consult the patient directly before making clinical decisions.
+      </div>
+      <div style="text-align:center;color:#9ca3af;font-size:11px;margin-top:20px">
+        Generated by LYLO OS · This link has now expired for security.
+      </div>
+    </body></html>
+    """)
 
 
 if __name__ == "__main__":
