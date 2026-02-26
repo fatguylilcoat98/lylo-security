@@ -2,6 +2,7 @@
 LYLO OS — services/emergency_engine.py
 Emergency detection, routing, and step-by-step response builder.
 """
+import time
 import logging
 from typing import Any
 
