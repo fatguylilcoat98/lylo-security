@@ -1,28 +1,24 @@
-"""
-LYLO OS — routers/vault_router.py
-Endpoints: /vault/setup, /vault/scan-medication, /vault/add-medication,
-           /vault/add-question, /vault/get-summary, /vault/generate-pdf,
-           /vault/set-reminders, /vault/smart-reminder-message,
-           /vault/update-silo, /vault/qr/{token}
-"""
+"""LYLO OS — routers/vault_router.py"""
+import re
+import os
 import json
 import time
+import asyncio
 import base64
-import datetime
+import hashlib
+import logging
+import smtplib
 import random
 import string
-import logging
-from typing import Optional
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
+
 from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 from services.config import create_user_id, openai_client, gemini_client, gemini_ready
 from services.memory_engine import get_or_create_vault, save_vault, load_vault
-from services.llm_clients import call_gemini_vision, call_openai_bodyguard
-
-logger = logging.getLogger("LYLO.Vault")
-router = APIRouter()
-
 try:
     from med_vault import (
         encrypt_silo, decrypt_silo, verify_pin,
@@ -31,19 +27,15 @@ try:
         detect_symptoms_in_message, detect_reaction_mention,
         check_dosage_discrepancy, check_drug_interactions,
         generate_ephemeral_token, retrieve_ephemeral_token,
-        persona_can_read, persona_can_write, get_readable_silos,
-        SILO_ACCESS,
+        persona_can_read, persona_can_write, get_readable_silos, SILO_ACCESS,
     )
     from med_vault_pdf import generate_medical_pdf, PERSONA_COLORS
     MED_VAULT_ENABLED = True
 except ImportError as e:
     MED_VAULT_ENABLED = False
-    logger.warning(f"Med-Vault not available: {e}")
-
-# =============================================================================
-# MED-VAULT API ENDPOINTS
-# =============================================================================
-
+    logging.getLogger("LYLO.Vault").warning(f"Med-Vault not available: {e}")
+logger = logging.getLogger("LYLO.Vault")
+router = APIRouter()
 @router.post("/vault/setup")
 async def vault_setup(
     user_email: str  = Form(...),
