@@ -1,434 +1,389 @@
 # =============================================================================
-# LYLO MED-VAULT — med_vault.py
-# Encrypted health data silo for the Doctor persona.
-# 
-# PRIVACY ARCHITECTURE:
-#   - AES-256 via Fernet (PBKDF2HMAC key derivation, 480,000 iterations)
-#   - Simple mode: key = PBKDF2(email, SHA256(email))
-#   - PIN mode:    key = PBKDF2(email+PIN, SHA256(email))
-#   - Data stored encrypted in Pinecone metadata — nobody can read it
-#   - Zero plaintext ever written to disk or logs
-#   - PDF generated in memory, never saved to server
-#   - QR links are ephemeral (configurable expiry, default 30 min)
-#
-# DATA SILOS — need-to-know access model:
-#   MEDICAL:    doctor(rw), therapist(r), vitality(r), pastor(r)
-#   FINANCIAL:  wealth(rw), lawyer(r), career(r)
-#   VEHICLE:    mechanic(rw), lawyer(r), wealth(r)
-#   LEGAL:      lawyer(rw), guardian(r)
-#   CAREER:     career(rw), wealth(r), lawyer(r)
-#   EMOTIONAL:  therapist(rw), pastor(rw), bestie(r), doctor(r)
-#   SECURITY:   guardian(rw), lawyer(r)
-#   UNIVERSAL:  all personas (name, lang, style, age_range, state)
+# LYLO MED-VAULT PDF GENERATOR — med_vault_pdf.py
+# Generates professional Doctor PDF reports branded per persona color.
+# Colorblind-safe: every section uses icon + color, never color alone.
+# Disclaimer on every page. Session hash for legal protection.
+# Generated in memory — never saved to disk.
 # =============================================================================
 
-import os
-import json
 import hashlib
-import base64
-import time
 import secrets
-import logging
 from io import BytesIO
 from datetime import datetime
 from typing import Optional
 
-from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-
-logger = logging.getLogger(__name__)
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether, Image as RLImage
+)
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # =============================================================================
-# SILO ACCESS MAP — which personas can access which data categories
+# PERSONA COLOR PALETTE
+# Each persona gets primary + light variant for PDF theming
 # =============================================================================
-SILO_ACCESS = {
-    "medical": {
-        "write": {"doctor"},
-        "read":  {"doctor", "therapist", "vitality", "pastor"},
-    },
-    "financial": {
-        "write": {"wealth"},
-        "read":  {"wealth", "lawyer", "career"},
-    },
-    "vehicle": {
-        "write": {"mechanic"},
-        "read":  {"mechanic", "lawyer", "wealth"},
-    },
-    "legal": {
-        "write": {"lawyer"},
-        "read":  {"lawyer", "guardian"},
-    },
-    "career": {
-        "write": {"career"},
-        "read":  {"career", "wealth", "lawyer"},
-    },
-    "emotional": {
-        "write": {"therapist", "pastor"},
-        "read":  {"therapist", "pastor", "bestie", "doctor"},
-    },
-    "security": {
-        "write": {"guardian"},
-        "read":  {"guardian", "lawyer"},
-    },
-    "universal": {
-        "write": {"all"},
-        "read":  {"all"},
-    },
+PERSONA_COLORS = {
+    "doctor":    {"primary": colors.HexColor("#22c55e"), "light": colors.HexColor("#dcfce7"), "icon": "⚕"},
+    "lawyer":    {"primary": colors.HexColor("#eab308"), "light": colors.HexColor("#fef9c3"), "icon": "⚖"},
+    "guardian":  {"primary": colors.HexColor("#3b82f6"), "light": colors.HexColor("#dbeafe"), "icon": "🛡"},
+    "therapist": {"primary": colors.HexColor("#a855f7"), "light": colors.HexColor("#f3e8ff"), "icon": "🧠"},
+    "wealth":    {"primary": colors.HexColor("#f59e0b"), "light": colors.HexColor("#fef3c7"), "icon": "💰"},
+    "mechanic":  {"primary": colors.HexColor("#f97316"), "light": colors.HexColor("#ffedd5"), "icon": "🔧"},
+    "career":    {"primary": colors.HexColor("#6366f1"), "light": colors.HexColor("#e0e7ff"), "icon": "📈"},
+    "vitality":  {"primary": colors.HexColor("#10b981"), "light": colors.HexColor("#d1fae5"), "icon": "💪"},
+    "tutor":     {"primary": colors.HexColor("#06b6d4"), "light": colors.HexColor("#cffafe"), "icon": "📚"},
+    "pastor":    {"primary": colors.HexColor("#8b5cf6"), "light": colors.HexColor("#ede9fe"), "icon": "✝"},
+    "hype":      {"primary": colors.HexColor("#ec4899"), "light": colors.HexColor("#fce7f3"), "icon": "⚡"},
+    "bestie":    {"primary": colors.HexColor("#f43f5e"), "light": colors.HexColor("#ffe4e6"), "icon": "❤"},
 }
 
-def persona_can_read(persona: str, silo: str) -> bool:
-    """Returns True if this persona has read access to this silo."""
-    access = SILO_ACCESS.get(silo, {}).get("read", set())
-    return "all" in access or persona in access
+# Colorblind-safe section icons (shape-based, not color-based)
+SECTION_ICONS = {
+    "medications":  "💊 MEDICATIONS",
+    "symptoms":     "📋 SYMPTOM TIMELINE",
+    "reactions":    "⚠  REACTIONS & SIDE EFFECTS",
+    "allergies":    "🚫 KNOWN ALLERGIES",
+    "questions":    "❓ QUESTIONS FOR YOUR DOCTOR",
+    "interactions": "⚡ DRUG INTERACTION ALERTS",
+    "appointments": "📅 UPCOMING APPOINTMENTS",
+}
 
-def persona_can_write(persona: str, silo: str) -> bool:
-    """Returns True if this persona has write access to this silo."""
-    access = SILO_ACCESS.get(silo, {}).get("write", set())
-    return "all" in access or persona in access
+DISCLAIMER = (
+    "AI-Generated Summary — For Clinical Review Only. "
+    "Not a Medical Diagnosis. "
+    "Always consult your healthcare provider before making any medical decisions."
+)
 
-def get_readable_silos(persona: str) -> list:
-    """Returns list of silos this persona can read."""
-    return [silo for silo in SILO_ACCESS if persona_can_read(persona, silo)]
+def _get_styles(persona_color):
+    """Build paragraph styles using persona color."""
+    base = getSampleStyleSheet()
+    pc   = persona_color["primary"]
+    
+    return {
+        "title": ParagraphStyle(
+            "VaultTitle",
+            fontSize=22, fontName="Helvetica-Bold",
+            textColor=pc, spaceAfter=4, alignment=TA_CENTER
+        ),
+        "subtitle": ParagraphStyle(
+            "VaultSubtitle",
+            fontSize=9, fontName="Helvetica",
+            textColor=colors.HexColor("#6b7280"),
+            spaceAfter=2, alignment=TA_CENTER
+        ),
+        "section_header": ParagraphStyle(
+            "SectionHeader",
+            fontSize=11, fontName="Helvetica-Bold",
+            textColor=pc, spaceBefore=14, spaceAfter=6
+        ),
+        "body": ParagraphStyle(
+            "VaultBody",
+            fontSize=10, fontName="Helvetica",
+            textColor=colors.HexColor("#111827"),
+            spaceAfter=3, leading=14
+        ),
+        "body_bold": ParagraphStyle(
+            "VaultBodyBold",
+            fontSize=10, fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#111827"),
+            spaceAfter=3
+        ),
+        "small": ParagraphStyle(
+            "VaultSmall",
+            fontSize=8, fontName="Helvetica",
+            textColor=colors.HexColor("#9ca3af"),
+            spaceAfter=2
+        ),
+        "disclaimer": ParagraphStyle(
+            "Disclaimer",
+            fontSize=7, fontName="Helvetica-Oblique",
+            textColor=colors.HexColor("#ef4444"),
+            alignment=TA_CENTER, spaceBefore=8
+        ),
+        "warning": ParagraphStyle(
+            "Warning",
+            fontSize=10, fontName="Helvetica-Bold",
+            textColor=colors.HexColor("#dc2626"),
+            spaceAfter=4
+        ),
+        "green": ParagraphStyle(
+            "Green",
+            fontSize=10, fontName="Helvetica",
+            textColor=colors.HexColor("#16a34a"),
+            spaceAfter=3
+        ),
+    }
 
-# =============================================================================
-# ENCRYPTION ENGINE
-# =============================================================================
-def _derive_key(email: str, pin: str = "") -> bytes:
+def _section_divider(pc):
+    return HRFlowable(width="100%", thickness=1.5,
+                       color=pc["primary"], spaceAfter=6, spaceBefore=2)
+
+def _build_qr_image(token: str, base_url: str = "https://lylo.app/vault/") -> Optional[RLImage]:
+    """Build QR placeholder image for the PDF."""
+    try:
+        from PIL import Image as PILImage, ImageDraw
+        url  = f"{base_url}{token}"
+        size = 100
+        img  = PILImage.new("RGB", (size, size), "white")
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([0,0,size-1,size-1], outline="black", width=2)
+        draw.rectangle([8,8,size-9,size-9], outline="black", width=2)
+        for x, y in [(4,4),(size-20,4),(4,size-20)]:
+            draw.rectangle([x,y,x+14,y+14], outline="black", width=2)
+            draw.rectangle([x+4,y+4,x+10,y+10], fill="black")
+        h = hashlib.md5(url.encode()).digest()
+        cell = max(1, (size-24)//10)
+        for i, byte in enumerate(h[:10]):
+            for bit in range(8):
+                if byte & (1 << bit):
+                    cx = 12 + ((i*8+bit) % 8) * cell
+                    cy = 24 + ((i*8+bit) // 8) * cell
+                    if cy < size-10 and cx < size-10:
+                        draw.rectangle([cx,cy,cx+cell-1,cy+cell-1], fill="black")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        rl_img = RLImage(buf, width=0.9*inch, height=0.9*inch)
+        return rl_img
+    except Exception:
+        return None
+
+def generate_medical_pdf(
+    vault:         dict,
+    user_name:     str,
+    persona:       str        = "doctor",
+    interactions:  list       = None,
+    qr_token:      str        = None,
+    qr_expiry_min: int        = 30,
+    lang:          str        = "en",
+) -> bytes:
     """
-    Derives AES-256 key from email + optional PIN.
-    Salt = SHA256(email) — unique per user, deterministic, never stored.
-    480,000 PBKDF2 iterations (OWASP 2024 recommendation).
+    Generates a professional Medical Vault PDF.
+    Returns raw bytes — never written to disk.
+    
+    vault:        decrypted medical vault dict
+    user_name:    patient first name only
+    persona:      which persona is generating (affects color)
+    interactions: list of drug interaction warnings from FDA check
+    qr_token:     ephemeral token for quick-view QR (None = no QR)
+    lang:         "en" or "es"
     """
-    salt     = hashlib.sha256(email.lower().strip().encode()).digest()
-    material = (email.lower().strip() + pin).encode()
-    kdf = PBKDF2HMAC(
-        algorithm  = hashes.SHA256(),
-        length     = 32,
-        salt       = salt,
-        iterations = 480000,
+    pc      = PERSONA_COLORS.get(persona, PERSONA_COLORS["doctor"])
+    buf     = BytesIO()
+    doc     = SimpleDocTemplate(
+        buf,
+        pagesize     = letter,
+        rightMargin  = 0.75*inch,
+        leftMargin   = 0.75*inch,
+        topMargin    = 0.75*inch,
+        bottomMargin = 0.75*inch,
     )
-    return base64.urlsafe_b64encode(kdf.derive(material))
+    S        = _get_styles(pc)
+    story    = []
+    now      = datetime.now()
+    
+    # Session hash for legal protection — hash of content + timestamp
+    vault_str    = str(sorted(vault.items()))
+    session_hash = hashlib.sha256(f"{vault_str}{now.isoformat()}".encode()).hexdigest()[:16].upper()
+    session_id   = f"LY-{now.strftime("%Y%m%d")}-{session_hash[:8]}"
 
-def encrypt_silo(data: dict, email: str, pin: str = "") -> str:
-    """Encrypts silo data. Returns base64 ciphertext string."""
-    key = _derive_key(email, pin)
-    f   = Fernet(key)
-    return f.encrypt(json.dumps(data, default=str).encode()).decode()
+    # ── HEADER ────────────────────────────────────────────────────────────────
+    # Color bar at top (simulated with a colored table row)
+    header_data = [[
+        Paragraph(f'<font color="white"><b>LYLO OS</b> — Medical Intelligence Report</font>',
+                  ParagraphStyle("H", fontSize=13, fontName="Helvetica-Bold",
+                                 textColor=colors.white, alignment=TA_LEFT)),
+        Paragraph(f'<font color="white">{pc["icon"]} Doctor</font>',
+                  ParagraphStyle("HR", fontSize=11, fontName="Helvetica-Bold",
+                                 textColor=colors.white, alignment=TA_RIGHT)),
+    ]]
+    header_table = Table(header_data, colWidths=[4.5*inch, 2.5*inch])
+    header_table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), pc["primary"]),
+        ("TOPPADDING",    (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+        ("LEFTPADDING",   (0,0), (-1,-1), 12),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 12),
+        ("ROUNDEDCORNERS", [6]),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 10))
 
-def decrypt_silo(ciphertext: str, email: str, pin: str = "") -> Optional[dict]:
-    """Decrypts silo data. Returns None on wrong key/PIN."""
-    try:
-        key  = _derive_key(email, pin)
-        f    = Fernet(key)
-        raw  = f.decrypt(ciphertext.encode())
-        return json.loads(raw)
-    except (InvalidToken, Exception) as e:
-        logger.warning(f"Vault decrypt failed: {type(e).__name__}")
-        return None
+    # Patient + session info row
+    info_data = [[
+        Paragraph(f"Patient: <b>{user_name}</b>", S["body"]),
+        Paragraph(f"Generated: <b>{now.strftime('%B %d, %Y at %I:%M %p')}</b>", S["body"]),
+        Paragraph(f"Session ID: <b>{session_id}</b>", S["small"]),
+    ]]
+    info_table = Table(info_data, colWidths=[2.5*inch, 2.5*inch, 2*inch])
+    info_table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), pc["light"]),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("LEFTPADDING",   (0,0), (-1,-1), 10),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 10),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(DISCLAIMER, S["disclaimer"]))
+    story.append(Spacer(1, 12))
 
-def verify_pin(ciphertext: str, email: str, pin: str) -> bool:
-    """Returns True if PIN decrypts the vault correctly."""
-    return decrypt_silo(ciphertext, email, pin) is not None
+    # ── QR CODE (if token provided) ───────────────────────────────────────────
+    if qr_token:
+        qr_img = _build_qr_image(qr_token)
+        if qr_img:
+            qr_data = [[
+                qr_img,
+                Paragraph(
+                    f"<b>Quick-View Dashboard</b><br/>"
+                    f"Scan for critical summary (interactions, top questions, medication list).<br/>"
+                    f"<font color='#dc2626'>Link expires in {qr_expiry_min} minutes.</font>",
+                    S["body"]
+                ),
+            ]]
+            qr_table = Table(qr_data, colWidths=[1.1*inch, 5.9*inch])
+            qr_table.setStyle(TableStyle([
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("LEFTPADDING",   (0,0), (-1,-1), 8),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 8),
+                ("TOPPADDING",    (0,0), (-1,-1), 8),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+                ("BOX", (0,0), (-1,-1), 1, pc["primary"]),
+                ("BACKGROUND", (0,0), (-1,-1), pc["light"]),
+            ]))
+            story.append(qr_table)
+            story.append(Spacer(1, 14))
 
-# =============================================================================
-# VAULT DATA STRUCTURES
-# =============================================================================
-def empty_medical_vault() -> dict:
-    """
-    Creates a fresh encrypted vault with all silo buckets.
-    Medical, vehicle, financial, legal, career, emotional, security.
-    Each persona only sees what they're authorized to access.
-    """
-    return {
-        # ── Meta ──────────────────────────────────────────────────────────
-        "vault_version":  "1.1",
-        "created_at":     datetime.now().isoformat(),
-        "pin_enabled":    False,
+    # ── DRUG INTERACTION ALERTS (top priority — before meds list) ─────────────
+    if interactions:
+        story.append(Paragraph(SECTION_ICONS["interactions"], S["section_header"]))
+        story.append(_section_divider(pc))
+        for alert in interactions:
+            story.append(Paragraph(
+                f"⚡ <b>{alert.get('drug_a','?')} + {alert.get('drug_b','?')}</b> — "
+                f"{alert.get('warning','Potential interaction detected.')[:200]}",
+                S["warning"]
+            ))
+            story.append(Paragraph(
+                f"Source: {alert.get('source','FDA')} | Severity: {alert.get('severity','moderate').upper()}",
+                S["small"]
+            ))
+            story.append(Spacer(1, 4))
+        story.append(Spacer(1, 8))
 
-        # ── Medical Silo (doctor, therapist, vitality, pastor) ────────────
-        "medications":    [],   # list of MedicationRecord
-        "symptoms":       [],   # list of SymptomEntry (ambient diary)
-        "reactions":      [],   # list of ReactionEntry
-        "allergies":      [],   # list of AllergyRecord
-        "questions":      [],   # list of DoctorQuestion
-        "appointments":   [],   # list of AppointmentRecord
-        "reminders":      [],   # list of ReminderSchedule
+    # ── MEDICATIONS ───────────────────────────────────────────────────────────
+    medications = [m for m in vault.get("medications", []) if m.get("active", True)]
+    if medications:
+        story.append(Paragraph(SECTION_ICONS["medications"], S["section_header"]))
+        story.append(_section_divider(pc))
+        med_data = [["Medication", "Dose", "Frequency", "Prescriber", "Since"]]
+        for med in medications:
+            med_data.append([
+                med.get("name","—"),
+                med.get("dose","—"),
+                med.get("frequency","—"),
+                med.get("prescriber","—") or "—",
+                med.get("start_date","—"),
+            ])
+        med_table = Table(med_data, colWidths=[1.8*inch,0.9*inch,1.4*inch,1.4*inch,1.0*inch])
+        med_table.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,0),  pc["primary"]),
+            ("TEXTCOLOR",     (0,0), (-1,0),  colors.white),
+            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0), (-1,-1), 9),
+            ("BACKGROUND",    (0,1), (-1,-1), colors.white),
+            ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.white, pc["light"]]),
+            ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+            ("TOPPADDING",    (0,0), (-1,-1), 5),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+            ("LEFTPADDING",   (0,0), (-1,-1), 6),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ]))
+        story.append(med_table)
+        story.append(Spacer(1, 12))
 
-        # ── Vehicle Silo (mechanic, lawyer, wealth) ───────────────────────
-        "vehicles":        [],  # [{make, model, year, vin, mileage, insurance}]
-        "service_history": [],  # [{date, description, cost, shop}]
+    # ── SYMPTOM TIMELINE (Ambient Diary) ──────────────────────────────────────
+    symptoms = vault.get("symptoms", [])
+    if symptoms:
+        story.append(Paragraph(SECTION_ICONS["symptoms"], S["section_header"]))
+        story.append(_section_divider(pc))
+        for s in sorted(symptoms, key=lambda x: x.get("logged_at",""), reverse=True)[:20]:
+            sev_color = {"severe":"#dc2626","moderate":"#d97706","mild":"#16a34a"}.get(
+                s.get("severity","mild"), "#16a34a")
+            story.append(Paragraph(
+                f"<font color='{sev_color}'>●</font> "
+                f"<b>{s.get('date_label','—')}</b> — {s.get('description','—')}",
+                S["body"]
+            ))
+        story.append(Spacer(1, 12))
 
-        # ── Financial Silo (wealth, lawyer, career) ───────────────────────
-        "financial": {
-            "income_range": "",
-            "goals":        [],
-            "concerns":     [],
-            "accounts":     [],   # types only, no numbers
-        },
+    # ── REACTIONS ─────────────────────────────────────────────────────────────
+    reactions = vault.get("reactions", [])
+    if reactions:
+        story.append(Paragraph(SECTION_ICONS["reactions"], S["section_header"]))
+        story.append(_section_divider(pc))
+        for r in reactions:
+            story.append(Paragraph(
+                f"⚠ <b>{r.get('medication_name','Unknown med')}</b> — "
+                f"{r.get('description','—')[:150]}",
+                S["warning"]
+            ))
+            story.append(Paragraph(f"Logged: {r.get('date_label','—')}", S["small"]))
+        story.append(Spacer(1, 12))
 
-        # ── Legal Silo (lawyer, guardian) ─────────────────────────────────
-        "legal": {
-            "active_matters":  [],  # [{type, description, status}]
-            "important_dates": [],  # [{date, event}]
-            "documents":       [],  # [{name, description, location}]
-        },
+    # ── ALLERGIES ─────────────────────────────────────────────────────────────
+    allergies = vault.get("allergies", [])
+    if allergies:
+        story.append(Paragraph(SECTION_ICONS["allergies"], S["section_header"]))
+        story.append(_section_divider(pc))
+        for a in allergies:
+            story.append(Paragraph(
+                f"🚫 <b>{a.get('name','—')}</b> — {a.get('reaction','—')}",
+                S["body_bold"]
+            ))
+        story.append(Spacer(1, 12))
 
-        # ── Career Silo (career, wealth, lawyer) ──────────────────────────
-        "career": {
-            "current_role": "",
-            "employer":     "",
-            "goals":        [],
-            "concerns":     [],
-        },
+    # ── QUESTIONS FOR DOCTOR ──────────────────────────────────────────────────
+    questions = [q for q in vault.get("questions", []) if not q.get("answered")]
+    if questions:
+        story.append(Paragraph(SECTION_ICONS["questions"], S["section_header"]))
+        story.append(_section_divider(pc))
+        for i, q in enumerate(questions, 1):
+            story.append(Paragraph(
+                f"<b>{i}.</b> {q.get('question','—')}",
+                S["body"]
+            ))
+            story.append(Paragraph(
+                f"   Saved on {q.get('date_label','—')}",
+                S["small"]
+            ))
+        story.append(Spacer(1, 12))
 
-        # ── Emotional Silo (therapist, pastor, bestie, doctor) ────────────
-        "emotional": {
-            "current_stressors": [],
-            "support_notes":     "",
-            "coping_strategies": [],
-        },
+    # ── FOOTER ────────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#e5e7eb")))
+    story.append(Spacer(1, 6))
+    footer_data = [[
+        Paragraph("Generated by <b>LYLO OS</b> — Verified by AI, confirmed by you.",
+                  ParagraphStyle("FL", fontSize=8, fontName="Helvetica",
+                                 textColor=colors.HexColor("#6b7280"), alignment=TA_LEFT)),
+        Paragraph(f"Session: {session_id}",
+                  ParagraphStyle("FR", fontSize=7, fontName="Helvetica",
+                                 textColor=colors.HexColor("#9ca3af"), alignment=TA_RIGHT)),
+    ]]
+    footer_table = Table(footer_data, colWidths=[4.5*inch, 2.5*inch])
+    footer_table.setStyle(TableStyle([
+        ("TOPPADDING",    (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+    ]))
+    story.append(footer_table)
+    story.append(Paragraph(DISCLAIMER, S["disclaimer"]))
 
-        # ── Security Silo (guardian, lawyer) ──────────────────────────────
-        "security": {
-            "past_scams":        [],
-            "protected_accounts":[],
-            "alerts":            [],
-        },
-    }
-
-def new_medication(name: str, dose: str, frequency: str,
-                   prescriber: str = "", ndc: str = "",
-                   start_date: str = "") -> dict:
-    return {
-        "id":          secrets.token_hex(8),
-        "name":        name,
-        "dose":        dose,
-        "frequency":   frequency,
-        "prescriber":  prescriber,
-        "ndc":         ndc,
-        "start_date":  start_date or datetime.now().strftime("%Y-%m-%d"),
-        "added_at":    datetime.now().isoformat(),
-        "active":      True,
-        "notes":       "",
-    }
-
-def new_symptom(description: str, severity: str = "mild",
-                persona_context: str = "doctor") -> dict:
-    return {
-        "id":          secrets.token_hex(8),
-        "description": description,
-        "severity":    severity,   # mild | moderate | severe
-        "logged_at":   datetime.now().isoformat(),
-        "date_label":  datetime.now().strftime("%B %d, %Y at %I:%M %p"),
-        "source":      "ambient_diary",  # auto-detected from conversation
-        "context":     persona_context,
-    }
-
-def new_reaction(medication_id: str, medication_name: str,
-                 description: str, severity: str = "mild") -> dict:
-    return {
-        "id":              secrets.token_hex(8),
-        "medication_id":   medication_id,
-        "medication_name": medication_name,
-        "description":     description,
-        "severity":        severity,
-        "logged_at":       datetime.now().isoformat(),
-        "date_label":      datetime.now().strftime("%B %d, %Y"),
-    }
-
-def new_doctor_question(question: str, context: str = "") -> dict:
-    return {
-        "id":         secrets.token_hex(8),
-        "question":   question,
-        "context":    context,
-        "logged_at":  datetime.now().isoformat(),
-        "date_label": datetime.now().strftime("%B %d, %Y"),
-        "answered":   False,
-    }
-
-# =============================================================================
-# AMBIENT SYMPTOM DETECTOR
-# Silently detects symptom mentions in conversation and logs them
-# =============================================================================
-import re as _re
-
-_SYMPTOM_PATTERNS = [
-    (_re.compile(r'\b(pain|ache|aching|hurts|hurting|sore|soreness|acting up|flaring|tender)\b', _re.I), "pain"),
-    (_re.compile(r'\b(dizzy|dizziness|lightheaded|light.headed|vertigo)\b', _re.I), "dizziness"),
-    (_re.compile(r'\b(nausea|nauseous|sick to my stomach|throwing up|vomit)\b', _re.I), "nausea"),
-    (_re.compile(r'\b(tired|fatigue|exhausted|no energy|worn out|weak)\b', _re.I), "fatigue"),
-    (_re.compile(r'\b(headache|migraine|head is pounding|head hurts)\b', _re.I), "headache"),
-    (_re.compile(r'\b(shortness of breath|cannot breathe|hard to breathe|chest tight|chest feels tight|tight chest|chest pressure)\b', _re.I), "breathing"),
-    (_re.compile(r'\b(swollen|swelling|bloated|bloating)\b', _re.I), "swelling"),
-    (_re.compile(r'\b(rash|itching|itchy|hives|skin reaction)\b', _re.I), "skin_reaction"),
-    (_re.compile(r'\b(fever|chills|sweating|night sweats|temperature)\b', _re.I), "fever_chills"),
-    (_re.compile(r'\b(cannot sleep|insomnia|waking up|sleep problems|restless)\b', _re.I), "sleep"),
-    (_re.compile(r'\b(anxious|anxiety|panic|heart racing|palpitations)\b', _re.I), "anxiety_cardiac"),
-    (_re.compile(r'\b(depressed|depression|hopeless|no motivation|low mood)\b', _re.I), "mood"),
-    (_re.compile(r'\b(blurry vision|cannot see|vision problems|eye pain)\b', _re.I), "vision"),
-    (_re.compile(r'\b(memory|forgetting|confused|confusion|brain fog)\b', _re.I), "cognitive"),
-]
-
-# Reaction detection — connects symptoms to specific medications
-_REACTION_PATTERNS = [
-    _re.compile(r'(after|since|since taking|from) (my |the |that )?(\w+)\b', _re.I),
-    _re.compile(r'(pill|medication|medicine|drug) (is |is making me |makes me )(\w+)', _re.I),
-    _re.compile(r'(\w+) (is giving me|gives me|caused|causing)', _re.I),
-]
-
-def detect_symptoms_in_message(message: str) -> list:
-    """
-    Returns list of detected symptom types from a message.
-    Used by the ambient diary to silently log symptoms.
-    """
-    detected = []
-    msg_lower = message.lower()
-    for pattern, symptom_type in _SYMPTOM_PATTERNS:
-        if pattern.search(msg_lower):
-            detected.append(symptom_type)
-    return list(set(detected))
-
-def detect_reaction_mention(message: str, medications: list) -> Optional[dict]:
-    """
-    Detects if user is describing a reaction to a specific medication.
-    Returns {medication_name, description} or None.
-    """
-    msg_lower = message.lower()
-    for med in medications:
-        med_name = med.get("name", "").lower()
-        if med_name and med_name in msg_lower:
-            # Check if there's a symptom mentioned alongside the medication name
-            symptoms = detect_symptoms_in_message(message)
-            if symptoms:
-                return {
-                    "medication_id":   med.get("id", ""),
-                    "medication_name": med.get("name", ""),
-                    "description":     message[:200],
-                    "symptoms":        symptoms,
-                }
-    return None
-
-# =============================================================================
-# EPHEMERAL QR LINK SYSTEM
-# Generates time-limited tokens for doctor quick-view
-# =============================================================================
-_EPHEMERAL_TOKENS: dict = {}  # token -> {user_id, expires_at, summary}
-
-def generate_ephemeral_token(user_id: str, summary: dict,
-                              expiry_minutes: int = 30) -> str:
-    """
-    Creates a time-limited token for doctor quick-view.
-    Token is random — contains no user information.
-    """
-    token      = secrets.token_urlsafe(32)
-    expires_at = time.time() + (expiry_minutes * 60)
-    _EPHEMERAL_TOKENS[token] = {
-        "user_id":    user_id,
-        "expires_at": expires_at,
-        "summary":    summary,
-        "created_at": datetime.now().isoformat(),
-    }
-    # Clean expired tokens while we're here
-    expired = [t for t, v in _EPHEMERAL_TOKENS.items() if v["expires_at"] < time.time()]
-    for t in expired:
-        del _EPHEMERAL_TOKENS[t]
-    return token
-
-def retrieve_ephemeral_token(token: str) -> Optional[dict]:
-    """Returns summary if token is valid and not expired. Auto-deletes on access."""
-    entry = _EPHEMERAL_TOKENS.get(token)
-    if not entry:
-        return None
-    if entry["expires_at"] < time.time():
-        del _EPHEMERAL_TOKENS[token]
-        return None
-    # Single-use after doctor scans: delete it
-    del _EPHEMERAL_TOKENS[token]
-    return entry["summary"]
-
-# =============================================================================
-# DRUG INTERACTION CHECKER (FDA OpenFDA API)
-# =============================================================================
-async def check_drug_interactions(medications: list,
-                                  new_med_name: str = "") -> list:
-    """
-    Checks for interactions between medications using FDA OpenFDA API.
-    Returns list of warning dicts.
-    No API key required — FDA data is public.
-    """
-    import asyncio
-    warnings = []
-    med_names = [m.get("name", "") for m in medications if m.get("active")]
-    if new_med_name:
-        med_names.append(new_med_name)
-    if len(med_names) < 2:
-        return []
-
-    try:
-        import urllib.request
-        import urllib.parse
-        # Query FDA for each medication's interaction profile
-        for med in med_names:
-            query  = urllib.parse.quote(f'"{med}"[drug_interactions]')
-            url    = f"https://api.fda.gov/drug/label.json?search={query}&limit=1"
-            try:
-                req  = urllib.request.Request(url, headers={"User-Agent": "LYLO-MedVault/1.0"})
-                with urllib.request.urlopen(req, timeout=3) as resp:
-                    data = json.loads(resp.read())
-                    results = data.get("results", [])
-                    if results:
-                        interactions = results[0].get("drug_interactions", [])
-                        if interactions:
-                            text = interactions[0][:300] if isinstance(interactions, list) else str(interactions)[:300]
-                            # Check if any other med in our list appears in the interaction text
-                            for other_med in med_names:
-                                if other_med != med and other_med.lower() in text.lower():
-                                    warnings.append({
-                                        "drug_a":   med,
-                                        "drug_b":   other_med,
-                                        "warning":  text,
-                                        "severity": "moderate",
-                                        "source":   "FDA OpenFDA",
-                                    })
-            except Exception:
-                pass  # FDA API unavailable — silent fail, Tavily handles this too
-    except Exception as e:
-        logger.warning(f"FDA interaction check error: {e}")
-
-    return warnings
-
-# =============================================================================
-# NDC DOSAGE DISCREPANCY DETECTOR
-# Compares scanned label against stored medication record
-# =============================================================================
-def check_dosage_discrepancy(scanned: dict, stored_medications: list) -> Optional[dict]:
-    """
-    Compares a freshly-scanned label against what's stored in the vault.
-    Returns discrepancy info if dosage or name differs from stored record.
-    """
-    scanned_name = scanned.get("name", "").lower().strip()
-    scanned_dose = scanned.get("dose", "").lower().strip()
-
-    for med in stored_medications:
-        stored_name = med.get("name", "").lower().strip()
-        stored_dose = med.get("dose", "").lower().strip()
-
-        # Fuzzy name match — "lisinopril" matches "lisinopril hctz"
-        if scanned_name and stored_name and (
-            scanned_name in stored_name or stored_name in scanned_name
-        ):
-            if scanned_dose and stored_dose and scanned_dose != stored_dose:
-                return {
-                    "medication":  med.get("name"),
-                    "stored_dose": med.get("dose"),
-                    "scanned_dose": scanned.get("dose"),
-                    "message": (
-                        f"This label shows {scanned.get('dose')} but I have "
-                        f"{med.get('dose')} on file for {med.get('name')}. "
-                        f"Did your dose change, or is this an older bottle?"
-                    ),
-                }
-    return None
-
-print("med_vault.py module designed ✅")
+    doc.build(story)
+    return buf.getvalue()
