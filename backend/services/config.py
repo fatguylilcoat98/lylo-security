@@ -3,6 +3,7 @@ LYLO OS — services/config.py
 All environment variables, API keys, global state, and client initialization.
 Import this everywhere instead of re-reading os.getenv() in each file.
 """
+import asyncio
 import os
 import json
 import hashlib
