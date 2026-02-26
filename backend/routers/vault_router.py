@@ -467,6 +467,3 @@ async def vault_qr_view(token: str):
       </div>
     </body></html>
     """)
-
-
-if __name__ == "__main__":
