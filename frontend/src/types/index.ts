@@ -133,6 +133,15 @@ export interface ChatInterfaceProps {
   userTier?: string;
   lang?: 'en' | 'es';
   onSignOut?: () => void;
+  onLogout?: () => void;
+  onUsageUpdate?: () => void;
+  currentPersona?: string;
+  onPersonaChange?: (persona: string) => void;
+  zoomLevel?: number;
+  onZoomChange?: (z: any) => void;
 }
-// Alias for backwards compatibility with existing hooks
+
+// ── Backwards compatibility aliases ───────────────────────────────────────────
+// Existing hooks (useChatHistory etc.) import 'Message' — keep this alias so
+// they don't need to be touched.
 export type Message = ChatMessage;
