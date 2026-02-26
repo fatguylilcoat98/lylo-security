@@ -1,13 +1,21 @@
-"""
-LYLO OS — services/web_search.py
-Tavily personalized web search.
-"""
+"""LYLO OS — services/web_search.py"""
+import re
+import os
+import json
+import time
+import asyncio
+import base64
+import hashlib
 import logging
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
+
 from services.config import tavily_client
-
 logger = logging.getLogger("LYLO.WebSearch")
-
-# =============================================================================
 async def search_personalized_web(query: str, location: str = "") -> str:
     if not tavily_client:
         return ""
@@ -20,3 +28,7 @@ async def search_personalized_web(query: str, location: str = "") -> str:
     except Exception as e:
         logger.error(f"Search Error: {e}")
         return ""
+
+# =============================================================================
+# AI ENGINE CALLS — DUAL-PASS CONSENSUS
+# =============================================================================
