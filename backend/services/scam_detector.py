@@ -61,18 +61,6 @@ def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
 
 
 # =============================================================================
-# V31.0 — PIN-MEMORY ROUTER
-# POST /pin-memory — frontend or internal caller saves a pinnable event.
-# =============================================================================
-pin_router = APIRouter()
-
-
-@pin_router.post("/pin-memory")
-
-# =============================================================================
-# MAIN CHAT GATEWAY — 12-SEAT BOARD (V31.0)
-# =============================================================================
-# =============================================================================
 # PROMPT INJECTION DETECTOR — fires before the LLM race
 # Multi-layer: exact phrases + semantic groups + pattern combinations
 # =============================================================================
