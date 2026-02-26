@@ -1,24 +1,23 @@
-"""
-LYLO OS — routers/chat_router.py
-Endpoints: /generate-audio, /persona-hook, /chat
-This is the main intelligence engine — all AI response logic lives here.
-"""
-import datetime
+"""LYLO OS — routers/chat_router.py"""
 import re
+import os
 import json
 import time
 import asyncio
 import base64
-import logging
 import hashlib
-from datetime import datetime
-from typing import Optional, List
+import logging
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
 
 from fastapi import APIRouter, Form, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.background import BackgroundTasks
 from pydantic import BaseModel
-
 from services.config import (
     gemini_client, gemini_ready, openai_client, anthropic_client,
     memory_index, ELITE_USERS, ELITE_TIERS, TIER_LIMITS,
@@ -42,7 +41,6 @@ from services.scam_detector import analyze_scam_indicators, detect_prompt_inject
 from services.audio_service import generate_audio_inline
 from services.pdf_mailer import generate_mission_report_pdf, send_mission_report_email
 from services.web_search import search_personalized_web
-
 from lylo_kernel import build_system_prompt, fetch_memory_pins, upsert_memory_pin
 from intelligence_data import (
     GLOBAL_DIRECTIVE, build_user_ident_core,
@@ -51,16 +49,13 @@ from intelligence_data import (
     SYNTHESIS_INTERVAL, SYNTHESIS_MEMORY_WINDOW,
     PROFILE_SYNTHESIS_SYSTEM_PROMPT, PROFILE_SYNTHESIS_USER_TEMPLATE,
     detect_proactive_triggers, build_proactive_directive,
-    VIBE_STYLES, VIBE_LABELS,
-    PERSONA_DEFINITIONS, PERSONA_EXTENDED, PERSONA_TIERS,
-    INTENT_LOGIC,
-    get_random_hook, get_all_hooks,
+    VIBE_STYLES, VIBE_LABELS, PERSONA_DEFINITIONS, PERSONA_EXTENDED,
+    PERSONA_TIERS, INTENT_LOGIC, get_random_hook, get_all_hooks,
     ANALOGY_BRIDGE_TRADE_CONTEXT, ACCOUNTABILITY_SENTINEL_OVERRIDE,
     build_accountability_sentinel, PARTNER_ENERGY_DIRECTIVE,
     EXIT_FIRST_FILTER, SENTINEL_NO_RECITE,
     get_output_schema, build_stealth_shield,
 )
-
 try:
     from med_vault import (
         encrypt_silo, decrypt_silo, verify_pin,
@@ -69,17 +64,14 @@ try:
         detect_symptoms_in_message, detect_reaction_mention,
         check_dosage_discrepancy, check_drug_interactions,
         generate_ephemeral_token, retrieve_ephemeral_token,
-        persona_can_read, persona_can_write, get_readable_silos,
-        SILO_ACCESS,
+        persona_can_read, persona_can_write, get_readable_silos, SILO_ACCESS,
     )
     from med_vault_pdf import generate_medical_pdf, PERSONA_COLORS
     MED_VAULT_ENABLED = True
-except ImportError as e:
+except ImportError:
     MED_VAULT_ENABLED = False
-
 logger = logging.getLogger("LYLO.Chat")
 router = APIRouter()
-
 @router.post("/generate-audio")
 async def generate_audio(
     text:  str = Form(...),
@@ -93,8 +85,6 @@ async def generate_audio(
         logger.warning(f"⚠️ generate-audio error: {e}")
         return {"audio_b64": ""}
 
-
-@router.post("/persona-hook")
 
 @router.post("/persona-hook")
 async def persona_hook(
@@ -139,8 +129,6 @@ async def persona_hook(
         logger.warning(f"⚠️ persona-hook error: {e}")
         return {"hook": "I'm ready. What do you need?"}
 
-
-@router.post("/chat")
 
 @router.post("/chat")
 async def chat(
@@ -1626,3 +1614,5 @@ RULES:
 # INTAKE PROFILE — DETERMINISTIC PINECONE STORE/RETRIEVE
 # =============================================================================
 INTAKE_VECTOR_ID_SUFFIX = "_intake"
+
+
