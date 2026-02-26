@@ -2775,6 +2775,9 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
     validated     = await validate_with_claude(persona, msg, winner_answer, user_data["name"])
     final_answer  = validated.get("answer", winner_answer)
 
+    # Define tier_limit here so stream_response() closure can access it
+    tier_limit    = limit
+
     # ── V30 Streaming response ─────────────────────────────────────────────────
     async def stream_response():
         try:
