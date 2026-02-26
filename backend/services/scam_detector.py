@@ -204,3 +204,7 @@ def _build_impatience_response() -> str:
         f"The structure stays because it's how I make sure nothing important gets missed, "
         f"not to slow you down. Give me your question and I'll get straight to it."
     )
+
+
+
+
