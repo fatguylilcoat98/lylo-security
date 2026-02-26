@@ -25,6 +25,33 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
+
+// ── Trust Layer Types ────────────────────────────────────────────────────────
+type TrustTier = 'verified' | 'probable' | 'uncertain';
+
+interface TrustSentence {
+  id:         string;
+  text:       string;
+  trustTier:  TrustTier;
+  confidence: number;
+  sourceType: 'tavily' | 'training' | 'unknown';
+  original:   string | null;   // original sentence if corrected
+  audit:      TrustAudit | null;
+}
+
+interface TrustAudit {
+  original:     string;
+  issue:        string;
+  correction:   string | null;
+  source_label: string;
+  timestamp:    string;
+}
+
+// Augmented message type with trust sentences
+interface TrustMessage extends Message {
+  sentences?:    TrustSentence[];
+  checkingNote?: string | null;
+}
 import { useSentinel } from '../lib/useSentinel';
 import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
@@ -412,7 +439,8 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     if (!isPlayingRef.current) playNext();
   }, [playNext]);
 
-  return { enqueue, push, stop, currentAudioRef };
+  const isEmpty = () => queueRef.current.length === 0 && !isPlayingRef.current;
+  return { enqueue, push, stop, currentAudioRef, isEmpty };
 }
 
 function scrollIfNearBottom(el: HTMLDivElement, threshold = 150) {
@@ -670,7 +698,7 @@ function ChatInterface({
   const buildRecognition = (): any => {
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
-    const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
+    const rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
       let interim = '', final = '';
@@ -683,7 +711,11 @@ function ChatInterface({
       else if (e.error === 'network') { isRecordingRef.current = false; setIsRecording(false); }
       else if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
     };
-    rec.onend = () => { if (isRecordingRef.current && !isSpeaking) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } };
+    rec.onend = () => {
+      // continuous=true means onend only fires on error or explicit .stop()
+      // Do NOT restart here — that was causing the beep loop.
+      // handleWalkieTalkieMic's stop path already handles cleanup.
+    };
     return rec;
   };
 
@@ -765,15 +797,52 @@ function ChatInterface({
           if (!line.startsWith('data: ')) continue;
           const raw = line.slice(6).trim(); if (!raw) continue;
           let parsed: any; try { parsed = JSON.parse(raw); } catch { continue; }
-          if (parsed.type === 'text') {
+          if (parsed.type === 'trust_checking') {
+            // Show the "checking" pulse note — will be replaced when result arrives
+            setMessages(prev => prev.map(m => m.id === botMsgId
+              ? { ...m, checkingNote: parsed.content }
+              : m
+            ));
+          } else if (parsed.type === 'text') {
+            const trustTier   = parsed.trust_tier   ?? 'probable';
+            const confidence  = parsed.confidence   ?? 85;
+            const sourceType  = parsed.source_type  ?? 'training';
+            const original    = parsed.original     ?? null;
+            const audit       = parsed.audit        ?? null;
+            const newSentence: TrustSentence = {
+              id:         `${botMsgId}-${Date.now()}-${Math.random()}`,
+              text:       parsed.content,
+              trustTier,
+              confidence,
+              sourceType,
+              original,
+              audit,
+            };
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             if (readingMode === 'sync') setStreamingText(fullAnswer);
-            setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
+            setMessages(prev => prev.map(m => m.id === botMsgId
+              ? { ...m, content: fullAnswer, sentences: [...(m.sentences ?? []), newSentence], checkingNote: null }
+              : m
+            ));
             if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
           } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
         }
       }
       const finalText = fullAnswer.trim();
+
+      // Silent-response guard: if text came via meta.full_answer but no text chunks
+      // fired (aqm was never pushed), push now so voice doesn't go silent.
+      if (finalText && isVoiceEnabled && aqm.isEmpty?.()) {
+        aqm.push(finalText, voiceToUse, undefined);
+      }
+
+      // Blank-bubble guard: backend returned nothing — remove empty bubble.
+      if (!finalText) {
+        setMessages(prev => prev.filter(m => m.id !== botMsgId));
+        setStreamingMsgId(null); setLoading(false);
+        return;
+      }
+
       appendSessionContent(finalText, 'bot');
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
@@ -1283,8 +1352,16 @@ function ChatInterface({
             <div className={`p-5 rounded-3xl max-w-[85%] ${getDynamicFontSize()} shadow-lg ${msg.sender === 'user' ? `${getColor(activePersona.color, 'bg')} text-white font-bold rounded-tr-none` : 'bg-white/10 text-gray-100 border border-white/10 rounded-tl-none'}`}>
               {msg.sender === 'bot' && msg.id === streamingMsgId
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
-                : msg.content
+                : msg.sender === 'bot' && (msg as TrustMessage).sentences?.length
+                  ? <TrustMessageRenderer msg={msg as TrustMessage} />
+                  : msg.content
               }
+              {msg.sender === 'bot' && (msg as TrustMessage).checkingNote && (
+                <div className="mt-2 flex items-center gap-2 text-blue-300 text-xs animate-pulse">
+                  <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                  {(msg as TrustMessage).checkingNote}
+                </div>
+              )}
               {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (
                 <div className="mt-4 pt-4 border-t border-white/10">
                   <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1"><span>Confidence</span><span className="text-green-400">{msg.confidenceScore}%</span></div>
@@ -1377,6 +1454,173 @@ function ChatInterface({
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
             <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.1</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// TRUST LAYER — TrustMessageRenderer
+// Renders bot messages sentence-by-sentence with trust indicators.
+// Each sentence gets: color glow, icon, confidence %, audit dropdown.
+// Accessibility: icons + text (not color alone). Min 44px touch targets.
+// ============================================================================
+
+const TRUST_CONFIG: Record<string, {
+  icon: string; label: string; labelEs: string;
+  glow: string; textColor: string; borderColor: string; bgColor: string;
+}> = {
+  verified: {
+    icon: '✓', label: 'Confirmed by live search', labelEs: 'Confirmado por búsqueda en vivo',
+    glow: 'shadow-[0_0_8px_rgba(34,197,94,0.4)]',
+    textColor: 'text-green-300', borderColor: 'border-green-500/30', bgColor: 'bg-green-500/10',
+  },
+  probable: {
+    icon: '◆', label: 'Highly likely. Verify before acting', labelEs: 'Muy probable. Verifica antes de actuar',
+    glow: '',
+    textColor: 'text-yellow-300', borderColor: 'border-yellow-500/20', bgColor: 'bg-yellow-500/5',
+  },
+  uncertain: {
+    icon: '⚠', label: "I can't verify this. Please consult a professional",
+    labelEs: 'No puedo verificar esto. Consulta a un profesional',
+    glow: 'shadow-[0_0_8px_rgba(239,68,68,0.3)]',
+    textColor: 'text-red-300', borderColor: 'border-red-500/30', bgColor: 'bg-red-500/10',
+  },
+};
+
+function TrustSentenceItem({ sentence, lang }: { sentence: TrustSentence; lang?: string }) {
+  const [auditOpen, setAuditOpen] = React.useState(false);
+  const cfg    = TRUST_CONFIG[sentence.trustTier] ?? TRUST_CONFIG.probable;
+  const isEs   = lang === 'es';
+  const label  = isEs ? cfg.labelEs : cfg.label;
+  const hasAudit = Boolean(sentence.audit);
+
+  return (
+    <span className="inline">
+      {/* Sentence text */}
+      <span className={`
+        relative inline
+        ${sentence.trustTier !== 'probable' ? `rounded px-0.5 ${cfg.bgColor} ${cfg.glow}` : ''}
+      `}>
+        {sentence.text}{' '}
+      </span>
+
+      {/* Trust badge — only show for verified and uncertain */}
+      {sentence.trustTier !== 'probable' && (
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] font-bold ${cfg.textColor}
+            border ${cfg.borderColor} rounded-full px-1.5 py-0.5 mx-1 align-middle
+            cursor-default select-none`}
+          title={label}
+          aria-label={label}
+        >
+          <span aria-hidden="true">{cfg.icon}</span>
+          <span className="hidden sm:inline">{sentence.trustTier === 'verified' ? (isEs ? 'Verificado' : 'Verified') : (isEs ? 'Incierto' : 'Uncertain')}</span>
+        </span>
+      )}
+
+      {/* Audit dropdown — only show if correction was made */}
+      {hasAudit && (
+        <button
+          onClick={() => setAuditOpen(o => !o)}
+          className={`inline-flex items-center gap-1 text-[10px] ${cfg.textColor}
+            underline underline-offset-2 ml-1 align-middle min-h-[44px] min-w-[44px]
+            hover:opacity-80 transition-opacity`}
+          aria-expanded={auditOpen}
+          aria-label={isEs ? 'Ver por qué se corrigió esto' : 'See why this was corrected'}
+        >
+          {auditOpen
+            ? (isEs ? '▲ Ocultar corrección' : '▲ Hide correction')
+            : (isEs ? '▼ Ver corrección' : '▼ See correction')}
+        </button>
+      )}
+
+      {/* Audit panel */}
+      {hasAudit && auditOpen && sentence.audit && (
+        <div className={`
+          block w-full mt-2 mb-3 p-3 rounded-xl text-xs
+          ${cfg.bgColor} border ${cfg.borderColor}
+          space-y-1.5 text-left
+        `}>
+          <div className="font-bold text-white/70 uppercase tracking-wider text-[10px]">
+            {isEs ? '🔍 Por qué se corrigió esto' : '🔍 Why this was corrected'}
+          </div>
+          <div>
+            <span className="text-white/50">{isEs ? 'Original: ' : 'Original: '}</span>
+            <span className="line-through text-red-300/70">{sentence.audit.original}</span>
+          </div>
+          {sentence.audit.issue && (
+            <div>
+              <span className="text-white/50">{isEs ? 'Problema: ' : 'Issue: '}</span>
+              <span className="text-yellow-200">{sentence.audit.issue}</span>
+            </div>
+          )}
+          {sentence.audit.correction && (
+            <div>
+              <span className="text-white/50">{isEs ? 'Corrección: ' : 'Corrected to: '}</span>
+              <span className="text-green-300 font-medium">{sentence.audit.correction}</span>
+            </div>
+          )}
+          <div className="text-white/40 text-[10px] pt-1 border-t border-white/10">
+            {isEs ? 'Fuente: ' : 'Source: '}{sentence.audit.source_label}
+            {' · '}{new Date(sentence.audit.timestamp).toLocaleTimeString()}
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
+function TrustMessageRenderer({ msg, lang }: { msg: TrustMessage; lang?: string }) {
+  const sentences = msg.sentences ?? [];
+  if (!sentences.length) return <span>{msg.content}</span>;
+
+  // Overall message confidence = average of sentence confidences
+  const avgConf = Math.round(
+    sentences.reduce((sum, s) => sum + s.confidence, 0) / sentences.length
+  );
+  const hasUncertain = sentences.some(s => s.trustTier === 'uncertain');
+  const hasVerified  = sentences.some(s => s.trustTier === 'verified');
+
+  return (
+    <div>
+      {/* Sentence-by-sentence rendering */}
+      <p className="leading-relaxed">
+        {sentences.map(s => (
+          <TrustSentenceItem key={s.id} sentence={s} lang={lang} />
+        ))}
+      </p>
+
+      {/* Message-level trust summary bar */}
+      <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-3 flex-wrap">
+        {hasVerified && (
+          <span className="flex items-center gap-1 text-[10px] text-green-400 font-bold">
+            <span>✓</span> {lang === 'es' ? 'Verificado en vivo' : 'Live verified'}
+          </span>
+        )}
+        {hasUncertain && (
+          <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
+            <span>⚠</span> {lang === 'es' ? 'Verificar antes de actuar' : 'Verify before acting'}
+          </span>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[10px] text-white/40 uppercase tracking-wider">
+            {lang === 'es' ? 'Confianza' : 'Confidence'}
+          </span>
+          <span className={`text-[11px] font-black ${
+            avgConf >= 90 ? 'text-green-400' :
+            avgConf >= 70 ? 'text-yellow-400' : 'text-red-400'
+          }`}>{avgConf}%</span>
+          <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                avgConf >= 90 ? 'bg-green-500' :
+                avgConf >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+              }`}
+              style={{ width: `${avgConf}%` }}
+            />
           </div>
         </div>
       </div>
