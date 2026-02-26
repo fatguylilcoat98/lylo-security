@@ -1,11 +1,11 @@
 """
 LYLO OS — services/memory_engine.py
 All Pinecone read/write operations:
-  - pin_memory (auto-pin life events)
+  - auto_detect_pin_category
   - store/retrieve intelligence_sync (episodic RAG)
-  - retrieve/store intake_profile
   - retrieve/synthesize user_profile
-  - vault_core (encrypted vault load/save)
+  - retrieve/store intake_profile
+  - vault core (encrypted load/save)
 """
 import re
 import json
@@ -17,48 +17,34 @@ from typing import Optional
 
 from services.config import (
     memory_index, openai_client, _PROFILE_CACHE, _PROFILE_CACHE_TTL,
-    create_user_id, logger as root_logger
+    create_user_id,
 )
 
 logger = logging.getLogger("LYLO.Memory")
 
-async def pin_memory(
-    user_email: str = Form(...),
-    pin_text:   str = Form(...),
-    category:   str = Form(default="note"),
-):
+def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     """
-    Stores a pinned life event, goal, or struggle in Pinecone.
-    Called by the frontend silently after any chat that surfaces a pin.
-
-    Fields:
-        user_email: User identifier
-        pin_text:   Plain-text description (e.g. "Working on Synced Typewriter bug")
-        category:   project | goal | struggle | person | win | fear | note
+    Scans user message for pinnable intel.
+    Returns (pin_text, category) if detected, else None.
+    Uses the first 200 chars of the message as the pin text.
     """
-    if not memory_index:
-        return JSONResponse(
-            {"status": "error", "reason": "pinecone_unavailable"}, status_code=503
-        )
-    success = upsert_memory_pin(
-        index    = memory_index,
-        user_id  = user_email.lower().strip(),
-        pin_text = pin_text,
-        category = category,
-    )
-    if success:
-        return JSONResponse({"status": "pinned", "category": category})
-    return JSONResponse({"status": "error", "reason": "upsert_failed"}, status_code=500)
+    msg_lower = message.lower()
+    for category, keywords in PIN_KEYWORDS.items():
+        for kw in keywords:
+            pattern = r'\b' + re.escape(kw) + r'\b'
+            if re.search(pattern, msg_lower):
+                return (message.strip()[:200], category)
+    return None
 
-
-app.include_router(pin_router)  # Mounts /pin-memory
 
 # =============================================================================
-# V31.0 — KERNEL HELPER
-# Bridges Pinecone memory with the v31.0 Human-First kernel.
-# Called once per /chat and /persona-hook request.
+# V31.0 — PIN-MEMORY ROUTER
+# POST /pin-memory — frontend or internal caller saves a pinnable event.
 # =============================================================================
+pin_router = APIRouter()
 
+
+@pin_router.post("/pin-memory")
 
 async def store_intelligence_sync(user_id: str, content: str, role: str, persona: str = "general"):
     if not memory_index or not openai_client or len(content.strip()) < 10:
@@ -97,6 +83,7 @@ _PERSONA_MEMORY_SILOS = {
     "hype":      {"hype", "general"},
     "bestie":    {"bestie", "therapist", "general"},  # bestie can see emotional context
 }
+
 
 async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "general") -> str:
     if not memory_index or not openai_client:
@@ -145,6 +132,7 @@ async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "g
 # =============================================================================
 # PROFILE SYNTHESIS
 # =============================================================================
+
 async def retrieve_user_profile(user_id: str) -> dict:
     cached = _PROFILE_CACHE.get(user_id)
     if cached:
@@ -169,6 +157,7 @@ async def retrieve_user_profile(user_id: str) -> dict:
     except Exception as e:
         logger.error(f"Profile Retrieval Error: {e}")
     return {}
+
 
 
 async def synthesize_user_profile(user_id: str, user_name: str):
@@ -213,19 +202,6 @@ async def synthesize_user_profile(user_id: str, user_name: str):
 
 
 # =============================================================================
-# MED-VAULT PINECONE STORAGE
-# Encrypted vault stored as a separate Pinecone record per user per silo.
-# Nobody — including server operators — can read the encrypted blobs.
-# =============================================================================
-
-# =============================================================================
-# MED-VAULT PINECONE STORAGE
-# Encrypted vault stored as a separate Pinecone record per user per silo.
-# Nobody — including server operators — can read the encrypted blobs.
-# =============================================================================
-_VAULT_SUFFIX = "_medvault_v1"
-_VAULT_CACHE: dict = {}
-_VAULT_CACHE_TTL = 120  # 2 min cache — vault changes infrequently
 
 async def _load_vault_encrypted(user_id: str) -> Optional[str]:
     """Loads raw encrypted vault string from Pinecone. Returns None if not found."""
@@ -292,5 +268,56 @@ async def get_or_create_vault(user_id: str, email: str, pin: str = "") -> dict:
         vault = empty_medical_vault()
         await save_vault(user_id, email, vault, pin)
     return vault
-
 async def _noop_vault(): return None
+
+
+
+async def retrieve_intake_profile(user_id: str) -> dict:
+    cache_key = f"{user_id}_intake"
+    cached    = _PROFILE_CACHE.get(cache_key)
+    if cached:
+        profile, ts = cached
+        if time.time() - ts < _PROFILE_CACHE_TTL:
+            return profile
+        del _PROFILE_CACHE[cache_key]
+
+    if not memory_index:
+        return {}
+
+    intake_id = f"{user_id}{INTAKE_VECTOR_ID_SUFFIX}"
+    try:
+        result  = memory_index.fetch(ids=[intake_id])
+        vectors = result.get("vectors", {})
+        if intake_id in vectors:
+            raw = vectors[intake_id].get("metadata", {}).get("intake_json", "")
+            if raw:
+                profile = json.loads(raw)
+                _PROFILE_CACHE[cache_key] = (profile, time.time())
+                return profile
+    except Exception as e:
+        logger.error(f"Intake Profile Retrieval Error: {e}")
+    return {}
+
+
+
+async def store_intake_profile(user_id: str, profile: dict):
+    if not memory_index or not openai_client:
+        return
+    try:
+        anchor    = PROFILE_EMBEDDING_ANCHOR
+        resp      = await openai_client.embeddings.create(
+            model="text-embedding-3-small", input=anchor, dimensions=1024
+        )
+        embedding = resp.data[0].embedding
+        intake_id = f"{user_id}{INTAKE_VECTOR_ID_SUFFIX}"
+        memory_index.upsert([(intake_id, embedding, {
+            "user_id":     user_id,
+            "intake_json": json.dumps(profile),
+            "record_type": "intake_profile",
+            "updated_at":  datetime.now().isoformat(),
+        })])
+        cache_key = f"{user_id}_intake"
+        _PROFILE_CACHE[cache_key] = (profile, time.time())
+        logger.info(f"✅ Intake profile stored for {user_id}")
+    except Exception as e:
+        logger.error(f"Intake Profile Store Error: {e}")
