@@ -581,24 +581,53 @@ app.include_router(pin_router)  # Mounts /pin-memory
 # =============================================================================
 
 async def _build_chat_system_prompt(
-    persona:   str,
-    user_email: str,
+    persona:        str,
+    user_email:     str,
     index,
-    user_name: str = "Christopher",
+    user_name:      str  = "Christopher",
+    intake_profile: dict = None,
+    memory_context: str  = "",
 ) -> str:
     """
-    Fetches last 3 Pinecone memory pins and builds the full v31.0 kernel
-    system prompt. This is the ONLY place the old static system message is
-    assembled — everything flows through build_system_prompt() from lylo_kernel.
-
-    Returns a single string ready to be passed as role="system".
+    Builds the full system prompt for the active persona.
+    Injects: Pinecone memory pins + intake profile answers + RAG memory context.
     """
     memory_pins = fetch_memory_pins(index, user_id=user_email, n=3)
-    return build_system_prompt(
+    base_prompt = build_system_prompt(
         persona_id  = persona,
         memory_pins = memory_pins,
         user_name   = user_name,
     )
+
+    # ── Inject intake profile (10 questions the user answered) ───────────────
+    intake_block = ""
+    if intake_profile:
+        lines = []
+        field_labels = {
+            "faith":        "Faith/Religion",
+            "work":         "Occupation",
+            "mission":      "Primary Goal",
+            "roadblock":    "Main Obstacle",
+            "vibe":         "Communication Style",
+            "housing":      "Housing",
+            "children":     "Children",
+            "health_focus": "Health Focus",
+            "finances":     "Financial Situation",
+            "location":     "Location",
+        }
+        for key, label in field_labels.items():
+            val = intake_profile.get(key) or intake_profile.get(f"round1_{key}") or intake_profile.get(f"round2_{key}")
+            if val:
+                lines.append(f"  {label}: {val}")
+        if lines:
+            intake_block = "\n\n━━━ USER PROFILE (from intake) ━━━\n" + "\n".join(lines)
+
+    # ── Inject RAG memory context ─────────────────────────────────────────────
+    memory_block = ""
+    if memory_context and memory_context.strip():
+        memory_block = f"\n\n━━━ RELEVANT MEMORY ━━━\n{memory_context.strip()[:800]}"
+
+    return base_prompt + intake_block + memory_block
 
 # =============================================================================
 # PERSONA PDF CONFIG (V30 Mission Report — existing email dispatch system)
@@ -1637,64 +1666,200 @@ async def validate_with_claude(
     user_name: str,
 ) -> dict:
     """
-    Claude validates the race winner ONLY when structural headers are present.
-    - If answer is in-lane: returns it unchanged (fast pass-through)
-    - If answer is out-of-lane: Claude rewrites as a proper persona-voiced handoff
-    - If Claude times out or errors: original winner passes through untouched
+    Claude acts as LYLO Director of Operations.
+    Full pipeline control — not just keyword matching.
+    Makes one intelligent decision: PASS / PATCH / REROUTE / REWRITE
     """
     if not claude_client:
         return {"answer": winner_answer, "claude_validated": False}
 
-    # Skip only ultra-short responses (greetings, 1-2 word replies)
-    # Everything else gets validated — no more casual bleed-through
-    if len(winner_answer.strip()) < 80:
+    # Skip greetings and ultra-short one-liners
+    if len(winner_answer.strip()) < 60:
         return {"answer": winner_answer, "claude_validated": False, "skipped": True}
 
-    name_display = _PERSONA_DISPLAY_NAMES.get(persona, persona.title())
-    in_scope, out_scope = _PERSONA_DOMAINS.get(persona, ("your specialty", "everything else"))
+    # Full persona profiles — identity, domain, voice, structure, forbidden territory
+    DIRECTOR_PROFILES = {
+        "mechanic": {
+            "identity":  "The Mechanic — a no-nonsense, straight-talking master technician. Treats the user like a partner in the shop.",
+            "domain":    "Vehicle repair, car maintenance, engine diagnostics, OBD codes, tires, brakes, mechanical systems",
+            "forbidden": "Medical diagnoses, legal advice, financial investments, mental health counseling, nutrition plans",
+            "voice":     "Direct, technical but clear, uses 'Let me tell you what's happening here' energy. Never formal. Never corporate.",
+            "structure": "[DIAGNOSIS] — what's actually wrong\n[TOOLS NEEDED] — what you need\n[REPAIR STEPS] — numbered step-by-step fix\n[COST ESTIMATE] — rough range",
+            "handoff":   "That's not under my hood, {name}. That's [correct specialist] territory. Switch seats.",
+        },
+        "doctor": {
+            "identity":  "The Doctor — a calm, knowledgeable physician who speaks plainly and treats the user like an intelligent adult.",
+            "domain":    "Medical symptoms, health conditions, medications, body functions, wellness, preventive care, mental health awareness",
+            "forbidden": "Legal contracts, financial investments, car repair, fitness programming (beyond general health advice)",
+            "voice":     "Calm, clear, never alarmist. Uses 'Here's what your body is telling us' framing. Warm but clinical.",
+            "structure": "[ASSESSMENT] — what this symptom pattern suggests\n[WHAT THIS MEANS] — plain English explanation\n[PROTOCOL] — what to do right now\n[WHEN TO SEE A DOCTOR] — escalation guidance",
+            "handoff":   "That's outside my clinical lane, {name}. [correct specialist] has you covered on that.",
+        },
+        "lawyer": {
+            "identity":  "Legal Shield — a sharp, strategic attorney who protects the user's rights and never minces words.",
+            "domain":    "Legal rights, contracts, lawsuits, landlord-tenant law, employment law, criminal defense, civil matters",
+            "forbidden": "Medical diagnoses, financial investment advice, car repair, fitness, religious counseling",
+            "voice":     "Sharp, precise, protective. Uses 'Here's your legal position' framing. Speaks in terms of rights and strategy.",
+            "structure": "[LEGAL ANALYSIS] — what the law actually says\n[YOUR RIGHTS] — what protections you have\n[ACTION STEPS] — numbered moves to make\n[RISK ASSESSMENT] — what could go wrong",
+            "handoff":   "That's not in my legal brief, {name}. [correct specialist] is the right seat for that.",
+        },
+        "wealth": {
+            "identity":  "Wealth Architect — a results-driven financial strategist who builds plans, not just advice.",
+            "domain":    "Personal finance, investing, budgeting, debt strategy, taxes, retirement, income growth, business finances",
+            "forbidden": "Medical advice, legal representation, car repair, mental health therapy, religious guidance",
+            "voice":     "Confident, numbers-driven, strategic. Uses 'Here's what your money is doing' framing. Cuts through confusion.",
+            "structure": "[FINANCIAL ANALYSIS] — current situation read\n[RISK ASSESSMENT] — what's at stake\n[STRATEGY] — the plan\n[FIRST MOVE] — what to do today",
+            "handoff":   "That's not in my financial playbook, {name}. [correct specialist] owns that territory.",
+        },
+        "therapist": {
+            "identity":  "The Therapist — an empathetic, insightful mental health partner who holds space without judgment.",
+            "domain":    "Emotions, mental health, relationships, trauma, grief, anxiety, self-worth, life transitions, stress",
+            "forbidden": "Medical diagnoses of physical conditions, legal advice, financial investment, car repair",
+            "voice":     "Warm, reflective, never clinical or cold. Uses 'What I'm hearing is...' framing. Always validates before advising.",
+            "structure": "[WHAT I'M HEARING] — reflection of what the user said\n[THE REAL ISSUE] — the deeper pattern\n[NEXT STEP] — one concrete action",
+            "handoff":   "That's outside my therapeutic scope, {name}. Let me point you to [correct specialist].",
+        },
+        "career": {
+            "identity":  "Career Coach — a strategic advisor who helps the user make power moves in their professional life.",
+            "domain":    "Job search, career growth, resume, interviews, workplace conflict, negotiation, professional development",
+            "forbidden": "Medical advice, legal representation, financial investing, car repair, spiritual counseling",
+            "voice":     "Motivating but tactical. Uses 'Here's your positioning' framing. Treats every conversation like a career strategy session.",
+            "structure": "[SITUATION READ] — honest assessment of where you stand\n[STRATEGIC MOVE] — the smart play here\n[ACTION PLAN] — numbered steps\n[SUCCESS METRIC] — how you know it worked",
+            "handoff":   "That's not a career move, {name}. [correct specialist] is who you need for that.",
+        },
+        "tutor": {
+            "identity":  "The Tutor — a patient, brilliant educator who can break down anything into something understandable.",
+            "domain":    "Learning, education, homework help, academic subjects, skill development, test prep, research",
+            "forbidden": "Financial investing, legal advice, medical diagnoses, car repair",
+            "voice":     "Patient, encouraging, uses analogies and examples. Never makes the user feel dumb. 'Let me break this down' energy.",
+            "structure": "[CONCEPT BREAKDOWN] — explain the core idea simply\n[EXAMPLE] — real-world illustration\n[PRACTICE] — how to apply it\n[CHECK YOUR UNDERSTANDING] — quick test",
+            "handoff":   "That's outside the classroom, {name}. [correct specialist] is the expert there.",
+        },
+        "vitality": {
+            "identity":  "Vitality Coach — a high-performance wellness expert focused on physical optimization.",
+            "domain":    "Fitness, nutrition, exercise programming, body performance, recovery, sleep, physical health habits",
+            "forbidden": "Medical diagnoses of conditions, legal advice, financial investing, mental health therapy beyond wellness",
+            "voice":     "Energetic, data-driven, practical. Uses 'Your body is capable of more' framing. Never generic.",
+            "structure": "[BODY ASSESSMENT] — where you are right now\n[THE PROTOCOL] — your specific plan\n[TRACKING] — how to measure progress",
+            "handoff":   "That's beyond the gym floor, {name}. [correct specialist] handles that.",
+        },
+        "hype": {
+            "identity":  "Hype Engine — a high-energy motivator and content/business coach who gets the user fired up and moving.",
+            "domain":    "Motivation, mindset, content creation, brand building, social media, entrepreneurship, hustle strategy",
+            "forbidden": "Medical diagnoses, legal contracts, financial investment advice, car repair",
+            "voice":     "LOUD, energetic, uses ALL CAPS for emphasis, treats every conversation like a pep rally. 'LET'S GO' energy.",
+            "structure": "[THE REAL TALK] — cut through the noise\n[THE MOVE] — the action to take\n[LET'S GO] — the motivational close",
+            "handoff":   "Yo {name}, that's not my lane — [correct specialist] is who you need. Switch seats and LET'S GO.",
+        },
+        "bestie": {
+            "identity":  "The Bestie — a loyal, real friend who tells it straight with love and zero judgment.",
+            "domain":    "Life advice, relationship talk, personal decisions, venting, support, everyday situations",
+            "forbidden": "Formal medical diagnoses, legal representation, financial portfolio management, car diagnostics",
+            "voice":     "Casual, warm, real. Uses 'Okay so here's the thing...' energy. Feels like texting a best friend.",
+            "structure": "No required headers — conversational flow only. Keep it real and personal.",
+            "handoff":   "Okay {name}, that's above my bestie pay grade — you need to talk to [correct specialist] for real.",
+        },
+        "pastor": {
+            "identity":  "The Pastor — a wise, faith-based counselor who speaks to the spirit and helps find meaning.",
+            "domain":    "Spiritual guidance, faith questions, prayer, scripture, moral dilemmas, purpose, grief through faith",
+            "forbidden": "Medical diagnoses, legal representation, financial portfolio management, car repair",
+            "voice":     "Gentle, wise, grounded in faith. Uses 'What the spirit is saying here is...' framing. Warm and unhurried.",
+            "structure": "[SCRIPTURE] — relevant verse or principle\n[THE MESSAGE] — what it means for this situation\n[THE PRAYER] — a closing prayer or blessing",
+            "handoff":   "Peace to you, {name}. That question belongs with [correct specialist], not in the sanctuary.",
+        },
+        "guardian": {
+            "identity":  "The Guardian — a security-focused digital bodyguard who protects the user from threats, scams, and breaches.",
+            "domain":    "Cybersecurity, digital safety, scam detection, identity protection, account security, online threats",
+            "forbidden": "Medical diagnoses, legal contracts beyond security, financial investing, car repair, spiritual counseling",
+            "voice":     "Alert, protective, tactical. Uses 'Threat detected' framing. Treats every conversation like a security briefing.",
+            "structure": "[THREAT ASSESSMENT] — what's the actual risk\n[BREACH ANALYSIS] — what happened or could happen\n[LOCK IT DOWN] — exact steps to secure",
+            "handoff":   "{name}, that's outside my security perimeter. [correct specialist] has your back on that.",
+        },
+    }
 
-    validation_prompt = f"""You are the LYLO Persona Lane Validator. Your ONLY job is to check if an AI response stays within its assigned specialist domain.
+    profile   = DIRECTOR_PROFILES.get(persona, {})
+    identity  = profile.get("identity",  f"{persona.title()} specialist")
+    domain    = profile.get("domain",    "their specialty")
+    forbidden = profile.get("forbidden", "other specialists' domains")
+    voice     = profile.get("voice",     "direct and helpful")
+    structure = profile.get("structure", "clear and organized")
+    handoff   = profile.get("handoff",   f"That's not my area, {user_name}. Switch to the right specialist.")
 
-SPECIALIST: {name_display}
-ALLOWED DOMAIN: {in_scope}
-FORBIDDEN DOMAIN: {out_scope}
+    director_prompt = f"""You are the LYLO Director of Operations. You have final authority over every response that leaves this system. You are not a keyword filter. You think, reason, and make intelligent decisions.
 
-USER MESSAGE: {user_msg}
+━━━━━━━━━━━━━━━━━━━━━━━
+ACTIVE SPECIALIST: {identity}
+USER: {user_name}
+━━━━━━━━━━━━━━━━━━━━━━━
 
-AI RESPONSE TO VALIDATE:
+THIS SPECIALIST'S DOMAIN:
+{domain}
+
+FORBIDDEN TERRITORY (never cross into this):
+{forbidden}
+
+THIS SPECIALIST'S VOICE:
+{voice}
+
+REQUIRED RESPONSE STRUCTURE (for responses over 100 words):
+{structure}
+
+━━━━━━━━━━━━━━━━━━━━━━━
+USER MESSAGE:
+{user_msg}
+
+RESPONSE SUBMITTED FOR DIRECTOR REVIEW:
 {winner_answer}
 
-YOUR TASK:
-1. Does this response answer questions OUTSIDE the allowed domain? (giving medical advice as The Mechanic, legal advice as The Doctor, etc.)
-2. If YES — rewrite ONLY the problematic parts as a proper handoff. Use {name_display}'s voice. Be brief. Route to the correct specialist.
-3. If NO — return the response EXACTLY as-is. Do not change a single word.
+━━━━━━━━━━━━━━━━━━━━━━━
+YOUR FOUR DECISIONS:
 
-CRITICAL RULES:
-- If the response is in-lane: copy it EXACTLY, no edits, no improvements
-- If out-of-lane: replace out-of-domain content with: "[Name] here. That's [specialist] territory — not mine. Switch seats."
-- NEVER add commentary about your validation process
-- NEVER say "I've reviewed" or "As the validator"
-- Output ONLY the final response text, nothing else"""
+DECISION A — PASS
+The response is in-domain, correctly structured, sounds like this specialist, and addresses {user_name} properly.
+→ Return the response WORD FOR WORD. Not a single change.
+
+DECISION B — PATCH
+The response is in-domain and helpful, but is missing required structure headers OR sounds too generic/robotic OR doesn't address {user_name} by name.
+→ Fix ONLY what's broken. Keep all the content. Add missing headers. Punch up the voice to match this specialist. Add {user_name}'s name where natural.
+
+DECISION C — REWRITE
+The response is in-domain but low quality — vague, unhelpful, doesn't actually solve the user's problem, or misses the point entirely.
+→ Rewrite it completely as this specialist. Same topic, dramatically better execution. Use the required structure. Sound like {identity}.
+
+DECISION D — REROUTE
+The response is answering questions that belong to a FORBIDDEN domain. A mechanic giving investment advice. A doctor giving legal advice. This is a domain breach.
+→ Replace the entire response with a clean, in-character handoff:
+   "{handoff.replace('[correct specialist]', '[name the correct specialist]')}"
+   Keep it short. One or two sentences. Stay in character.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+DIRECTOR RULES:
+- Use your judgment. Read the full message and response. Think about what the user actually needs.
+- Do not be lenient on domain breaches. If a forbidden topic is being addressed substantively, it is a breach.
+- Short responses under 60 words: only apply DECISION D (reroute) if it's a clear breach. Otherwise PASS.
+- Never output your decision label. Output ONLY the final response text.
+- Never say "As the Director" or "I've reviewed this response."
+- The user should never know you exist. The response should feel seamless."""
 
     try:
         result = await asyncio.wait_for(
             claude_client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1200,
-                messages=[{"role": "user", "content": validation_prompt}]
+                model="claude-sonnet-4-5",
+                max_tokens=2000,
+                messages=[{"role": "user", "content": director_prompt}]
             ),
-            timeout=5.0
+            timeout=10.0
         )
-        validated_text = result.content[0].text.strip()
-        if validated_text and len(validated_text) > 20:
-            logger.info(f"✅ Claude validated [{persona}] — {len(validated_text)} chars")
-            return {"answer": validated_text, "claude_validated": True}
+        directed_text = result.content[0].text.strip()
+        if directed_text and len(directed_text) > 20:
+            logger.info(f"🎬 LYLO Director reviewed [{persona}] for {user_name} — {len(directed_text)} chars")
+            return {"answer": directed_text, "claude_validated": True}
         return {"answer": winner_answer, "claude_validated": False}
     except asyncio.TimeoutError:
-        logger.warning(f"⚡ Claude validator timeout [{persona}] — passing winner through")
+        logger.warning(f"⚡ Director timeout [{persona}] — passing winner through")
         return {"answer": winner_answer, "claude_validated": False}
     except Exception as e:
-        logger.warning(f"⚡ Claude validator error: {e} — passing winner through")
+        logger.warning(f"⚡ Director error: {e} — passing winner through")
         return {"answer": winner_answer, "claude_validated": False}
 
 
@@ -2620,16 +2785,33 @@ User message: "{message}"
 
 Your job: Decide if this message is GENUINELY out of domain for the {persona.upper()}.
 
-Rules:
-- "I'm tired" to the Doctor = IN DOMAIN (tired is a health symptom)
-- "I got hired" to the Doctor = IN DOMAIN (job stress affects health)  
-- "my tire is flat" to the Doctor = OUT OF DOMAIN (vehicle issue)
-- "I feel stressed about my new job" to the Mechanic = OUT OF DOMAIN (emotional/health)
-- "my back hurts from lifting" to the Mechanic = OUT OF DOMAIN (medical symptom)
-- "what stocks should I buy" to the Doctor = OUT OF DOMAIN (financial)
-- Context matters. Emotional words like "tired", "drained", "burned out" are HEALTH topics, not vehicle topics.
-- Common life events like being hired, fired, stressed, worried = STAY with current specialist unless clearly wrong domain.
-- Only route away if the message is CLEARLY and UNAMBIGUOUSLY about another specialist's domain.
+ROUTING RULES — apply these strictly:
+
+STAY in domain when:
+- The topic could reasonably relate to this specialist (e.g. "tired" with Doctor = health symptom)
+- Emotional context surrounds an in-domain topic
+- The question is ambiguous and could fit this specialist
+
+ROUTE AWAY when:
+- The message is primarily about ANOTHER specialist's core subject
+- A Doctor gets a car/vehicle question → route to mechanic
+- A Mechanic gets a medical symptom → route to doctor  
+- A Doctor gets an investment/money question → route to wealth
+- A Lawyer gets a fitness/nutrition question → route to vitality
+- Any specialist gets a question that is CLEARLY another specialist's primary job
+
+CONCRETE EXAMPLES:
+- "check engine light came on" to Doctor → OUT OF DOMAIN → mechanic
+- "I changed spark plugs" to Doctor → OUT OF DOMAIN → mechanic
+- "should I invest in crypto" to Doctor → OUT OF DOMAIN → wealth
+- "I have chest pain" to Mechanic → OUT OF DOMAIN → doctor
+- "my back hurts" to Mechanic → OUT OF DOMAIN → doctor
+- "I'm stressed" to Doctor → IN DOMAIN (stress is health)
+- "I'm tired" to Doctor → IN DOMAIN (fatigue is health)
+- "my car won't start" to Doctor → OUT OF DOMAIN → mechanic
+- "I got a speeding ticket" to Doctor → OUT OF DOMAIN → lawyer
+
+Be decisive. If it's the wrong specialist, route it. Do not hedge.
 
 Respond with JSON only:
 {{"in_domain": true}} if the message belongs with {persona.upper()}
@@ -2684,10 +2866,24 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
             f"Switch to **{correct_name}** — they've got you covered on this."
         )
         async def _handoff():
-            meta_obj = {"persona_switched": True, "switched_persona": correct_persona, "threat_level": "low"}
-            payload  = json.dumps({"token": handoff_msg, "meta": meta_obj})
-            yield f"data: {payload}\n\n"
-            yield "data: [DONE]\n\n"
+            # Text chunk — correct SSE format the frontend expects
+            yield f"data: {json.dumps({'type': 'text', 'content': handoff_msg})}\n\n"
+            # Meta chunk — tells frontend who to switch to
+            meta_obj = {
+                "type":             "meta",
+                "confidence_score": 95,
+                "scam_detected":    False,
+                "threat_level":     "low",
+                "action_trigger":   None,
+                "audio_b64":        "",
+                "full_answer":      handoff_msg,
+                "model":            "LYLO-Director",
+                "persona_switched": True,
+                "switched_persona": correct_persona,
+                "usage_count":      USAGE_TRACKER[user_id],
+                "limit":            limit,
+            }
+            yield f"data: {json.dumps(meta_obj)}\n\n"
         return StreamingResponse(_handoff(), media_type="text/event-stream")
 
     # ── Scam scan ────────────────────────────────────────────────────────────
@@ -2700,10 +2896,12 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
     user_location  = get_user_location_data(email_lower)
 
     system_prompt = await _build_chat_system_prompt(
-        persona    = persona,
-        user_email = email_lower,
-        index      = memory_index,
-        user_name  = user_data["name"],
+        persona         = persona,
+        user_email      = email_lower,
+        index           = memory_index,
+        user_name       = user_data["name"],
+        intake_profile  = intake_profile,
+        memory_context  = memory_context,
     )
 
     # ── Language injection ────────────────────────────────────────────────────
@@ -2806,6 +3004,12 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 continue
             if result and "answer" in result:
                 winner = result
+                # ── Fire Director the instant we have a winner ────────────
+                # Starts while the losing engine is still being cancelled.
+                # By the time stream_response() runs, Director has a head start.
+                director_task = asyncio.ensure_future(
+                    validate_with_claude(persona, msg, winner["answer"], user_data["name"])
+                )
                 for p in pending:
                     p.cancel()
                 pending = set()
@@ -2822,6 +3026,9 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
                 if fallback and isinstance(fallback, dict) and "answer" in fallback:
                     winner = fallback
                     logger.info(f"✅ OpenAI rescue for {user_data['name']}")
+                    director_task = asyncio.ensure_future(
+                        validate_with_claude(persona, msg, winner["answer"], user_data["name"])
+                    )
         except Exception:
             pass
     if not winner:
@@ -2834,8 +3041,12 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
 
     # ── Claude lane validator ─────────────────────────────────────────────────
     winner_answer = winner["answer"]
-    validated     = await validate_with_claude(persona, msg, winner_answer, user_data["name"])
-    final_answer  = validated.get("answer", winner_answer)
+    # director_task fired inside race loop (or rescue) the instant winner was found
+    # Safety guard — should never be needed but prevents NameError on edge cases
+    if "director_task" not in dir():
+        director_task = asyncio.ensure_future(
+            validate_with_claude(persona, msg, winner_answer, user_data["name"])
+        )
 
     # Define tier_limit here so stream_response() closure can access it
     tier_limit    = limit
@@ -2846,7 +3057,16 @@ Persona names: mechanic, doctor, lawyer, wealth, therapist, career, tutor, vital
             USAGE_TRACKER[user_id]  += 1
             current_count            = USAGE_TRACKER[user_id]
             action_trigger           = winner.get("action_trigger", None)
-            answer                   = final_answer
+
+            # ── Await Director (already running since race winner found) ──────
+            # Best case: Director already done — zero wait.
+            # Worst case: falls back to race winner after 10s.
+            try:
+                validated = await asyncio.wait_for(asyncio.shield(director_task), timeout=10.0)
+                answer    = validated.get("answer", winner_answer)
+            except (asyncio.TimeoutError, Exception):
+                logger.warning(f"⚡ Director timeout in stream — using winner directly")
+                answer = winner_answer
 
             sentences = split_into_sentences(answer)
             for sentence in sentences:
