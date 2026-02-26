@@ -14,7 +14,7 @@ from io import BytesIO
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple, Any, Union
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Form, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 from services.config import create_user_id, openai_client, gemini_client, gemini_ready
