@@ -48,10 +48,10 @@ try:
     )
     from med_vault_pdf import generate_medical_pdf, PERSONA_COLORS
     MED_VAULT_ENABLED = True
-    logger.info("✅ Med-Vault loaded")
+    _MED_VAULT_IMPORT_ERROR = None
 except ImportError as e:
     MED_VAULT_ENABLED = False
-    logger.warning(f"⚠️ Med-Vault not available: {e}")
+    _MED_VAULT_IMPORT_ERROR = str(e)
 from google import genai
 from google.oauth2 import service_account
 from openai import AsyncOpenAI
@@ -125,6 +125,12 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("LYLO-CORE-INTEGRATION")
+
+# Log med-vault import result now that logger exists
+if MED_VAULT_ENABLED:
+    logger.info("✅ Med-Vault loaded")
+else:
+    logger.warning(f"⚠️ Med-Vault not available: {_MED_VAULT_IMPORT_ERROR}")
 
 # =============================================================================
 # FASTAPI APP
