@@ -3,6 +3,7 @@ LYLO OS — services/prompt_builder.py
 System prompt assembly: persona briefings, hard boundaries,
 theology block, vibe instructions, assemble_prompt().
 """
+import time
 import logging
 from typing import List, Optional, Dict, Any
 from services.config import DOMAIN_ANCHORS
