@@ -189,7 +189,8 @@ def generate_medical_pdf(
     # Session hash for legal protection — hash of content + timestamp
     vault_str    = str(sorted(vault.items()))
     session_hash = hashlib.sha256(f"{vault_str}{now.isoformat()}".encode()).hexdigest()[:16].upper()
-    session_id   = f"LY-{now.strftime("%Y%m%d")}-{session_hash[:8]}"
+    date_str     = now.strftime("%Y%m%d")
+    session_id   = f"LY-{date_str}-{session_hash[:8]}"
 
     # ── HEADER ────────────────────────────────────────────────────────────────
     # Color bar at top (simulated with a colored table row)
