@@ -5,6 +5,12 @@ Endpoints: /vault/setup, /vault/scan-medication, /vault/add-medication,
            /vault/set-reminders, /vault/smart-reminder-message,
            /vault/update-silo, /vault/qr/{token}
 """
+import json
+import time
+import base64
+import datetime
+import random
+import string
 import logging
 from typing import Optional
 from fastapi import APIRouter, Form, HTTPException
