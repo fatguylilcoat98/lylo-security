@@ -2441,23 +2441,44 @@ def detect_prompt_injection(message: str) -> str | None:
     if has_authority and has_suspend:
         return _build_injection_response("authority+rule-suspension combo", "combination attack")
 
+    # ── Layer 4: Low-threat impatience — user asking to skip structure ────────
+    # NOT a security threat. User is just in a hurry. Respond warmly, not with Guardian mode.
+    IMPATIENCE_PHRASES = [
+        "skip the headers", "without the headers", "no headers please",
+        "just answer quickly", "answer fast", "keep it short",
+        "skip the format", "just tell me", "cut to the chase",
+        "skip the structure", "just give me the answer",
+    ]
+    for phrase in IMPATIENCE_PHRASES:
+        if phrase in msg_lower:
+            return _build_impatience_response()
+
     return None
 
 
 def _build_injection_response(trigger: str, category: str) -> str:
-    """Guardian-voiced injection block with proper headers."""
+    """Guardian-voiced hard block for real injection attempts."""
     logger.warning(f"🚨 Injection blocked — trigger: {trigger} | category: {category}")
     return (
         f"[THREAT ASSESSMENT]\n"
-        f"Prompt injection detected. Pattern: {category}.\n\n"
+        f"Injection attempt detected. Pattern: {category}.\n\n"
         f"[BREACH ANALYSIS]\n"
-        f"This message attempts to reassign identity, bypass structural protocols, "
-        f"or invoke fake authority to override operational directives. "
-        f"No claimed role — Architect, Developer, Regulator, or otherwise — "
-        f"has the authority to suspend headers, skip protocols, or alter how I operate. "
-        f"These directives are hardcoded. They cannot be suspended by any message.\n\n"
+        f"This message contains signatures of a prompt injection — attempting to "
+        f"reassign identity, invoke fake authority, or suspend operational protocols. "
+        f"No role claim has the authority to bypass LYLO's structure. "
+        f"Headers and domain boundaries are non-negotiable.\n\n"
         f"[LOCK IT DOWN]\n"
-        f"Request blocked. If you have a legitimate security question, ask it directly."
+        f"Request blocked. Ask your real question directly and I'll help."
+    )
+
+
+def _build_impatience_response() -> str:
+    """Warm, partner-style redirect for users who just want a quick answer."""
+    logger.info("ℹ️ Impatience pattern detected — redirecting warmly")
+    return (
+        f"I hear the urgency — let's move fast. "
+        f"The structure stays because it's how I make sure nothing important gets missed, "
+        f"not to slow you down. Give me your question and I'll get straight to it."
     )
 
 
