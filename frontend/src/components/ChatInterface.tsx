@@ -52,6 +52,43 @@ interface TrustMessage extends Message {
   sentences?:    TrustSentence[];
   checkingNote?: string | null;
 }
+
+// ── Med-Vault Types ──────────────────────────────────────────────────────────
+interface VaultMedication {
+  id:          string;
+  name:        string;
+  dose:        string;
+  frequency:   string;
+  prescriber:  string;
+  start_date:  string;
+  active:      boolean;
+  notes:       string;
+}
+
+interface VaultQuestion {
+  id:        string;
+  question:  string;
+  date_label:string;
+  answered:  boolean;
+}
+
+interface VaultSymptom {
+  id:          string;
+  description: string;
+  severity:    string;
+  date_label:  string;
+}
+
+interface MedVaultSummary {
+  medications: VaultMedication[];
+  symptoms:    VaultSymptom[];
+  reactions:   any[];
+  allergies:   any[];
+  questions:   VaultQuestion[];
+}
+
+type VaultSetupStep = 'choice' | 'pin_entry' | 'pin_confirm' | 'ready';
+type VaultView      = 'list' | 'add_med' | 'scan' | 'questions' | 'pdf_confirm';
 import { useSentinel } from '../lib/useSentinel';
 import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
@@ -487,7 +524,7 @@ function ChatInterface({
     localStorage.setItem('lylo_lang', next);
   };
 
-  const [messages, setMessages]                         = useState<Message[]>([]);
+  const [messages, setMessages]                         = useState<(Message | TrustMessage)[]>([]);
   const [input, setInput]                               = useState('');
   const [loading, setLoading]                           = useState(false);
   const [userName, setUserName]                         = useState('User');
@@ -532,6 +569,27 @@ function ChatInterface({
 
   // [V31.1-3] End Session + PDF modal state
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
+
+  // ── Med-Vault state ───────────────────────────────────────────────────────
+  const [showVaultSetup, setShowVaultSetup]             = useState(false);
+  const [vaultSetupStep, setVaultSetupStep]             = useState<VaultSetupStep>('choice');
+  const [vaultPinEnabled, setVaultPinEnabled]           = useState(false);
+  const [vaultPin, setVaultPin]                         = useState('');
+  const [vaultPinConfirm, setVaultPinConfirm]           = useState('');
+  const [vaultPinSession, setVaultPinSession]           = useState(''); // PIN for current session
+  const [vaultReady, setVaultReady]                     = useState(false);
+  const [showVaultPanel, setShowVaultPanel]             = useState(false);
+  const [vaultView, setVaultView]                       = useState<VaultView>('list');
+  const [vaultSummary, setVaultSummary]                 = useState<MedVaultSummary | null>(null);
+  const [vaultLoading, setVaultLoading]                 = useState(false);
+  const [scanResult, setScanResult]                     = useState<any>(null);
+  const [scanLoading, setScanLoading]                   = useState(false);
+  const [newQuestion, setNewQuestion]                   = useState('');
+  const [showPdfConfirm, setShowPdfConfirm]             = useState(false);
+  const [pdfExpiry, setPdfExpiry]                       = useState(30);
+  const [showReminderSetup, setShowReminderSetup]       = useState(false);
+  const [reminderSchedule, setReminderSchedule]         = useState<Record<string,string[]>>({});
+  const [remindersActive, setRemindersActive]           = useState(false);
 
 
   const sessionContentRef                               = useRef(''); // no re-renders during audio
@@ -800,7 +858,7 @@ function ChatInterface({
           if (parsed.type === 'trust_checking') {
             // Show the "checking" pulse note — will be replaced when result arrives
             setMessages(prev => prev.map(m => m.id === botMsgId
-              ? { ...m, checkingNote: parsed.content }
+              ? { ...m, checkingNote: parsed.content } as TrustMessage
               : m
             ));
           } else if (parsed.type === 'text') {
@@ -821,7 +879,7 @@ function ChatInterface({
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             if (readingMode === 'sync') setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId
-              ? { ...m, content: fullAnswer, sentences: [...(m.sentences ?? []), newSentence], checkingNote: null }
+              ? { ...m, content: fullAnswer, sentences: [...((m as TrustMessage).sentences ?? []), newSentence], checkingNote: null } as TrustMessage
               : m
             ));
             if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
@@ -884,6 +942,11 @@ function ChatInterface({
 
   const handlePersonaChange = async (persona: PersonaConfig) => {
     if (persona.id === 'bestie' && !bestieConfig) { setShowBestieSetup(true); return; }
+    // Vault setup check for medical personas
+    if (['doctor','therapist','vitality'].includes(persona.id)) {
+      const ready = checkVaultReady();
+      if (!ready) { setShowVaultSetup(true); setVaultSetupStep('choice'); }
+    }
     aqm.stop();
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
     setActivePersona(persona); localStorage.setItem('lylo_selected_persona', persona.id); onPersonaChange(persona); setShowDropdown(false); setShowPersonaGrid(false); setLoading(true);
@@ -936,6 +999,197 @@ function ChatInterface({
 
   // [V31.1-3] End Session handler — shows PDF confirm modal
   const handleEndSession = () => { setShowDropdown(false); setShowEndSessionModal(true); };
+
+  // ── Med-Vault API helpers ─────────────────────────────────────────────────
+  const vaultSetup = async (pinEnabled: boolean, pin: string) => {
+    const fd = new FormData();
+    fd.append('user_email', userEmail);
+    fd.append('pin_enabled', pinEnabled ? 'true' : 'false');
+    fd.append('pin', pin);
+    const res  = await fetch(`${API_URL}/vault/setup`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.vault_ready) {
+      setVaultReady(true);
+      setVaultPinEnabled(pinEnabled);
+      setVaultPinSession(pin);
+      localStorage.setItem(`lylo_vault_setup_${userEmail}`, 'true');
+      localStorage.setItem(`lylo_vault_pin_enabled_${userEmail}`, pinEnabled ? 'true' : 'false');
+    }
+    return data.vault_ready;
+  };
+
+  const loadVaultSummary = async () => {
+    if (!vaultReady) return;
+    setVaultLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('user_email', userEmail);
+      fd.append('pin', vaultPinSession);
+      fd.append('persona', activePersona.id);
+      const res  = await fetch(`${API_URL}/vault/get-summary`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.summary) setVaultSummary(data.summary);
+    } catch (e) { console.warn('[Vault] load error:', e); }
+    finally { setVaultLoading(false); }
+  };
+
+  const scanMedication = async (file: File) => {
+    setScanLoading(true); setScanResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('user_email', userEmail);
+      fd.append('pin', vaultPinSession);
+      fd.append('file', file);
+      const res  = await fetch(`${API_URL}/vault/scan-medication`, { method: 'POST', body: fd });
+      const data = await res.json();
+      setScanResult(data);
+    } catch (e) { console.warn('[Vault] scan error:', e); }
+    finally { setScanLoading(false); }
+  };
+
+  const addMedication = async (med: Partial<VaultMedication>) => {
+    const fd = new FormData();
+    fd.append('user_email', userEmail);
+    fd.append('pin', vaultPinSession);
+    fd.append('name',       med.name       || '');
+    fd.append('dose',       med.dose       || '');
+    fd.append('frequency',  med.frequency  || '');
+    fd.append('prescriber', med.prescriber || '');
+    const res  = await fetch(`${API_URL}/vault/add-medication`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.success) { await loadVaultSummary(); return true; }
+    return false;
+  };
+
+  const addDoctorQuestion = async (question: string) => {
+    const fd = new FormData();
+    fd.append('user_email', userEmail);
+    fd.append('pin', vaultPinSession);
+    fd.append('question', question);
+    const res  = await fetch(`${API_URL}/vault/add-question`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.success) { await loadVaultSummary(); return true; }
+    return false;
+  };
+
+  const generateVaultPdf = async (expiry: number) => {
+    const fd = new FormData();
+    fd.append('user_email', userEmail);
+    fd.append('user_name',  userName);
+    fd.append('pin',        vaultPinSession);
+    fd.append('persona',    activePersona.id);
+    fd.append('qr_expiry_min', String(expiry));
+    fd.append('lang', lang);
+    const res = await fetch(`${API_URL}/vault/generate-pdf`, { method: 'POST', body: fd });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `LYLO_Medical_Report_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Medication reminder helpers ──────────────────────────────────────────
+  const COMMON_TIMES = ['06:00','07:00','08:00','09:00','12:00','13:00',
+                         '17:00','18:00','20:00','21:00','22:00'];
+
+  const TIME_LABELS: Record<string,string> = {
+    '06:00':'6:00 AM','07:00':'7:00 AM','08:00':'8:00 AM','09:00':'9:00 AM',
+    '12:00':'Noon',   '13:00':'1:00 PM','17:00':'5:00 PM','18:00':'6:00 PM',
+    '20:00':'8:00 PM','21:00':'9:00 PM','22:00':'10:00 PM',
+  };
+
+  const toggleReminderTime = (medId: string, time: string) => {
+    setReminderSchedule(prev => {
+      const current = prev[medId] || [];
+      const updated = current.includes(time)
+        ? current.filter(t => t !== time)
+        : [...current, time].sort();
+      return { ...prev, [medId]: updated };
+    });
+  };
+
+  const saveAndActivateReminders = async () => {
+    // Request notification permission first
+    if (!('Notification' in window)) { alert('Notifications not supported on this device.'); return; }
+    if (Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') { alert('Please allow notifications to enable reminders.'); return; }
+    }
+
+    // Save schedule to backend
+    const meds = vaultSummary?.medications?.filter(m => m.active) || [];
+    const reminderList = meds
+      .filter(m => (reminderSchedule[m.id] || []).length > 0)
+      .map(m => ({ med_id: m.id, med_name: m.name, dose: m.dose, times: reminderSchedule[m.id] }));
+
+    const fd = new FormData();
+    fd.append('user_email', userEmail);
+    fd.append('pin', vaultPinSession);
+    fd.append('reminders', JSON.stringify(reminderList));
+    await fetch(`${API_URL}/vault/set-reminders`, { method: 'POST', body: fd });
+
+    // Schedule browser notifications for each time
+    _cancelAllMedReminders();
+    const now = new Date();
+    reminderList.forEach(({ med_name, dose, times }) => {
+      times.forEach(time => {
+        const [h, m] = time.split(':').map(Number);
+        const next = new Date();
+        next.setHours(h, m, 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1); // tomorrow if time passed
+        const ms = next.getTime() - now.getTime();
+        const tid = window.setTimeout(() => {
+          new Notification(`💊 Time for your ${med_name}`, {
+            body: `${dose} — Stay on track. Your health is your wealth. 💚`,
+            icon: '/logo.png',
+            tag:  `lylo-med-${med_name}-${time}`,
+          });
+          // Re-schedule for next day
+          const daily = window.setInterval(() => {
+            new Notification(`💊 Time for your ${med_name}`, {
+              body: `${dose} — Stay on track. Your health is your wealth. 💚`,
+              icon: '/logo.png',
+              tag:  `lylo-med-${med_name}-${time}`,
+            });
+          }, 24 * 60 * 60 * 1000);
+          (window as any).__lyloMedIntervals = [...((window as any).__lyloMedIntervals || []), daily];
+        }, ms);
+        (window as any).__lyloMedTimeouts = [...((window as any).__lyloMedTimeouts || []), tid];
+      });
+    });
+
+    setRemindersActive(true);
+    setShowReminderSetup(false);
+    localStorage.setItem(`lylo_reminders_active_${userEmail}`, 'true');
+    new Notification('✅ LYLO Med Reminders Active', {
+      body: `${reminderList.length} medication${reminderList.length !== 1 ? 's' : ''} scheduled. We've got you covered. 💊`,
+      icon: '/logo.png',
+    });
+  };
+
+  const _cancelAllMedReminders = () => {
+    ((window as any).__lyloMedTimeouts || []).forEach((id: number) => window.clearTimeout(id));
+    ((window as any).__lyloMedIntervals || []).forEach((id: number) => window.clearInterval(id));
+    (window as any).__lyloMedTimeouts  = [];
+    (window as any).__lyloMedIntervals = [];
+  };
+
+  // Check vault setup on mount + when Doctor persona activates
+  const checkVaultReady = () => {
+    const setup  = localStorage.getItem(`lylo_vault_setup_${userEmail}`);
+    const pinOn  = localStorage.getItem(`lylo_vault_pin_enabled_${userEmail}`) === 'true';
+    const remOn  = localStorage.getItem(`lylo_reminders_active_${userEmail}`) === 'true';
+    if (setup === 'true') {
+      setVaultReady(true);
+      setVaultPinEnabled(pinOn);
+      if (!pinOn) setVaultPinSession('');
+    }
+    if (remOn) setRemindersActive(true);
+    return setup === 'true';
+  };
 
   // [V31.1-3] Send session report to backend
   const sendSessionReport = async () => {
@@ -1217,6 +1471,604 @@ function ChatInterface({
         </div>
       )}
 
+      {/* ── VAULT SETUP MODAL ─────────────────────────────────────────── */}
+      {showVaultSetup && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100008] flex items-center justify-center p-4">
+          <div className="bg-[#0a0a0a] border border-green-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(34,197,94,0.12)]">
+
+            {vaultSetupStep === 'choice' && (
+              <div className="animate-in fade-in zoom-in-95 duration-200">
+                <div className="text-center mb-6">
+                  <div className="text-5xl mb-3">🔒</div>
+                  <h2 className="text-white font-black text-xl">Protect Your Health Vault</h2>
+                  <p className="text-gray-400 text-sm mt-2 leading-relaxed">
+                    Your medications and health data are encrypted. Only you and your AI Doctor can see this.
+                    Not LYLO staff. Not anyone else.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={async () => {
+                      const ok = await vaultSetup(false, '');
+                      if (ok) { setShowVaultSetup(false); loadVaultSummary(); setShowVaultPanel(true); }
+                    }}
+                    className="w-full p-5 bg-white/5 border border-white/10 hover:border-green-400/50 rounded-2xl text-left transition-all group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🔓</span>
+                      <div>
+                        <p className="text-white font-bold">Simple Access</p>
+                        <p className="text-gray-400 text-xs mt-0.5">Just use my account. No extra step.</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setVaultSetupStep('pin_entry')}
+                    className="w-full p-5 bg-white/5 border border-white/10 hover:border-green-400/50 rounded-2xl text-left transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🔐</span>
+                      <div>
+                        <p className="text-white font-bold">PIN Protection</p>
+                        <p className="text-gray-400 text-xs mt-0.5">Add a 4-digit PIN for extra security.</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                <button onClick={() => setShowVaultSetup(false)} className="w-full mt-4 text-gray-600 text-xs font-bold uppercase py-2">
+                  Maybe Later
+                </button>
+              </div>
+            )}
+
+            {vaultSetupStep === 'pin_entry' && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-200">
+                <button onClick={() => setVaultSetupStep('choice')} className="text-gray-500 text-xs mb-4 flex items-center gap-1">
+                  ← Back
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-5xl mb-3">🔐</div>
+                  <h2 className="text-white font-black text-xl">Create Your PIN</h2>
+                  <p className="text-gray-400 text-sm mt-2">4 digits. Easy to remember, hard to guess.</p>
+                </div>
+                <VaultPinInput value={vaultPin} onChange={setVaultPin} />
+                <button
+                  onClick={() => { if (vaultPin.length === 4) setVaultSetupStep('pin_confirm'); }}
+                  disabled={vaultPin.length !== 4}
+                  className="w-full mt-4 py-4 bg-green-600 text-black font-black rounded-2xl disabled:opacity-30 hover:bg-green-500 transition-all"
+                >
+                  Continue
+                </button>
+              </div>
+            )}
+
+            {vaultSetupStep === 'pin_confirm' && (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-200">
+                <button onClick={() => setVaultSetupStep('pin_entry')} className="text-gray-500 text-xs mb-4 flex items-center gap-1">
+                  ← Back
+                </button>
+                <div className="text-center mb-6">
+                  <div className="text-5xl mb-3">🔐</div>
+                  <h2 className="text-white font-black text-xl">Confirm PIN</h2>
+                  <p className="text-gray-400 text-sm mt-2">Enter your PIN again to confirm.</p>
+                </div>
+                <VaultPinInput value={vaultPinConfirm} onChange={setVaultPinConfirm} />
+                {vaultPinConfirm.length === 4 && vaultPinConfirm !== vaultPin && (
+                  <p className="text-red-400 text-xs text-center mt-2">PINs don't match. Try again.</p>
+                )}
+                <button
+                  onClick={async () => {
+                    if (vaultPinConfirm !== vaultPin) return;
+                    const ok = await vaultSetup(true, vaultPin);
+                    if (ok) {
+                      setVaultPinSession(vaultPin);
+                      setVaultPin(''); setVaultPinConfirm('');
+                      setShowVaultSetup(false);
+                      loadVaultSummary(); setShowVaultPanel(true);
+                    }
+                  }}
+                  disabled={vaultPinConfirm.length !== 4 || vaultPinConfirm !== vaultPin}
+                  className="w-full mt-4 py-4 bg-green-600 text-black font-black rounded-2xl disabled:opacity-30 hover:bg-green-500 transition-all"
+                >
+                  Activate Vault 🔒
+                </button>
+              </div>
+            )}
+
+            {vaultSetupStep === 'pin_entry' && vaultReady && (
+              // Re-entry for PIN unlock
+              <div className="animate-in fade-in duration-200">
+                <div className="text-center mb-6">
+                  <div className="text-5xl mb-3">🔐</div>
+                  <h2 className="text-white font-black text-xl">Enter Your PIN</h2>
+                  <p className="text-gray-400 text-sm mt-2">Unlock your Health Vault.</p>
+                </div>
+                <VaultPinInput value={vaultPinSession} onChange={setVaultPinSession} />
+                <button
+                  onClick={() => {
+                    if (vaultPinSession.length === 4) {
+                      setShowVaultSetup(false);
+                      loadVaultSummary(); setShowVaultPanel(true);
+                    }
+                  }}
+                  disabled={vaultPinSession.length !== 4}
+                  className="w-full mt-4 py-4 bg-green-600 text-black font-black rounded-2xl disabled:opacity-30"
+                >
+                  Unlock
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── VAULT PANEL ───────────────────────────────────────────────────── */}
+      {showVaultPanel && (
+        <div className="fixed inset-0 bg-black/95 z-[100007] flex flex-col">
+          {/* Vault header */}
+          <div className="bg-[#0a0a0a] border-b border-green-500/20 p-4 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">💊</span>
+              <div>
+                <h2 className="text-white font-black text-base uppercase tracking-widest">Health Vault</h2>
+                <p className="text-green-400 text-[10px] font-bold uppercase tracking-widest">
+                  {vaultPinEnabled ? '🔐 PIN Protected' : '🔒 Encrypted'} · Only you can see this
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setShowVaultPanel(false)} className="p-2 bg-white/5 rounded-xl text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Vault nav tabs */}
+          <div className="flex border-b border-white/10 flex-shrink-0 bg-[#0a0a0a]">
+            {[
+              { id: 'list',      label: '💊 Meds',     view: 'list'      },
+              { id: 'questions', label: '❓ Questions', view: 'questions' },
+              { id: 'scan',      label: '📷 Scan',      view: 'scan'      },
+              { id: 'profile',   label: '👤 Profile',   view: 'profile'   },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => { setVaultView(tab.view as VaultView); }}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                  vaultView === tab.view
+                    ? 'text-green-400 border-b-2 border-green-400'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Vault content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {vaultLoading && (
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+
+            {/* MEDICATIONS LIST */}
+            {!vaultLoading && vaultView === 'list' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">
+                    {vaultSummary?.medications?.length || 0} Active Medications
+                  </p>
+                  <button
+                    onClick={() => setVaultView('scan')}
+                    className="px-3 py-1.5 bg-green-600/20 border border-green-500/30 rounded-xl text-green-400 text-xs font-bold"
+                  >
+                    + Add
+                  </button>
+                </div>
+                {vaultSummary?.medications?.filter(m => m.active).map(med => (
+                  <VaultMedCard key={med.id} med={med} />
+                ))}
+                {(!vaultSummary?.medications?.length) && (
+                  <div className="text-center py-12 text-gray-600">
+                    <div className="text-4xl mb-3">💊</div>
+                    <p className="font-bold">No medications logged yet</p>
+                    <p className="text-xs mt-1">Tap 📷 Scan to photograph a pill bottle</p>
+                  </div>
+                )}
+                {/* Symptom timeline */}
+                {(vaultSummary?.symptoms?.length || 0) > 0 && (
+                  <div className="mt-6">
+                    <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-3">
+                      📋 Recent Symptoms
+                    </p>
+                    <div className="bg-white/3 border border-white/8 rounded-xl p-3">
+                      {vaultSummary!.symptoms.slice(-5).reverse().map(s => (
+                        <VaultSymptomRow key={s.id} symptom={s} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* QUESTIONS */}
+            {!vaultLoading && vaultView === 'questions' && (
+              <div className="space-y-3">
+                <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-2">
+                  Questions saved for your doctor
+                </p>
+                {vaultSummary?.questions?.filter(q => !q.answered).map(q => (
+                  <div key={q.id} className="p-3 bg-white/5 border border-white/10 rounded-xl">
+                    <p className="text-white text-sm font-medium">❓ {q.question}</p>
+                    <p className="text-gray-500 text-xs mt-1">{q.date_label}</p>
+                  </div>
+                ))}
+                {(!vaultSummary?.questions?.filter(q => !q.answered).length) && (
+                  <div className="text-center py-8 text-gray-600">
+                    <div className="text-4xl mb-3">❓</div>
+                    <p className="font-bold text-sm">No questions saved yet</p>
+                    <p className="text-xs mt-1">Tell the Doctor "save this question" during a conversation</p>
+                  </div>
+                )}
+                {/* Quick add question */}
+                <div className="mt-4 flex gap-2">
+                  <input
+                    value={newQuestion}
+                    onChange={e => setNewQuestion(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter' && newQuestion.trim()) {
+                        await addDoctorQuestion(newQuestion.trim());
+                        setNewQuestion('');
+                      }
+                    }}
+                    placeholder="Type a question to save for your doctor..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-green-400 transition-all"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (newQuestion.trim()) {
+                        await addDoctorQuestion(newQuestion.trim());
+                        setNewQuestion('');
+                      }
+                    }}
+                    className="px-4 py-3 bg-green-600 rounded-xl text-black font-bold text-sm hover:bg-green-500 transition-all"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* PROFILE SILO DATA */}
+            {!vaultLoading && vaultView === 'profile' && (
+              <div className="space-y-5">
+                <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">
+                  Your data — only shared with the right specialists
+                </p>
+
+                {/* Vehicle */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-white font-black text-sm">🚗 Vehicle</p>
+                    <p className="text-gray-500 text-[10px]">Mechanic · Lawyer · Wealth</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['make','model','year','vin'] as const).map(field => (
+                      <div key={field}>
+                        <p className="text-gray-500 text-[10px] uppercase">{field}</p>
+                        <input
+                          placeholder={field === 'vin' ? 'Optional' : field.charAt(0).toUpperCase()+field.slice(1)}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-orange-400 transition-all mt-1"
+                          onChange={e => {
+                            const val = e.target.value;
+                            // Stored in sessionStorage as staging until Save pressed
+                            sessionStorage.setItem(`vault_vehicle_${field}`, val);
+                          }}
+                          defaultValue={sessionStorage.getItem(`vault_vehicle_${field}`) || ''}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const vehicle = {
+                        make: sessionStorage.getItem('vault_vehicle_make') || '',
+                        model: sessionStorage.getItem('vault_vehicle_model') || '',
+                        year: sessionStorage.getItem('vault_vehicle_year') || '',
+                        vin: sessionStorage.getItem('vault_vehicle_vin') || '',
+                        id: Date.now().toString(),
+                      };
+                      if (!vehicle.make && !vehicle.model) return;
+                      const fd = new FormData();
+                      fd.append('user_email', userEmail);
+                      fd.append('pin', vaultPinSession);
+                      fd.append('silo', 'vehicle');
+                      fd.append('data', JSON.stringify({ type: 'add_vehicle', vehicle }));
+                      await fetch(`${API_URL}/vault/update-silo`, { method: 'POST', body: fd });
+                      await loadVaultSummary();
+                    }}
+                    className="w-full mt-3 py-2.5 bg-orange-600/20 border border-orange-500/30 rounded-xl text-orange-400 text-xs font-bold hover:bg-orange-600/40 transition-all"
+                  >
+                    Save Vehicle
+                  </button>
+                </div>
+
+                {/* Career */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-white font-black text-sm">💼 Career</p>
+                    <p className="text-gray-500 text-[10px]">Career Coach · Wealth · Lawyer</p>
+                  </div>
+                  <div className="space-y-2">
+                    {[{key:'current_role',label:'Current Role'},
+                      {key:'employer',    label:'Employer'}].map(({key,label}) => (
+                      <div key={key}>
+                        <p className="text-gray-500 text-[10px] uppercase mb-1">{label}</p>
+                        <input
+                          placeholder={label}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-indigo-400 transition-all"
+                          onChange={e => sessionStorage.setItem(`vault_career_${key}`, e.target.value)}
+                          defaultValue={sessionStorage.getItem(`vault_career_${key}`) || ''}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const career = {
+                        current_role: sessionStorage.getItem('vault_career_current_role') || '',
+                        employer:     sessionStorage.getItem('vault_career_employer') || '',
+                      };
+                      if (!career.current_role) return;
+                      const fd = new FormData();
+                      fd.append('user_email', userEmail);
+                      fd.append('pin', vaultPinSession);
+                      fd.append('silo', 'career');
+                      fd.append('data', JSON.stringify(career));
+                      await fetch(`${API_URL}/vault/update-silo`, { method: 'POST', body: fd });
+                    }}
+                    className="w-full mt-3 py-2.5 bg-indigo-600/20 border border-indigo-500/30 rounded-xl text-indigo-400 text-xs font-bold hover:bg-indigo-600/40 transition-all"
+                  >
+                    Save Career Info
+                  </button>
+                </div>
+
+                {/* Privacy note */}
+                <div className="bg-white/3 border border-white/5 rounded-xl p-3">
+                  <p className="text-gray-500 text-[10px] leading-relaxed text-center">
+                    🔒 All data is AES-256 encrypted. Your Mechanic doesn't see your health data.
+                    Your Doctor doesn't see your car. Each specialist only sees what they need.
+                    Not even LYLO staff can access this.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* SCAN */}
+            {!vaultLoading && vaultView === 'scan' && (
+              <div className="space-y-4">
+                <p className="text-gray-400 text-xs uppercase font-bold tracking-widest">
+                  📷 Photograph a pill bottle
+                </p>
+                <div
+                  onClick={() => { const i = document.createElement('input'); i.type='file'; i.accept='image/*'; i.capture='environment'; i.onchange = e => { const f=(e.target as HTMLInputElement).files?.[0]; if(f) scanMedication(f); }; i.click(); }}
+                  className="border-2 border-dashed border-green-500/30 rounded-2xl p-8 text-center cursor-pointer hover:border-green-500/60 hover:bg-green-500/5 transition-all"
+                >
+                  {scanLoading ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-green-400 font-bold text-sm">Reading label...</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="text-5xl">📷</span>
+                      <p className="text-white font-bold">Tap to photograph pill bottle</p>
+                      <p className="text-gray-500 text-xs">LYLO reads the label automatically</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Scan result */}
+                {scanResult && !scanLoading && (
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3 animate-in fade-in duration-300">
+                    <p className="text-green-400 font-black text-sm uppercase tracking-widest">📋 Label Read</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div><p className="text-gray-500 text-xs">Medication</p><p className="text-white font-bold">{scanResult.scanned?.name || '—'}</p></div>
+                      <div><p className="text-gray-500 text-xs">Dose</p><p className="text-white font-bold">{scanResult.scanned?.dose || '—'}</p></div>
+                      <div><p className="text-gray-500 text-xs">Frequency</p><p className="text-white font-bold">{scanResult.scanned?.frequency || '—'}</p></div>
+                      <div><p className="text-gray-500 text-xs">Prescriber</p><p className="text-white font-bold">{scanResult.scanned?.prescriber || '—'}</p></div>
+                    </div>
+                    {scanResult.discrepancy && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3">
+                        <p className="text-yellow-400 text-xs font-bold">⚠ {scanResult.discrepancy.message}</p>
+                      </div>
+                    )}
+                    {scanResult.interactions?.length > 0 && (
+                      <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                        <p className="text-red-400 text-xs font-bold">⚡ Drug Interaction Alert</p>
+                        {scanResult.interactions.map((ia: any, i: number) => (
+                          <p key={i} className="text-red-300 text-xs mt-1">{ia.drug_a} + {ia.drug_b}: {ia.warning?.slice(0,120)}</p>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={async () => {
+                        const ok = await addMedication(scanResult.scanned);
+                        if (ok) { setScanResult(null); setVaultView('list'); }
+                      }}
+                      className="w-full py-3 bg-green-600 text-black font-black rounded-xl text-sm hover:bg-green-500 transition-all"
+                    >
+                      ✓ Add to My Medications
+                    </button>
+                    <button onClick={() => setScanResult(null)} className="w-full py-2 text-gray-500 text-xs font-bold">
+                      Discard
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Vault footer — PDF + Reminders */}
+          <div className="bg-[#0a0a0a] border-t border-white/10 p-4 flex-shrink-0 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowPdfConfirm(true)}
+                className="flex-1 py-4 bg-green-600 text-black font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-green-500 transition-all active:scale-[0.98] shadow-[0_0_20px_rgba(34,197,94,0.2)] text-sm"
+              >
+                📄 Doctor PDF
+              </button>
+              <button
+                onClick={() => {
+                  // Pre-populate reminder schedule from vault
+                  const meds = vaultSummary?.medications?.filter(m => m.active) || [];
+                  if (!meds.length) { alert('Add medications first before setting reminders.'); return; }
+                  setShowReminderSetup(true);
+                }}
+                className={`flex-1 py-4 font-black rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm ${
+                  remindersActive
+                    ? 'bg-indigo-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.3)]'
+                    : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'
+                }`}
+              >
+                ⏰ {remindersActive ? 'Reminders On' : 'Set Reminders'}
+              </button>
+            </div>
+            <p className="text-center text-gray-600 text-[10px] uppercase tracking-widest">
+              AI-Generated · For Clinical Review Only · Not a Medical Diagnosis
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── REMINDER SETUP MODAL ─────────────────────────────────────────── */}
+      {showReminderSetup && (
+        <div className="fixed inset-0 bg-black/95 z-[100010] flex flex-col">
+          <div className="bg-[#0a0a0a] border-b border-indigo-500/20 p-4 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⏰</span>
+              <div>
+                <h2 className="text-white font-black text-base uppercase tracking-widest">Med Reminders</h2>
+                <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-widest">
+                  Daily push notifications · Never miss a dose
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setShowReminderSetup(false)} className="p-2 bg-white/5 rounded-xl text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-5">
+            <p className="text-gray-400 text-xs leading-relaxed">
+              Tap the times you take each medication. LYLO will send a push notification every day at those times. 💚
+            </p>
+            {(vaultSummary?.medications?.filter(m => m.active) || []).map(med => (
+              <div key={med.id} className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">💊</span>
+                  <div>
+                    <p className="text-white font-bold text-sm">{med.name} <span className="text-green-400">{med.dose}</span></p>
+                    <p className="text-gray-400 text-xs">{med.frequency}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {['06:00','08:00','09:00','12:00','17:00','20:00','21:00','22:00'].map(time => {
+                    const active = (reminderSchedule[med.id] || []).includes(time);
+                    return (
+                      <button
+                        key={time}
+                        onClick={() => toggleReminderTime(med.id, time)}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all min-h-[44px] min-w-[44px] ${
+                          active
+                            ? 'bg-indigo-600 text-white shadow-[0_0_12px_rgba(99,102,241,0.4)]'
+                            : 'bg-white/5 border border-white/10 text-gray-400 hover:border-indigo-400/40'
+                        }`}
+                        aria-pressed={active}
+                        aria-label={`${active ? 'Remove' : 'Add'} reminder at ${time} for ${med.name}`}
+                      >
+                        {{'06:00':'6 AM','08:00':'8 AM','09:00':'9 AM','12:00':'Noon',
+                          '17:00':'5 PM','20:00':'8 PM','21:00':'9 PM','22:00':'10 PM'}[time]}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(reminderSchedule[med.id] || []).length > 0 && (
+                  <p className="text-indigo-400 text-[10px] mt-2 font-bold">
+                    ✓ Reminders set: {(reminderSchedule[med.id] || []).map(t =>
+                      ({'06:00':'6 AM','08:00':'8 AM','09:00':'9 AM','12:00':'Noon',
+                        '17:00':'5 PM','20:00':'8 PM','21:00':'9 PM','22:00':'10 PM'})[t] || t
+                    ).join(', ')}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-[#0a0a0a] border-t border-white/10 p-4 flex-shrink-0">
+            <button
+              onClick={saveAndActivateReminders}
+              disabled={Object.values(reminderSchedule).every(t => t.length === 0)}
+              className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all active:scale-[0.98] disabled:opacity-30 shadow-[0_0_20px_rgba(99,102,241,0.2)]"
+            >
+              ✅ Activate Daily Reminders
+            </button>
+            {remindersActive && (
+              <button
+                onClick={() => { _cancelAllMedReminders(); setRemindersActive(false); setShowReminderSetup(false); localStorage.removeItem(`lylo_reminders_active_${userEmail}`); }}
+                className="w-full py-3 mt-2 text-red-400 text-xs font-bold uppercase tracking-widest"
+              >
+                Turn Off All Reminders
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── PDF CONFIRM MODAL ─────────────────────────────────────────────── */}
+      {showPdfConfirm && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100009] p-4">
+          <div className="bg-[#0a0a0a] border border-green-500/30 rounded-2xl max-w-sm w-full p-6 shadow-[0_0_40px_rgba(34,197,94,0.1)]">
+            <h3 className="text-white font-black text-lg mb-2">📄 Generate Doctor PDF</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              A secure PDF with your medications, symptom timeline, and questions. Contains a QR code that expires after:
+            </p>
+            <div className="grid grid-cols-3 gap-2 mb-6">
+              {[15, 30, 60].map(min => (
+                <button
+                  key={min}
+                  onClick={() => setPdfExpiry(min)}
+                  className={`py-3 rounded-xl font-black text-sm transition-all ${
+                    pdfExpiry === min
+                      ? 'bg-green-600 text-black'
+                      : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'
+                  }`}
+                >
+                  {min} min
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => { setShowPdfConfirm(false); await generateVaultPdf(pdfExpiry); }}
+                className="flex-1 py-3 bg-green-600 text-black font-black rounded-xl text-sm hover:bg-green-500 transition-all active:scale-95"
+              >
+                Download PDF
+              </button>
+              <button
+                onClick={() => setShowPdfConfirm(false)}
+                className="flex-1 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+            </div>
+            <p className="text-center text-[10px] text-gray-600 mt-3 uppercase tracking-widest">
+              AI-Generated · For Clinical Review Only · Not a Medical Diagnosis
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* TOP BAR */}
       <div className="bg-black/90 border-b border-white/10 p-3 flex-shrink-0 z-50">
         <div className="flex items-center justify-between">
@@ -1260,6 +2112,26 @@ function ChatInterface({
             {/* [V31.1-4] Language toggle in header */}
             <button onClick={toggleLang} title={lang === 'en' ? 'Switch to Spanish' : 'Switch to English'} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all text-xl leading-none">{lang === 'en' ? '🇺🇸' : '🇲🇽'}</button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
+            {['doctor','therapist','vitality','pastor'].includes(activePersona.id) && (
+              <button
+                onClick={() => {
+                  const ready = checkVaultReady();
+                  if (ready) {
+                    if (vaultPinEnabled && !vaultPinSession) {
+                      setShowVaultSetup(true); setVaultSetupStep('pin_entry');
+                    } else {
+                      loadVaultSummary(); setShowVaultPanel(true);
+                    }
+                  } else {
+                    setShowVaultSetup(true); setVaultSetupStep('choice');
+                  }
+                }}
+                title="Health Vault"
+                className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 hover:bg-green-500 hover:text-white transition-all"
+              >
+                <span className="text-base leading-none">💊</span>
+              </button>
+            )}
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
         </div>
@@ -1353,7 +2225,7 @@ function ChatInterface({
               {msg.sender === 'bot' && msg.id === streamingMsgId
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
                 : msg.sender === 'bot' && (msg as TrustMessage).sentences?.length
-                  ? <TrustMessageRenderer msg={msg as TrustMessage} />
+                  ? <TrustMessageRenderer msg={msg as TrustMessage} lang={lang} />
                   : msg.content
               }
               {msg.sender === 'bot' && (msg as TrustMessage).checkingNote && (
@@ -1460,6 +2332,52 @@ function ChatInterface({
     </div>
   );
 }
+
+// ============================================================================
+// MED-VAULT UI COMPONENTS
+// ============================================================================
+
+function VaultPinInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="password" inputMode="numeric" maxLength={4} value={value}
+      onChange={e => { if (/^\d{0,4}$/.test(e.target.value)) onChange(e.target.value); }}
+      placeholder="····"
+      className="w-full text-center text-3xl font-black tracking-[0.5em] bg-white/5 border border-white/20 rounded-2xl py-5 text-white outline-none focus:border-green-400 transition-all"
+    />
+  );
+}
+
+function VaultMedCard({ med }: { med: any }) {
+  return (
+    <div className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+      <span className="text-xl">💊</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-bold text-sm truncate">
+          {med.name} <span className="text-green-400">{med.dose}</span>
+        </p>
+        <p className="text-gray-400 text-xs truncate">
+          {med.frequency}{med.prescriber ? ` · Dr. ${med.prescriber}` : ''}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function VaultSymptomRow({ symptom }: { symptom: any }) {
+  const c = symptom.severity === 'severe'   ? 'text-red-400' :
+            symptom.severity === 'moderate' ? 'text-yellow-400' : 'text-green-400';
+  return (
+    <div className="flex gap-2 py-2 border-b border-white/5 last:border-0">
+      <span className={`text-xs font-bold mt-0.5 flex-shrink-0 ${c}`}>●</span>
+      <div>
+        <p className="text-white text-xs leading-snug">{symptom.description?.slice(0,120)}</p>
+        <p className="text-gray-500 text-[10px] mt-0.5">{symptom.date_label}</p>
+      </div>
+    </div>
+  );
+}
+
 
 // ============================================================================
 // TRUST LAYER — TrustMessageRenderer
