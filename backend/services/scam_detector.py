@@ -1,15 +1,20 @@
-"""
-LYLO OS — services/scam_detector.py
-Scam indicator analysis and prompt injection detection.
-"""
+"""LYLO OS — services/scam_detector.py"""
 import re
+import os
+import json
+import time
+import asyncio
+import base64
+import hashlib
 import logging
-from typing import List
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
 
-logger = logging.getLogger("LYLO.ScamDetector")
-
-# SCAM DETECTION
-# =============================================================================
+logger = logging.getLogger("LYLO.Scam")
 def analyze_scam_indicators(text: str) -> List[str]:
     indicators = []
     t = text.lower()
@@ -45,25 +50,7 @@ PIN_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
-    """
-    Scans user message for pinnable intel.
-    Returns (pin_text, category) if detected, else None.
-    Uses the first 200 chars of the message as the pin text.
-    """
-    msg_lower = message.lower()
-    for category, keywords in PIN_KEYWORDS.items():
-        for kw in keywords:
-            pattern = r'\b' + re.escape(kw) + r'\b'
-            if re.search(pattern, msg_lower):
-                return (message.strip()[:200], category)
-    return None
 
-
-# =============================================================================
-# PROMPT INJECTION DETECTOR — fires before the LLM race
-# Multi-layer: exact phrases + semantic groups + pattern combinations
-# =============================================================================
 def detect_prompt_injection(message: str) -> str | None:
     """
     Multi-layer injection detection. Returns Guardian-voiced block or None.
@@ -204,7 +191,4 @@ def _build_impatience_response() -> str:
         f"The structure stays because it's how I make sure nothing important gets missed, "
         f"not to slow you down. Give me your question and I'll get straight to it."
     )
-
-
-
 
