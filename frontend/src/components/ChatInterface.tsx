@@ -1002,20 +1002,21 @@ function ChatInterface({
 
   // ── Med-Vault API helpers ─────────────────────────────────────────────────
   const vaultSetup = async (pinEnabled: boolean, pin: string) => {
-    const fd = new FormData();
-    fd.append('user_email', userEmail);
-    fd.append('pin_enabled', pinEnabled ? 'true' : 'false');
-    fd.append('pin', pin);
-    const res  = await fetch(`${API_URL}/vault/setup`, { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.vault_ready) {
-      setVaultReady(true);
-      setVaultPinEnabled(pinEnabled);
-      setVaultPinSession(pin);
-      localStorage.setItem(`lylo_vault_setup_${userEmail}`, 'true');
-      localStorage.setItem(`lylo_vault_pin_enabled_${userEmail}`, pinEnabled ? 'true' : 'false');
-    }
-    return data.vault_ready;
+    // Set state immediately — don't block UI on API response
+    setVaultReady(true);
+    setVaultPinEnabled(pinEnabled);
+    setVaultPinSession(pin);
+    localStorage.setItem(`lylo_vault_setup_${userEmail}`, 'true');
+    localStorage.setItem(`lylo_vault_pin_enabled_${userEmail}`, pinEnabled ? 'true' : 'false');
+    // Fire API in background
+    try {
+      const fd = new FormData();
+      fd.append('user_email', userEmail);
+      fd.append('pin_enabled', pinEnabled ? 'true' : 'false');
+      fd.append('pin', pin);
+      await fetch(`${API_URL}/vault/setup`, { method: 'POST', body: fd });
+    } catch (e) { console.warn('[Vault] setup API error:', e); }
+    return true;
   };
 
   const loadVaultSummary = async () => {
@@ -1489,8 +1490,10 @@ function ChatInterface({
                 <div className="space-y-3">
                   <button
                     onClick={async () => {
-                      const ok = await vaultSetup(false, '');
-                      if (ok) { setShowVaultSetup(false); loadVaultSummary(); setShowVaultPanel(true); }
+                      await vaultSetup(false, '');
+                      setShowVaultSetup(false);
+                      loadVaultSummary();
+                      setShowVaultPanel(true);
                     }}
                     className="w-full p-5 bg-white/5 border border-white/10 hover:border-green-400/50 rounded-2xl text-left transition-all group"
                   >
@@ -1559,13 +1562,11 @@ function ChatInterface({
                 <button
                   onClick={async () => {
                     if (vaultPinConfirm !== vaultPin) return;
-                    const ok = await vaultSetup(true, vaultPin);
-                    if (ok) {
-                      setVaultPinSession(vaultPin);
-                      setVaultPin(''); setVaultPinConfirm('');
-                      setShowVaultSetup(false);
-                      loadVaultSummary(); setShowVaultPanel(true);
-                    }
+                    await vaultSetup(true, vaultPin);
+                    setVaultPinSession(vaultPin);
+                    setVaultPin(''); setVaultPinConfirm('');
+                    setShowVaultSetup(false);
+                    loadVaultSummary(); setShowVaultPanel(true);
                   }}
                   disabled={vaultPinConfirm.length !== 4 || vaultPinConfirm !== vaultPin}
                   className="w-full mt-4 py-4 bg-green-600 text-black font-black rounded-2xl disabled:opacity-30 hover:bg-green-500 transition-all"
