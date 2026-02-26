@@ -2,6 +2,10 @@
 LYLO OS — services/llm_clients.py
 All LLM API calls: Gemini Vision, OpenAI Bodyguard, Claude Validator.
 """
+import re
+import json
+import asyncio
+import base64
 import logging
 from services.config import gemini_client, gemini_ready, openai_client, anthropic_client
 
