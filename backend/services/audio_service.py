@@ -2,6 +2,7 @@
 LYLO OS — services/audio_service.py
 OpenAI TTS audio generation.
 """
+import base64
 import logging
 from services.config import openai_client
 
