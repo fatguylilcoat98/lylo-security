@@ -2,6 +2,7 @@
 LYLO OS — routers/session_router.py
 Endpoints: /send-session-report, /health, /ui-strings, /obd2, /
 """
+import os
 import logging
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse, HTMLResponse
