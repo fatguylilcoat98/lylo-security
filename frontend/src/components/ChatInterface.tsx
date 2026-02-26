@@ -1,4 +1,3 @@
-
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
 // Version: 31.1.0 — STEP-BY-STEP EMERGENCY + RELIGION INTAKE + SPANISH + END SESSION PDF
@@ -746,7 +745,7 @@ function ChatInterface({
       fd.append('persona', activePersona.id); fd.append('user_email', userEmail);
       fd.append('user_location', ''); fd.append('vibe', communicationStyle);
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
-      fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
+      fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse); fd.append('lang', lang);
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
@@ -932,8 +931,9 @@ function ChatInterface({
     return (
       <div className="fixed inset-0 bg-[#080808] flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
         {/* Language toggle on intake screen */}
-        <button onClick={toggleLang} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-xs font-bold hover:bg-white/10 transition-all">
-          {t('lang_toggle')}
+        <button onClick={toggleLang} title={lang === 'en' ? 'Switch to Spanish' : 'Switch to English'} className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">
+          <span className="text-xl leading-none">{lang === 'en' ? '🇺🇸' : '🇲🇽'}</span>
+          <span className="text-gray-400 text-xs font-bold">{lang === 'en' ? 'EN' : 'ES'}</span>
         </button>
 
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -1169,7 +1169,7 @@ function ChatInterface({
                 <div className="mb-6 space-y-3">
                   <button onClick={cycleFontSize} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Type className="w-5 h-5 text-blue-400" /><span className="font-bold">Text Size</span></div><span className="text-xs font-black uppercase tracking-widest text-gray-400">Level {fontLevel}</span></button>
                   <button onClick={toggleVoice} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3">{isVoiceEnabled ? <Volume2 className="w-5 h-5 text-green-400" /> : <VolumeX className="w-5 h-5 text-red-400" />}<span className="font-bold">Voice Output</span></div><span className={`text-xs font-black uppercase tracking-widest ${isVoiceEnabled ? 'text-green-400' : 'text-red-400'}`}>{isVoiceEnabled ? 'ON' : 'OFF'}</span></button>
-                  <button onClick={toggleLang} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Star className="w-5 h-5 text-yellow-400" /><span className="font-bold">Language</span></div><span className="text-xs font-black uppercase tracking-widest text-yellow-400">{lang.toUpperCase()}</span></button>
+                  <button onClick={toggleLang} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><span className="text-2xl leading-none">{lang === 'en' ? '🇺🇸' : '🇲🇽'}</span><span className="font-bold">{lang === 'en' ? 'English' : 'Español'}</span></div><span className="text-gray-500 text-xs">{lang === 'en' ? 'Switch to Spanish' : 'Switch to English'}</span></button>
                   <button onClick={() => { setShowDropdown(false); setShowOnboarding(true); setOnboardingStep(0); setOnboardingRound(1); }} className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-white flex items-center justify-between hover:bg-white/10 transition-colors"><div className="flex items-center gap-3"><Info className="w-5 h-5 text-blue-400" /><span className="font-bold">Rebuild My Profile</span></div></button>
                   {canInstall && (<button onClick={() => { setShowDropdown(false); handleInstallClick(); }} className="w-full p-4 bg-blue-600/10 border border-blue-500/30 rounded-xl text-white flex items-center justify-between hover:bg-blue-600/20 transition-colors"><div className="flex items-center gap-3"><ArrowRight className="w-5 h-5 text-blue-400" /><span className="font-bold">Install LYLO OS</span></div><span className="text-[9px] text-blue-400 font-black uppercase tracking-widest">Home Screen</span></button>)}
                   {/* [V31.1-3] End Session button */}
@@ -1187,7 +1187,7 @@ function ChatInterface({
 
           <div className="flex items-center gap-2 z-10">
             {/* [V31.1-4] Language toggle in header */}
-            <button onClick={toggleLang} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-[10px] font-black uppercase hover:text-white hover:bg-white/10 transition-all">{lang === 'en' ? 'ES' : 'EN'}</button>
+            <button onClick={toggleLang} title={lang === 'en' ? 'Switch to Spanish' : 'Switch to English'} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all text-xl leading-none">{lang === 'en' ? '🇺🇸' : '🇲🇽'}</button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
