@@ -1,3 +1,4 @@
+
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
 // Version: 31.1.0 — STEP-BY-STEP EMERGENCY + RELIGION INTAKE + SPANISH + END SESSION PDF
@@ -504,6 +505,7 @@ function ChatInterface({
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
 
 
+  const sessionContentRef                               = useRef(''); // no re-renders during audio
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
   const photoInputRef    = useRef<HTMLInputElement>(null);
