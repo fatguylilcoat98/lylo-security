@@ -29,7 +29,7 @@ from services.config import (
 from services.memory_engine import (
     store_intelligence_sync, retrieve_intelligence_sync,
     retrieve_intake_profile, retrieve_user_profile, synthesize_user_profile,
-    get_or_create_vault, save_vault, pin_memory,
+    get_or_create_vault, save_vault, auto_detect_pin_category,
 )
 from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
