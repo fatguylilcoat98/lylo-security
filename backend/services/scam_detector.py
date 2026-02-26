@@ -4,6 +4,7 @@ Scam indicator analysis and prompt injection detection.
 """
 import re
 import logging
+from typing import List
 
 logger = logging.getLogger("LYLO.ScamDetector")
 
