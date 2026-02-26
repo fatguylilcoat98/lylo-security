@@ -1,28 +1,24 @@
-"""
-LYLO OS — services/memory_engine.py
-All Pinecone read/write operations:
-  - auto_detect_pin_category
-  - store/retrieve intelligence_sync (episodic RAG)
-  - retrieve/synthesize user_profile
-  - retrieve/store intake_profile
-  - vault core (encrypted load/save)
-"""
-import datetime
+"""LYLO OS — services/memory_engine.py"""
 import re
+import os
 import json
 import time
-import logging
+import asyncio
+import base64
 import hashlib
+import logging
+import smtplib
+import random
+import string
+from io import BytesIO
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Dict, Optional, Tuple, Any, Union
 
 from services.config import (
-    memory_index, openai_client, _PROFILE_CACHE, _PROFILE_CACHE_TTL,
-    create_user_id,
+    memory_index, openai_client,
+    _PROFILE_CACHE, _PROFILE_CACHE_TTL, create_user_id,
 )
-
 logger = logging.getLogger("LYLO.Memory")
-
 def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     """
     Scans user message for pinnable intel.
@@ -151,7 +147,6 @@ async def retrieve_user_profile(user_id: str) -> dict:
     return {}
 
 
-
 async def synthesize_user_profile(user_id: str, user_name: str):
     if not memory_index or not openai_client:
         return
@@ -194,6 +189,14 @@ async def synthesize_user_profile(user_id: str, user_name: str):
 
 
 # =============================================================================
+# MED-VAULT PINECONE STORAGE
+# Encrypted vault stored as a separate Pinecone record per user per silo.
+# Nobody — including server operators — can read the encrypted blobs.
+# =============================================================================
+_VAULT_SUFFIX = "_medvault_v1"
+_VAULT_CACHE: dict = {}
+_VAULT_CACHE_TTL = 120  # 2 min cache — vault changes infrequently
+
 
 async def _load_vault_encrypted(user_id: str) -> Optional[str]:
     """Loads raw encrypted vault string from Pinecone. Returns None if not found."""
@@ -263,6 +266,9 @@ async def get_or_create_vault(user_id: str, email: str, pin: str = "") -> dict:
 async def _noop_vault(): return None
 
 
+# =============================================================================
+# PERSONALIZED SEARCH (TAVILY)
+# =============================================================================
 
 async def retrieve_intake_profile(user_id: str) -> dict:
     cache_key = f"{user_id}_intake"
@@ -291,7 +297,6 @@ async def retrieve_intake_profile(user_id: str) -> dict:
     return {}
 
 
-
 async def store_intake_profile(user_id: str, profile: dict):
     if not memory_index or not openai_client:
         return
@@ -313,3 +318,5 @@ async def store_intake_profile(user_id: str, profile: dict):
         logger.info(f"✅ Intake profile stored for {user_id}")
     except Exception as e:
         logger.error(f"Intake Profile Store Error: {e}")
+
+
