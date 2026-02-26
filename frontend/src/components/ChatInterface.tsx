@@ -88,7 +88,7 @@ interface MedVaultSummary {
 }
 
 type VaultSetupStep = 'choice' | 'pin_entry' | 'pin_confirm' | 'ready';
-type VaultView      = 'list' | 'add_med' | 'scan' | 'questions' | 'pdf_confirm';
+type VaultView      = 'list' | 'add_med' | 'scan' | 'questions' | 'pdf_confirm' | 'profile';
 import { useSentinel } from '../lib/useSentinel';
 import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
