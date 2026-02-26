@@ -1,19 +1,24 @@
-"""
-LYLO OS — services/llm_clients.py
-All LLM API calls: Gemini Vision, OpenAI Bodyguard, Claude Validator.
-"""
+"""LYLO OS — services/llm_clients.py"""
 import re
+import os
 import json
+import time
 import asyncio
 import base64
+import hashlib
 import logging
-from services.config import gemini_client, gemini_ready, openai_client, anthropic_client
+import smtplib
+import random
+import string
+from io import BytesIO
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple, Any, Union
 
-logger = logging.getLogger("LYLO.LLMClients")
-
-# =============================================================================
-# AI ENGINE CALLS — DUAL-PASS CONSENSUS
-# =============================================================================
+from services.config import (
+    gemini_client, gemini_ready, openai_client, anthropic_client,
+    DOMAIN_ANCHORS, _ANCHOR_EMBEDDINGS, _ANCHOR_CACHE_LOCK,
+)
+logger = logging.getLogger("LYLO.LLM")
 async def call_gemini_vision(prompt: str, image_b64: str = None, model_name: str = "gemini-2.0-flash-lite"):
     """
     Bulletproof Gemini call — google.genai SDK via Vertex AI.
@@ -104,8 +109,6 @@ async def call_openai_bodyguard(prompt: str, image_b64: str = None, model_name: 
 # V30 SENTENCE SPLITTER
 # =============================================================================
 
-# V30 SENTENCE SPLITTER
-# =============================================================================
 def split_into_sentences(text: str) -> list:
     clean  = re.sub(r"\*{1,2}|#{1,6}\s?", "", text).strip()
     parts  = re.findall(r"[^.!?\n]+(?:[.!?]+[\"']?(?:\s|$)|\n|$)", clean)
@@ -252,10 +255,6 @@ BANNED: Repeating the same passage or concept you already used.
 TONE: Deeply informed, non-dogmatic, genuinely curious about the specific journey.
 """
 
-def get_seat9_theology(intake_profile: dict, user_profile: dict) -> str:
-    faith = (intake_profile.get("faith_tradition","") or user_profile.get("faith_tradition","")).lower().strip()
-    if faith in ("islam","muslim","jewish","judaism","buddhism","buddhist","hindu","hinduism","multifaith","interfaith","custom"):
-        return SEAT9_MULTIFAITH
 
 async def validate_with_claude(
     persona: str,
@@ -498,3 +497,69 @@ ABSOLUTE RULES:
     except Exception as e:
         logger.warning(f"⚡ Director error: {e} — passing winner through")
         return {"answer": winner_answer, "claude_validated": False}
+
+
+# =============================================================================
+# EMERGENCY PROTOCOL SYSTEM — v31.0
+# Detects active crisis situations and delivers calm, step-by-step protocols.
+# PDF auto-dispatches immediately — no user prompt needed.
+# =============================================================================
+
+# Maps emergency types to the correct persona regardless of current seat
+_EMERGENCY_PERSONA_ROUTER = {
+    # Any message containing these keywords → auto-switch to this persona
+    "car wreck":          "lawyer",
+    "car accident":       "lawyer",
+    "just crashed":       "lawyer",
+    "i crashed":          "lawyer",
+    "was hit":            "lawyer",
+    "got hit":            "lawyer",
+    "fender bender":      "lawyer",
+    "collision":          "lawyer",
+    "someone hit me":     "lawyer",
+    "hit and run":        "lawyer",
+    "totaled my car":     "lawyer",
+    "being arrested":     "lawyer",
+    "they arrested":      "lawyer",
+    "under arrest":       "lawyer",
+    "eviction notice":    "lawyer",
+    "being evicted":      "lawyer",
+    "served papers":      "lawyer",
+    "chest pain":         "doctor",
+    "heart attack":       "doctor",
+    "stroke symptoms":    "doctor",
+    "face drooping":      "doctor",
+    "slurred speech":     "doctor",
+    "overdose":           "doctor",
+    "not breathing":      "doctor",
+    "unconscious":        "doctor",
+    "severe allergic":    "doctor",
+    "throat closing":     "doctor",
+    "seizure":            "doctor",
+    "having a seizure":   "doctor",
+    "account hacked":     "guardian",
+    "i got hacked":       "guardian",
+    "someone hacked":     "guardian",
+    "identity stolen":    "guardian",
+    "identity theft":     "guardian",
+    "credit card stolen": "guardian",
+    "unauthorized charges": "guardian",
+    "fraud on my account": "guardian",
+    "brake failure":      "mechanic",
+    "brakes failed":      "mechanic",
+    "brakes aren't working": "mechanic",
+    "no brakes":          "mechanic",
+    "tire blowout":       "mechanic",
+    "blew a tire":        "mechanic",
+    "engine overheating": "mechanic",
+    "car is smoking":     "mechanic",
+    "account drained":    "wealth",
+    "bank account empty": "wealth",
+    "money stolen":       "wealth",
+    "wire fraud":         "wealth",
+    "heat stroke":        "vitality",
+    "heat exhaustion":    "vitality",
+    "passed out from heat": "vitality",
+}
+
+
