@@ -479,11 +479,3 @@ PRE-EXECUTION CHECKLIST:
 REQUIRED OUTPUT SCHEMA:
 {get_output_schema(persona)}
 """.strip()
-
-# =============================================================================
-# V30 INLINE TTS
-# =============================================================================
-VALID_VOICES = {"nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"}
-
-async def generate_audio_inline(text: str, voice: str = "onyx") -> str:
-    if not openai_client or not text.strip():
