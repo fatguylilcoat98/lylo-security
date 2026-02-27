@@ -1,11 +1,16 @@
 /**
  * LYLO OS — chat/useChatSend.ts
- * Fixed field names to match backend: user_email, msg, file (not email, message, image)
+ * Fixed field names: user_email, msg, file
+ * Added detailed error logging to debug "Failed to fetch"
  */
 import { useState, useRef, useCallback } from 'react';
 import type { ChatMessage, TrustAudit, IntakeProfile, BestieConfig } from '../../types';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://lylo-backend.onrender.com';
+// ── IMPORTANT: Set VITE_API_URL in Render environment variables ──────────────
+// Go to Render → your frontend service → Environment → add:
+// VITE_API_URL = https://YOUR-ACTUAL-BACKEND-NAME.onrender.com
+const API_BASE = (import.meta.env.VITE_API_URL as string)?.replace(/\/$/, '')
+  ?? 'https://lylo-backend.onrender.com';
 
 interface UseChatSendOptions {
   userEmail: string;
@@ -19,14 +24,9 @@ interface UseChatSendOptions {
 }
 
 export function useChatSend({
-  userEmail,
-  persona,
-  lang,
-  intakeProfile,
-  bestieConfig,
-  vaultPin,
-  onAudio,
-  onEmergency,
+  userEmail, persona, lang,
+  intakeProfile, bestieConfig, vaultPin,
+  onAudio, onEmergency,
 }: UseChatSendOptions) {
   const [messages,     setMessages]     = useState<ChatMessage[]>([]);
   const [input,        setInput]        = useState('');
@@ -59,9 +59,7 @@ export function useChatSend({
     if (!content && !imageFile) return;
 
     const userMsg: ChatMessage = {
-      role:      'user',
-      content,
-      timestamp: Date.now(),
+      role: 'user', content, timestamp: Date.now(),
       image_url: imagePreview ?? undefined,
     };
 
@@ -74,44 +72,41 @@ export function useChatSend({
 
     try {
       const form = new FormData();
-      // ── Correct field names matching backend ──────────────────────────────
       form.append('user_email', userEmail);
       form.append('msg',        content);
       form.append('persona',    persona);
       form.append('lang',       lang);
       form.append('history',    '[]');
       form.append('device_id',  'web');
-
       if (intakeProfile) form.append('intake_profile', JSON.stringify(intakeProfile));
       if (bestieConfig)  form.append('bestie_config',  JSON.stringify(bestieConfig));
       if (vaultPin)      form.append('vault_pin',      vaultPin);
-      if (imageFile)     form.append('file', imageFile); // backend expects 'file' not 'image'
+      if (imageFile)     form.append('file', imageFile);
 
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        body:   form,
-      });
+      console.log(`[LYLO] Sending to ${API_BASE}/chat | persona=${persona} | email=${userEmail}`);
 
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const res = await fetch(`${API_BASE}/chat`, { method: 'POST', body: form });
 
-      // ── Handle SSE streaming response ─────────────────────────────────────
+      console.log(`[LYLO] Response status: ${res.status}`);
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`Server error ${res.status}: ${body.slice(0, 200)}`);
+      }
+
       const contentType = res.headers.get('content-type') ?? '';
       let reply = '';
 
       if (contentType.includes('text/event-stream')) {
-        // SSE streaming
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
-        const assistantMsg: ChatMessage = {
-          role: 'assistant', content: '', persona, timestamp: Date.now(),
-        };
+        const assistantMsg: ChatMessage = { role: 'assistant', content: '', persona, timestamp: Date.now() };
         setMessages(prev => [...prev, assistantMsg]);
 
         while (reader) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+          const lines = decoder.decode(value).split('\n');
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             try {
@@ -126,50 +121,44 @@ export function useChatSend({
               }
               if (parsed.type === 'meta') {
                 if (parsed.full_answer) reply = parsed.full_answer;
-                if (parsed.emergency_protocol && onEmergency) {
-                  onEmergency(parsed.emergency_protocol);
-                }
+                if (parsed.emergency_protocol && onEmergency) onEmergency(parsed.emergency_protocol);
               }
-            } catch { /* skip malformed lines */ }
+            } catch { /* skip */ }
           }
         }
       } else {
-        // JSON response fallback
         const data = await res.json();
         if (data.emergency_protocol && onEmergency) onEmergency(data.emergency_protocol);
-        reply = data.response ?? data.message ?? data.answer ?? '';
-        const assistantMsg: ChatMessage = {
+        reply = data.response ?? data.message ?? data.answer ?? data.full_answer ?? '';
+        setMessages(prev => [...prev, {
           role: 'assistant', content: reply,
           trust_audit: data.trust_audit as TrustAudit | undefined,
           persona, timestamp: Date.now(),
-        };
-        setMessages(prev => [...prev, assistantMsg]);
+        }]);
       }
 
       appendSessionContent(`User: ${content}\nLYLO: ${reply}`);
       if (reply) onAudio(reply);
 
     } catch (e: any) {
-      setError(e.message ?? 'Something went wrong. Try again.');
+      console.error('[LYLO] Chat error:', e);
+      const msg = e.message ?? 'Connection failed';
+      setError(msg.includes('Failed to fetch')
+        ? `Can't reach server. Check that VITE_API_URL is set correctly in Render. (${API_BASE})`
+        : msg);
     } finally {
       setIsLoading(false);
     }
-  }, [
-    input, imageFile, imagePreview, userEmail, persona, lang,
-    intakeProfile, bestieConfig, vaultPin,
-    clearImage, onAudio, onEmergency, appendSessionContent,
-  ]);
+  }, [input, imageFile, imagePreview, userEmail, persona, lang,
+      intakeProfile, bestieConfig, vaultPin,
+      clearImage, onAudio, onEmergency, appendSessionContent]);
 
   return {
     messages, setMessages,
-    input, setInput,
-    inputTextRef,
-    isLoading,
-    error,
-    imageFile,
-    imagePreview,
-    handleImageSelect,
-    clearImage,
+    input, setInput, inputTextRef,
+    isLoading, error,
+    imageFile, imagePreview,
+    handleImageSelect, clearImage,
     sendMessage,
     sessionContent: sessionContentRef.current,
     appendSessionContent,
