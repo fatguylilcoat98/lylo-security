@@ -72,6 +72,11 @@ except ImportError:
     MED_VAULT_ENABLED = False
 logger = logging.getLogger("LYLO.Chat")
 router = APIRouter()
+async def _noop_vault():
+    """Placeholder used when vault is disabled or persona can't read medical data."""
+    return None
+
+
 @router.post("/generate-audio")
 async def generate_audio(
     text:  str = Form(...),
