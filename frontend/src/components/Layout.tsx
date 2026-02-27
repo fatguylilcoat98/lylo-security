@@ -50,20 +50,23 @@ export default function Layout({ children, currentPersona, onPersonaChange, font
   const [icons, setIcons]             = useState<any>(null);
   const [menuOpen, setMenuOpen]       = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hovered, setHovered]         = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { importIcons().then(setIcons); }, []);
-
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const h = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
 
   const activeId    = typeof currentPersona === 'string' ? currentPersona : currentPersona?.id;
   const activeColor = personas.find(p => p.id === activeId)?.color ?? '#00CFFF';
+
+  // Sidebar is "expanded" when: mobile drawer open OR desktop hovered
+  const expanded = sidebarOpen || hovered;
 
   const getIcon = (name: string, cls = 'w-5 h-5') => {
     if (!icons) return null;
@@ -74,25 +77,29 @@ export default function Layout({ children, currentPersona, onPersonaChange, font
   return (
     <div className="h-screen bg-[#050505] text-white flex overflow-hidden font-sans" style={{ fontSize }}>
 
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/80 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* ── Sidebar: collapses to icons only, expands on hover ── */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 bg-[#080808] border-r border-white/10 flex flex-col
-        transition-all duration-300 ease-in-out overflow-hidden
-        ${sidebarOpen ? 'w-56 translate-x-0' : 'w-56 -translate-x-full'}
-        md:relative md:translate-x-0 md:w-14 md:hover:w-56 md:group
-      `}>
-
-        {/* Sidebar logo */}
+      {/* ── Sidebar ── */}
+      <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={`
+          fixed inset-y-0 left-0 z-50 bg-[#080808] border-r border-white/10 flex flex-col
+          transition-all duration-300 ease-in-out overflow-hidden
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:relative md:translate-x-0
+          ${expanded ? 'w-56' : 'w-14'}
+        `}
+      >
+        {/* Logo */}
         <div className="h-14 px-3 flex items-center border-b border-white/10 overflow-hidden">
           <span className="font-black text-base italic uppercase tracking-wider whitespace-nowrap select-none">
             <span className="text-white">L</span>
             <span style={{ color: activeColor }} className="transition-colors duration-300">Y</span>
-            <span className="text-white">LO</span>
-            <span className="text-white/40 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">.PRO</span>
+            <span className={`text-white transition-all duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0'}`}>LO.PRO</span>
           </span>
           <button onClick={() => setSidebarOpen(false)} className="ml-auto md:hidden text-gray-400 hover:text-white">
             {getIcon('X', 'w-4 h-4')}
@@ -116,17 +123,16 @@ export default function Layout({ children, currentPersona, onPersonaChange, font
                   }
                 `}
               >
-                <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center transition-colors"
+                <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center"
                   style={{ color: isActive ? persona.color : undefined }}>
                   {getIcon(persona.iconName)}
                 </div>
-                <span className="text-sm font-semibold whitespace-nowrap
-                  md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 overflow-hidden">
+                <span className={`text-sm font-semibold whitespace-nowrap transition-all duration-200 overflow-hidden
+                  ${expanded ? 'opacity-100 max-w-[160px]' : 'opacity-0 max-w-0'}`}>
                   {persona.name}
                 </span>
-                {isActive && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0
-                    md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                {isActive && expanded && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: persona.color }} />
                 )}
               </button>
@@ -135,51 +141,39 @@ export default function Layout({ children, currentPersona, onPersonaChange, font
         </div>
       </aside>
 
-      {/* ── Main content ── */}
+      {/* ── Main ── */}
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
-
         {/* Top bar */}
         <div className="h-14 px-4 flex items-center border-b border-white/10 flex-shrink-0 bg-[#080808]">
-
-          {/* Mobile: hamburger to open sidebar */}
           <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 mr-2 text-white/50 hover:text-white">
             {getIcon('Menu', 'w-5 h-5')}
           </button>
-
-          {/* Mobile logo */}
           <span className="md:hidden font-black text-base italic uppercase select-none">
             <span className="text-white">L</span>
-            <span style={{ color: activeColor }} className="transition-colors duration-300">Y</span>
+            <span style={{ color: activeColor }}>Y</span>
             <span className="text-white">LO.PRO</span>
           </span>
-
           <div className="flex-1" />
 
-          {/* ── Hamburger menu top-right ── */}
+          {/* Hamburger menu */}
           <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen(v => !v)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
-            >
+            <button onClick={() => setMenuOpen(v => !v)}
+              className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
               {getIcon('Menu', 'w-5 h-5')}
             </button>
-
             {menuOpen && (
               <div className="absolute right-0 top-12 w-52 bg-[#111] border border-white/15 rounded-2xl shadow-2xl z-50 overflow-hidden">
                 <div className="px-4 pt-4 pb-2">
                   <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold mb-3">Text Size</p>
                   <div className="grid grid-cols-2 gap-2">
                     {FONT_SIZES.map(fs => (
-                      <button
-                        key={fs.value}
+                      <button key={fs.value}
                         onClick={() => { onFontSizeChange?.(fs.value); setMenuOpen(false); }}
                         className={`py-2.5 rounded-xl text-xs font-bold transition-all border
                           ${fontSize === fs.value
                             ? 'text-white bg-white/15 border-white/30'
-                            : 'text-white/40 border-white/5 hover:text-white hover:bg-white/5'
-                          }`}
-                        style={fontSize === fs.value ? { borderColor: activeColor + '66', color: activeColor } : {}}
-                      >
+                            : 'text-white/40 border-white/5 hover:text-white hover:bg-white/5'}`}
+                        style={fontSize === fs.value ? { borderColor: activeColor + '66', color: activeColor } : {}}>
                         {fs.label}
                       </button>
                     ))}
