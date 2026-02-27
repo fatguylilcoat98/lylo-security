@@ -24,12 +24,12 @@ from services.config import (
     USAGE_TRACKER, CONVO_CONTEXT, MAX_CONVO_CONTEXT,
     AUTHORIZED_DEVICES, MAX_DEVICES_PER_USER,
     _ANCHOR_EMBEDDINGS, _ANCHOR_CACHE_LOCK, DOMAIN_ANCHORS,
-    create_user_id,
+    create_user_id, tavily_client,
 )
 from services.memory_engine import (
     store_intelligence_sync, retrieve_intelligence_sync,
     retrieve_intake_profile, retrieve_user_profile, synthesize_user_profile,
-    get_or_create_vault, save_vault, auto_detect_pin_category,
+    get_or_create_vault, save_vault, auto_detect_pin_category, load_vault,
 )
 from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
@@ -75,6 +75,89 @@ router = APIRouter()
 async def _noop_vault():
     """Placeholder used when vault is disabled or persona can't read medical data."""
     return None
+
+
+async def _get_tavily_context(persona: str, message: str, location: str) -> str:
+    """
+    Generates a domain-specific Tavily query per persona and returns
+    verified real-time context. Never crashes — returns "" on any failure.
+    """
+    if not tavily_client:
+        return ""
+
+    PERSONA_QUERY_MAP = {
+        "doctor":    f"{message} medical health symptoms treatment",
+        "lawyer":    f"{message} legal rights law advice",
+        "wealth":    f"{message} personal finance investment advice",
+        "mechanic":  f"{message} car vehicle repair fix",
+        "therapist": f"{message} mental health emotional wellbeing coping",
+        "vitality":  f"{message} fitness nutrition exercise health",
+        "career":    f"{message} career job workplace professional advice",
+        "tutor":     f"{message} explanation learn understand",
+        "guardian":  f"{message} cybersecurity scam safety protect",
+        "hype":      f"{message} content creation social media strategy",
+        "pastor":    f"{message} faith spirituality scripture meaning",
+        "bestie":    f"{message} advice relationship personal",
+    }
+
+    ALWAYS_SEARCH = {"doctor", "lawyer", "wealth", "guardian", "mechanic"}
+    SEARCH_TRIGGERS = {
+        "how do i", "what is", "is it safe", "should i", "what are",
+        "how much", "is this", "what does", "can i", "when should",
+        "what happens", "is there", "how long", "how often", "best way",
+        "help me understand", "explain", "difference between",
+    }
+
+    if persona not in ALWAYS_SEARCH:
+        msg_lower = message.lower()
+        if not any(t in msg_lower for t in SEARCH_TRIGGERS):
+            return ""
+
+    query = PERSONA_QUERY_MAP.get(persona, message)
+    loc   = location or ""
+
+    try:
+        resp = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: tavily_client.search(
+                    query          = f"{query} {loc}".strip(),
+                    search_depth   = "advanced",
+                    max_results    = 4,
+                    include_answer = True,
+                )
+            ),
+            timeout=4.0
+        )
+
+        parts = []
+        if resp.get("answer"):
+            parts.append(f"VERIFIED ANSWER: {resp['answer']}")
+        for r in resp.get("results", [])[:3]:
+            title   = r.get("title", "")
+            snippet = r.get("content", "")[:250]
+            source  = r.get("url", "")
+            if snippet:
+                parts.append(f"SOURCE — {title}: {snippet} [{source}]")
+
+        if not parts:
+            return ""
+
+        return (
+            "\n\n━━━ REAL-TIME VERIFIED INTELLIGENCE ━━━\n"
+            "The following was retrieved RIGHT NOW from trusted sources.\n"
+            "Use this to give accurate, up-to-date answers. Cite the source "
+            "when it materially affects your answer.\n\n"
+            + "\n".join(parts)
+            + "\n━━━ END VERIFIED INTELLIGENCE ━━━"
+        )
+
+    except asyncio.TimeoutError:
+        logger.warning(f"⏱️ Tavily timeout for [{persona}] — responding from training knowledge")
+        return ""
+    except Exception as e:
+        logger.warning(f"⚠️ Tavily error for [{persona}]: {e}")
+        return ""
 
 
 @router.post("/generate-audio")
@@ -873,95 +956,6 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
     # ── Build final system prompt ─────────────────────────────────────────────
     user_profile  = await retrieve_user_profile(user_id)
     intake_profile = await retrieve_intake_profile(user_id)
-
-    # ── Real-Time Intelligence: Pinecone + Tavily run in parallel ────────────
-    # Both fire simultaneously — total wait = max(pinecone_time, tavily_time)
-    # not pinecone_time + tavily_time. Usually <1.5s combined.
-    async def _get_tavily_context(persona: str, message: str, location: str) -> str:
-        """
-        Generates a domain-specific Tavily query per persona and returns
-        verified real-time context. Never crashes — returns "" on any failure.
-        """
-        if not tavily_client:
-            return ""
-        
-        # Per-persona query strategy — each specialist searches their domain
-        PERSONA_QUERY_MAP = {
-            "doctor":    f"{message} medical health symptoms treatment",
-            "lawyer":    f"{message} legal rights law advice",
-            "wealth":    f"{message} personal finance investment advice",
-            "mechanic":  f"{message} car vehicle repair fix",
-            "therapist": f"{message} mental health emotional wellbeing coping",
-            "vitality":  f"{message} fitness nutrition exercise health",
-            "career":    f"{message} career job workplace professional advice",
-            "tutor":     f"{message} explanation learn understand",
-            "guardian":  f"{message} cybersecurity scam safety protect",
-            "hype":      f"{message} content creation social media strategy",
-            "pastor":    f"{message} faith spirituality scripture meaning",
-            "bestie":    f"{message} advice relationship personal",
-        }
-        
-        # Personas that always need real-time data (medical, legal, financial)
-        ALWAYS_SEARCH = {"doctor", "lawyer", "wealth", "guardian", "mechanic"}
-        
-        # For other personas: only search if message contains uncertainty triggers
-        SEARCH_TRIGGERS = {
-            "how do i", "what is", "is it safe", "should i", "what are",
-            "how much", "is this", "what does", "can i", "when should",
-            "what happens", "is there", "how long", "how often", "best way",
-            "help me understand", "explain", "difference between",
-        }
-        
-        if persona not in ALWAYS_SEARCH:
-            msg_lower = message.lower()
-            if not any(t in msg_lower for t in SEARCH_TRIGGERS):
-                return ""  # Skip search for statements/venting, not questions
-        
-        query = PERSONA_QUERY_MAP.get(persona, message)
-        loc   = location or ""
-        
-        try:
-            resp = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: tavily_client.search(
-                        query        = f"{query} {loc}".strip(),
-                        search_depth = "advanced",
-                        max_results  = 4,
-                        include_answer = True,
-                    )
-                ),
-                timeout=4.0
-            )
-            
-            parts = []
-            if resp.get("answer"):
-                parts.append(f"VERIFIED ANSWER: {resp['answer']}")
-            for r in resp.get("results", [])[:3]:
-                title   = r.get("title", "")
-                snippet = r.get("content", "")[:250]
-                source  = r.get("url", "")
-                if snippet:
-                    parts.append(f"SOURCE — {title}: {snippet} [{source}]")
-            
-            if not parts:
-                return ""
-            
-            return (
-                "\n\n━━━ REAL-TIME VERIFIED INTELLIGENCE ━━━\n"
-                "The following was retrieved RIGHT NOW from trusted sources.\n"
-                "Use this to give accurate, up-to-date answers. Cite the source "
-                "when it materially affects your answer.\n\n"
-                + "\n".join(parts)
-                + "\n━━━ END VERIFIED INTELLIGENCE ━━━"
-            )
-        
-        except asyncio.TimeoutError:
-            logger.warning(f"⏱️ Tavily timeout for [{persona}] — responding from training knowledge")
-            return ""
-        except Exception as e:
-            logger.warning(f"⚠️ Tavily error for [{persona}]: {e}")
-            return ""
 
     # Run both in parallel
     user_location = get_user_location_data(email_lower)
