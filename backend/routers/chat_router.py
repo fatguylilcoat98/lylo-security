@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.background import BackgroundTasks
 from pydantic import BaseModel
 from services.config import (
-    gemini_client, gemini_ready, openai_client, anthropic_client,
+    gemini_client, gemini_ready, openai_client, anthropic_client, claude_client,
     memory_index, ELITE_USERS, ELITE_TIERS, TIER_LIMITS,
     USAGE_TRACKER, CONVO_CONTEXT, MAX_CONVO_CONTEXT,
     AUTHORIZED_DEVICES, MAX_DEVICES_PER_USER,
