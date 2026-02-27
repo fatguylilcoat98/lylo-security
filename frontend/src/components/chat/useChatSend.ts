@@ -1,21 +1,17 @@
-/**
- * LYLO OS — chat/useChatSend.ts
- * Fixed field names: user_email, msg, file
- * Added detailed error logging to debug "Failed to fetch"
- */
 import { useState, useRef, useCallback } from 'react';
 import type { ChatMessage, TrustAudit, IntakeProfile, BestieConfig } from '../../types';
 
-// ── IMPORTANT: Set VITE_API_URL in Render environment variables ──────────────
-// Go to Render → your frontend service → Environment → add:
-// VITE_API_URL = https://YOUR-ACTUAL-BACKEND-NAME.onrender.com
-const API_BASE = (import.meta.env.VITE_API_URL as string)?.replace(/\/$/, '')
-  ?? 'https://lylo-backend.onrender.com';
+// Reads VITE_API_URL or VITE_BACKEND_URL (whichever is set in Render)
+const API_BASE = (
+  (import.meta.env.VITE_API_URL as string) ||
+  (import.meta.env.VITE_BACKEND_URL as string) ||
+  'https://lylo-backend.onrender.com'
+).replace(/\/$/, '');
 
 interface UseChatSendOptions {
-  userEmail: string;
-  persona:   string;
-  lang:      'en' | 'es';
+  userEmail:     string;
+  persona:       string;
+  lang:          'en' | 'es';
   intakeProfile: IntakeProfile | null;
   bestieConfig:  BestieConfig | null;
   vaultPin?:     string;
@@ -38,13 +34,12 @@ export function useChatSend({
   const sessionContentRef = useRef<string[]>([]);
   const inputTextRef      = useRef('');
 
-  const appendSessionContent = useCallback((text: string) => {
-    sessionContentRef.current.push(text);
+  const appendSessionContent = useCallback((t: string) => {
+    sessionContentRef.current.push(t);
   }, []);
 
   const clearImage = useCallback(() => {
-    setImageFile(null);
-    setImagePreview(null);
+    setImageFile(null); setImagePreview(null);
   }, []);
 
   const handleImageSelect = useCallback((file: File) => {
@@ -58,12 +53,7 @@ export function useChatSend({
     const content = (text ?? input).trim();
     if (!content && !imageFile) return;
 
-    const userMsg: ChatMessage = {
-      role: 'user', content, timestamp: Date.now(),
-      image_url: imagePreview ?? undefined,
-    };
-
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => [...prev, { role: 'user', content, timestamp: Date.now(), image_url: imagePreview ?? undefined }]);
     setInput('');
     inputTextRef.current = '';
     clearImage();
@@ -83,27 +73,36 @@ export function useChatSend({
       if (vaultPin)      form.append('vault_pin',      vaultPin);
       if (imageFile)     form.append('file', imageFile);
 
-      console.log(`[LYLO] Sending to ${API_BASE}/chat | persona=${persona} | email=${userEmail}`);
+      console.log(`[LYLO] → ${API_BASE}/chat | persona=${persona}`);
 
       const res = await fetch(`${API_BASE}/chat`, { method: 'POST', body: form });
-
-      console.log(`[LYLO] Response status: ${res.status}`);
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Server error ${res.status}: ${body.slice(0, 200)}`);
-      }
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
 
       const contentType = res.headers.get('content-type') ?? '';
       let reply = '';
 
       if (contentType.includes('text/event-stream')) {
-        const reader = res.body?.getReader();
+        // SSE streaming — speak each sentence as it arrives
+        const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         const assistantMsg: ChatMessage = { role: 'assistant', content: '', persona, timestamp: Date.now() };
         setMessages(prev => [...prev, assistantMsg]);
 
-        while (reader) {
+        let sentenceBuffer = '';
+
+        const flushSentence = (force = false) => {
+          // Speak when we hit sentence-ending punctuation
+          const match = sentenceBuffer.match(/^(.*?[.!?])\s*/s);
+          if (match || force) {
+            const toSpeak = match ? match[1].trim() : sentenceBuffer.trim();
+            if (toSpeak.length > 3) {
+              onAudio(toSpeak);  // ← speak immediately, don't wait for full response
+            }
+            sentenceBuffer = match ? sentenceBuffer.slice(match[0].length) : '';
+          }
+        };
+
+        while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const lines = decoder.decode(value).split('\n');
@@ -113,6 +112,8 @@ export function useChatSend({
               const parsed = JSON.parse(line.slice(6));
               if (parsed.type === 'text' && parsed.content) {
                 reply += parsed.content;
+                sentenceBuffer += parsed.content;
+                flushSentence();
                 setMessages(prev => {
                   const updated = [...prev];
                   updated[updated.length - 1] = { ...assistantMsg, content: reply };
@@ -126,7 +127,11 @@ export function useChatSend({
             } catch { /* skip */ }
           }
         }
+        // Flush any remaining buffer
+        flushSentence(true);
+
       } else {
+        // JSON fallback
         const data = await res.json();
         if (data.emergency_protocol && onEmergency) onEmergency(data.emergency_protocol);
         reply = data.response ?? data.message ?? data.answer ?? data.full_answer ?? '';
@@ -135,23 +140,24 @@ export function useChatSend({
           trust_audit: data.trust_audit as TrustAudit | undefined,
           persona, timestamp: Date.now(),
         }]);
+        if (reply) onAudio(reply);
       }
 
       appendSessionContent(`User: ${content}\nLYLO: ${reply}`);
-      if (reply) onAudio(reply);
 
     } catch (e: any) {
       console.error('[LYLO] Chat error:', e);
-      const msg = e.message ?? 'Connection failed';
-      setError(msg.includes('Failed to fetch')
-        ? `Can't reach server. Check that VITE_API_URL is set correctly in Render. (${API_BASE})`
-        : msg);
+      setError(e.message?.includes('Failed to fetch')
+        ? `Can't reach server. URL being used: ${API_BASE}`
+        : (e.message ?? 'Connection failed'));
     } finally {
       setIsLoading(false);
     }
-  }, [input, imageFile, imagePreview, userEmail, persona, lang,
-      intakeProfile, bestieConfig, vaultPin,
-      clearImage, onAudio, onEmergency, appendSessionContent]);
+  }, [
+    input, imageFile, imagePreview, userEmail, persona, lang,
+    intakeProfile, bestieConfig, vaultPin,
+    clearImage, onAudio, onEmergency, appendSessionContent,
+  ]);
 
   return {
     messages, setMessages,
