@@ -1,6 +1,6 @@
 /**
  * LYLO OS — chat/ui/MessageBubble.tsx
- * Renders a single chat message with optional Trust Layer audit display.
+ * Added personaColor prop — user bubbles glow in active persona color.
  */
 import React, { useState } from 'react';
 import type { ChatMessage, TrustSentence } from '../../../types';
@@ -20,18 +20,19 @@ const TIER_LABELS = {
 };
 
 interface MessageBubbleProps {
-  message:    ChatMessage;
-  showTrust?: boolean;
+  message:      ChatMessage;
+  showTrust?:   boolean;
+  personaColor?: string;
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   showTrust = false,
+  personaColor = '#00CFFF',
 }) => {
   const [expanded, setExpanded] = useState(false);
   const isUser = message.role === 'user';
 
-  // ── Trust tier badge ──────────────────────────────────────────────────────
   const renderTrustBadge = () => {
     if (!message.trust_audit || isUser) return null;
     const tier  = message.trust_audit.overall_tier;
@@ -49,17 +50,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     );
   };
 
-  // ── Trust sentence breakdown ──────────────────────────────────────────────
   const renderTrustDetail = () => {
     if (!expanded || !message.trust_audit) return null;
     return (
       <div className="mt-2 border border-white/10 rounded-xl p-3 text-xs space-y-1">
         {message.trust_audit.sentences.map((s: TrustSentence, i: number) => (
           <div key={i} className="flex gap-2 items-start">
-            <span
-              className="mt-0.5 shrink-0 w-2 h-2 rounded-full"
-              style={{ backgroundColor: TIER_COLORS[s.tier] }}
-            />
+            <span className="mt-0.5 shrink-0 w-2 h-2 rounded-full"
+              style={{ backgroundColor: TIER_COLORS[s.tier] }} />
             <span className="text-white/70">{s.text}</span>
           </div>
         ))}
@@ -75,27 +73,26 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
       <div
-        className={`
-          max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed
-          ${isUser
-            ? 'bg-green-500/20 text-white border border-green-500/30 rounded-br-sm'
-            : 'bg-white/5 text-white/90 border border-white/10 rounded-bl-sm'
-          }
-        `}
+        className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed border"
+        style={isUser ? {
+          // User bubble: persona color tint
+          backgroundColor: personaColor + '20',
+          borderColor:     personaColor + '50',
+          borderBottomRightRadius: 4,
+          color: '#fff',
+        } : {
+          // Assistant bubble: subtle dark
+          backgroundColor: 'rgba(255,255,255,0.04)',
+          borderColor:     'rgba(255,255,255,0.08)',
+          borderBottomLeftRadius: 4,
+          color: 'rgba(255,255,255,0.9)',
+        }}
       >
-        {/* Image preview */}
         {message.image_url && (
-          <img
-            src={message.image_url}
-            alt="attached"
-            className="rounded-xl mb-2 max-h-40 object-cover"
-          />
+          <img src={message.image_url} alt="attached"
+            className="rounded-xl mb-2 max-h-40 object-cover" />
         )}
-
-        {/* Message content */}
         <div style={{ whiteSpace: 'pre-wrap' }}>{message.content}</div>
-
-        {/* Trust layer */}
         {showTrust && renderTrustBadge()}
         {renderTrustDetail()}
       </div>
