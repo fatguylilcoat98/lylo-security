@@ -238,7 +238,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onSend={sendMessage}
         onImageSelect={handleImageSelect} onImageClear={clearImage}
         onVoiceStart={startRecording}
-        onVoiceStop={() => { stopRecording(); setTimeout(() => { if (inputTextRef.current.trim()) sendMessage(); }, 300); }}
+        onVoiceStop={() => {
+          stopRecording();
+          // Small delay so transcript lands in inputTextRef before send fires
+          setTimeout(() => {
+            const text = inputTextRef.current.trim();
+            if (text) {
+              inputTextRef.current = '';
+              sendMessage(text);
+            }
+          }, 200);
+        }}
         onKeyDown={handleKeyDown}
         personaColor={personaColor}
         lang={lang}
