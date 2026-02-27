@@ -1,18 +1,11 @@
-/**
- * LYLO OS — ChatInterface.tsx  (v31.0 Modular)
- * Persona switching via sidebar only. No modal.
- */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-
 import type { ChatInterfaceProps, IntakeProfile } from '../types';
-
 import { useVoice }      from './chat/useVoice';
 import { useAudioQueue } from './chat/useAudioQueue';
 import { usePersona, PERSONAS } from './chat/usePersona';
 import { useVault }      from './chat/useVault';
 import { useIntake }     from './chat/useIntake';
 import { useChatSend }   from './chat/useChatSend';
-
 import { MessageBubble }    from './chat/ui/MessageBubble';
 import { BottomBar }        from './chat/ui/BottomBar';
 import { EmergencyOverlay } from './chat/ui/EmergencyOverlay';
@@ -21,7 +14,6 @@ const DEFAULT_LANG: 'en' | 'es' = 'en';
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   userEmail,
-  userName,
   userTier = 'free',
   lang = DEFAULT_LANG,
   onSignOut,
@@ -30,21 +22,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isRecording,  setIsRecording]  = useState(false);
   const [emergency,    setEmergency]    = useState<any>(null);
   const [trustVisible, setTrustVisible] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef        = useRef<HTMLDivElement>(null);
+  const lastPersonaRef   = useRef<string>('');  // track last switched persona to prevent double-fire
 
   const { enqueue: enqueueAudio, isSpeaking } = useAudioQueue({
-    userEmail,
-    persona: 'guardian',
-    lang,
-    onSpeakingChange: () => {},
+    userEmail, persona: 'guardian', lang, onSpeakingChange: () => {},
   });
 
-  const {
-    intakeProfile,
-    loadIntakeProfile,
-  } = useIntake({
+  const { intakeProfile, loadIntakeProfile } = useIntake({
     userEmail,
-    onIntakeComplete: (_profile: IntakeProfile) => {},
+    onIntakeComplete: (_: IntakeProfile) => {},
   });
 
   const {
@@ -52,9 +39,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     showBestieSetup, setShowBestieSetup,
     switchPersona, saveBestieConfig,
   } = usePersona({
-    userEmail,
-    lang,
-    intakeProfile,
+    userEmail, lang, intakeProfile,
     onGreeting: (text) => {
       setMessages(prev => [
         ...prev,
@@ -64,9 +49,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     },
   });
 
-  // Fire switchPersona every time sidebar changes persona
+  // Switch persona when sidebar selection changes — guarded by ref to prevent double-fire
   useEffect(() => {
-    if (currentPersonaId) {
+    if (currentPersonaId && currentPersonaId !== lastPersonaRef.current) {
+      lastPersonaRef.current = currentPersonaId;
       switchPersona(currentPersonaId);
     }
   }, [currentPersonaId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -80,18 +66,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     handleImageSelect, clearImage,
     sendMessage,
   } = useChatSend({
-    userEmail,
-    persona: currentPersona,
-    lang,
-    intakeProfile,
-    bestieConfig,
+    userEmail, persona: currentPersona, lang,
+    intakeProfile, bestieConfig,
     onAudio: enqueueAudio,
     onEmergency: setEmergency,
   });
 
   const { startRecording, stopRecording } = useVoice({
-    lang,
-    isSpeaking,
+    lang, isSpeaking,
     onTranscript: (text) => { setInput(text); inputTextRef.current = text; },
     onInterim:    (text) => { setInput(text); },
     onRecordingChange: setIsRecording,
@@ -110,43 +92,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [sendMessage]);
 
   return (
-    <div className="flex flex-col h-screen bg-[#080808] text-white overflow-hidden">
+    <div className="flex flex-col h-full bg-[#080808] text-white overflow-hidden">
 
-      {emergency && (
-        <EmergencyOverlay protocol={emergency} onDismiss={() => setEmergency(null)} />
-      )}
+      {emergency && <EmergencyOverlay protocol={emergency} onDismiss={() => setEmergency(null)} />}
 
       {/* Top Bar */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b border-white/5"
-        style={{ borderBottomColor: personaColor + '22' }}
-      >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5"
+        style={{ borderBottomColor: personaColor + '22' }}>
         <div className="flex items-center gap-2 rounded-2xl px-3 py-1.5 bg-white/5 border border-white/10">
           <span className="text-lg">{personaConfig.emoji}</span>
           <span className="text-white/80 text-sm font-medium">{personaConfig.label}</span>
         </div>
-
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTrustVisible(v => !v)}
+          <button onClick={() => setTrustVisible(v => !v)}
             className={`text-xs px-2 py-1 rounded-lg border transition-all ${
-              trustVisible
-                ? 'border-green-500/50 text-green-400 bg-green-500/10'
-                : 'border-white/10 text-white/30 hover:text-white/60'
-            }`}
-          >
+              trustVisible ? 'border-green-500/50 text-green-400 bg-green-500/10'
+                           : 'border-white/10 text-white/30 hover:text-white/60'}`}>
             🛡 Trust
           </button>
-          <button
-            onClick={() => vault.setVaultSetupOpen(true)}
-            className="text-xs px-2 py-1 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all"
-          >
+          <button onClick={() => vault.setVaultSetupOpen(true)}
+            className="text-xs px-2 py-1 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all">
             💊 Vault
           </button>
           {onSignOut && (
-            <button onClick={onSignOut} className="text-xs text-white/20 hover:text-white/50 transition-colors ml-1">
-              ⏻
-            </button>
+            <button onClick={onSignOut} className="text-xs text-white/20 hover:text-white/50 transition-colors ml-1">⏻</button>
           )}
         </div>
       </div>
@@ -161,9 +130,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </p>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} showTrust={trustVisible} />
-        ))}
+        {messages.map((msg, i) => <MessageBubble key={i} message={msg} showTrust={trustVisible} />)}
         {isLoading && (
           <div className="flex justify-start mb-3">
             <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3">
@@ -180,25 +147,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <div ref={bottomRef} />
       </div>
 
-      {/* Bottom Bar */}
       <BottomBar
-        input={input}
-        isLoading={isLoading}
-        isRecording={isRecording}
-        isSpeaking={isSpeaking}
-        imagePreview={imagePreview}
-        onInputChange={setInput}
-        onSend={sendMessage}
-        onImageSelect={handleImageSelect}
-        onImageClear={clearImage}
+        input={input} isLoading={isLoading} isRecording={isRecording}
+        isSpeaking={isSpeaking} imagePreview={imagePreview}
+        onInputChange={setInput} onSend={sendMessage}
+        onImageSelect={handleImageSelect} onImageClear={clearImage}
         onVoiceStart={startRecording}
         onVoiceStop={() => {
           stopRecording();
           setTimeout(() => { if (inputTextRef.current.trim()) sendMessage(); }, 300);
         }}
-        onKeyDown={handleKeyDown}
-        personaColor={personaColor}
-        lang={lang}
+        onKeyDown={handleKeyDown} personaColor={personaColor} lang={lang}
       />
     </div>
   );
