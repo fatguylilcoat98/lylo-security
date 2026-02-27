@@ -18,6 +18,14 @@ from services.config import (
     memory_index, openai_client,
     _PROFILE_CACHE, _PROFILE_CACHE_TTL, create_user_id,
 )
+
+# ── Vector ID suffixes ────────────────────────────────────────────────────────
+# Try to import from intelligence_data; fall back to safe defaults
+try:
+    from intelligence_data import PROFILE_VECTOR_ID_SUFFIX, INTAKE_VECTOR_ID_SUFFIX
+except ImportError:
+    PROFILE_VECTOR_ID_SUFFIX = "_profile"
+    INTAKE_VECTOR_ID_SUFFIX  = "_intake"
 logger = logging.getLogger("LYLO.Memory")
 def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     """
@@ -318,5 +326,3 @@ async def store_intake_profile(user_id: str, profile: dict):
         logger.info(f"✅ Intake profile stored for {user_id}")
     except Exception as e:
         logger.error(f"Intake Profile Store Error: {e}")
-
-
