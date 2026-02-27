@@ -22,8 +22,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [isRecording,  setIsRecording]  = useState(false);
   const [emergency,    setEmergency]    = useState<any>(null);
   const [trustVisible, setTrustVisible] = useState(false);
-  const bottomRef        = useRef<HTMLDivElement>(null);
-  const lastPersonaRef   = useRef<string>('');  // track last switched persona to prevent double-fire
+  const bottomRef      = useRef<HTMLDivElement>(null);
+  const lastPersonaRef = useRef<string>('');
 
   const { enqueue: enqueueAudio, isSpeaking } = useAudioQueue({
     userEmail, persona: 'guardian', lang, onSpeakingChange: () => {},
@@ -49,18 +49,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     },
   });
 
-  // Switch persona when sidebar selection changes — guarded by ref to prevent double-fire
+  // Switch persona when sidebar changes — ref guard prevents double-fire
   useEffect(() => {
     if (currentPersonaId && currentPersonaId !== lastPersonaRef.current) {
       lastPersonaRef.current = currentPersonaId;
       switchPersona(currentPersonaId);
     }
-  }, [currentPersonaId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentPersonaId]); // eslint-disable-line
 
   const {
     messages, setMessages,
-    input, setInput,
-    inputTextRef,
+    input, setInput, inputTextRef,
     isLoading, error,
     imageFile, imagePreview,
     handleImageSelect, clearImage,
@@ -75,7 +74,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const { startRecording, stopRecording } = useVoice({
     lang, isSpeaking,
     onTranscript: (text) => { setInput(text); inputTextRef.current = text; },
-    onInterim:    (text) => { setInput(text); },
+    onInterim:    (text) => setInput(text),
     onRecordingChange: setIsRecording,
   });
 
@@ -96,57 +95,75 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       {emergency && <EmergencyOverlay protocol={emergency} onDismiss={() => setEmergency(null)} />}
 
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5"
-        style={{ borderBottomColor: personaColor + '22' }}>
-        <div className="flex items-center gap-2 rounded-2xl px-3 py-1.5 bg-white/5 border border-white/10">
+      {/* ── Top Bar ── */}
+      <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        style={{ borderBottomColor: personaColor + '33' }}>
+
+        {/* Persona badge — colored background matching active persona */}
+        <div className="flex items-center gap-2 rounded-2xl px-4 py-2 border"
+          style={{
+            backgroundColor: personaColor + '18',
+            borderColor: personaColor + '55',
+          }}>
           <span className="text-lg">{personaConfig.emoji}</span>
-          <span className="text-white/80 text-sm font-medium">{personaConfig.label}</span>
+          <span className="text-sm font-bold" style={{ color: personaColor }}>
+            {personaConfig.label}
+          </span>
         </div>
+
         <div className="flex items-center gap-2">
           <button onClick={() => setTrustVisible(v => !v)}
-            className={`text-xs px-2 py-1 rounded-lg border transition-all ${
-              trustVisible ? 'border-green-500/50 text-green-400 bg-green-500/10'
-                           : 'border-white/10 text-white/30 hover:text-white/60'}`}>
+            className="text-xs px-3 py-1.5 rounded-xl border transition-all font-semibold"
+            style={trustVisible
+              ? { borderColor: personaColor + '66', color: personaColor, backgroundColor: personaColor + '15' }
+              : { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }}>
             🛡 Trust
           </button>
-          <button onClick={() => vault.setVaultSetupOpen(true)}
-            className="text-xs px-2 py-1 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all">
+          <button onClick={() => vault.setVaultSetupOpen?.(true)}
+            className="text-xs px-3 py-1.5 rounded-xl border border-white/10 text-white/30 hover:text-white/60 transition-all font-semibold">
             💊 Vault
           </button>
           {onSignOut && (
-            <button onClick={onSignOut} className="text-xs text-white/20 hover:text-white/50 transition-colors ml-1">⏻</button>
+            <button onClick={onSignOut} className="text-xs text-white/20 hover:text-white/50 ml-1 transition-colors">⏻</button>
           )}
         </div>
       </div>
 
-      {/* Messages */}
+      {/* ── Messages ── */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-40">
-            <span className="text-5xl">{personaConfig.emoji}</span>
-            <p className="text-white/60 text-sm">
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3">
+            <span className="text-6xl opacity-30">{personaConfig.emoji}</span>
+            <p className="text-sm opacity-20" style={{ color: personaColor }}>
               {lang === 'es' ? `Habla con tu ${personaConfig.label}` : `Talk to your ${personaConfig.label}`}
             </p>
           </div>
         )}
-        {messages.map((msg, i) => <MessageBubble key={i} message={msg} showTrust={trustVisible} />)}
+        {messages.map((msg, i) => (
+          <MessageBubble key={i} message={msg} showTrust={trustVisible} personaColor={personaColor} />
+        ))}
         {isLoading && (
           <div className="flex justify-start mb-3">
-            <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3">
+            <div className="rounded-2xl rounded-bl-sm px-4 py-3 border"
+              style={{ backgroundColor: personaColor + '10', borderColor: personaColor + '25' }}>
               <div className="flex gap-1">
                 {[0,1,2].map(i => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce"
-                    style={{ animationDelay: `${i * 150}ms` }} />
+                  <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
+                    style={{ backgroundColor: personaColor, animationDelay: `${i * 150}ms` }} />
                 ))}
               </div>
             </div>
           </div>
         )}
-        {error && <div className="text-center text-red-400/70 text-xs py-2">{error}</div>}
+        {error && (
+          <div className="mx-2 p-3 rounded-xl border border-red-500/30 bg-red-500/10">
+            <p className="text-red-400 text-xs">{error}</p>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
+      {/* ── Bottom Bar — passes personaColor for input border ── */}
       <BottomBar
         input={input} isLoading={isLoading} isRecording={isRecording}
         isSpeaking={isSpeaking} imagePreview={imagePreview}
@@ -157,7 +174,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           stopRecording();
           setTimeout(() => { if (inputTextRef.current.trim()) sendMessage(); }, 300);
         }}
-        onKeyDown={handleKeyDown} personaColor={personaColor} lang={lang}
+        onKeyDown={handleKeyDown}
+        personaColor={personaColor}
+        lang={lang}
       />
     </div>
   );
