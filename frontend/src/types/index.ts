@@ -136,6 +136,7 @@ export interface ChatInterfaceProps {
   onLogout?: () => void;
   onUsageUpdate?: () => void;
   currentPersona?: string;
+  currentPersonaId?: string;
   onPersonaChange?: (persona: string) => void;
   zoomLevel?: number;
   onZoomChange?: (z: any) => void;
