@@ -35,7 +35,7 @@ from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
     build_hard_boundary_block, get_seat9_theology,
 )
-from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude
+from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
 from services.scam_detector import analyze_scam_indicators, detect_prompt_injection, _build_injection_response, _build_impatience_response
 from services.audio_service import generate_audio_inline
@@ -70,6 +70,17 @@ try:
     MED_VAULT_ENABLED = True
 except ImportError:
     MED_VAULT_ENABLED = False
+    def persona_can_read(persona, silo): return False
+    def persona_can_write(persona, silo): return False
+    def get_readable_silos(persona): return []
+    def detect_symptoms_in_message(msg): return []
+    def detect_reaction_mention(msg, meds): return None
+    def new_doctor_question(q, note=""): return {}
+    def new_symptom(*a, **k): return {}
+    def new_reaction(*a, **k): return {}
+    SILO_ACCESS = {}
+    PERSONA_COLORS = {}
+    async def generate_medical_pdf(*a, **k): return None
 logger = logging.getLogger("LYLO.Chat")
 router = APIRouter()
 async def _noop_vault():
