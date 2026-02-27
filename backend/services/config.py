@@ -382,3 +382,19 @@ ELITE_TIERS = {"elite", "max"}
 def create_user_id(email: str) -> str:
     return hashlib.sha256(email.encode()).hexdigest()[:16]
 
+
+# ── Waitlist / Paid Queue ─────────────────────────────────────────────────────
+WAITLIST_FILE   = "waitlist.json"
+PAID_QUEUE_FILE = "paid_queue.json"
+
+try:
+    with open(WAITLIST_FILE, "r") as _f:
+        WAITLIST_DB = set(json.load(_f))
+except Exception:
+    WAITLIST_DB = set()
+
+try:
+    with open(PAID_QUEUE_FILE, "r") as _f:
+        PAID_QUEUE_DB = json.load(_f)
+except Exception:
+    PAID_QUEUE_DB = {}
