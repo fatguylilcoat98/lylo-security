@@ -32,13 +32,12 @@ export const BottomBar: React.FC<BottomBarProps> = ({
   const handleMicClick = useCallback(() => {
     if (micActive) {
       setMicActive(false);
-      onVoiceStop();
-      setTimeout(() => onSend(), 350);
+      onVoiceStop(); // ChatInterface onVoiceStop handles send — no extra call here
     } else {
       setMicActive(true);
       onVoiceStart();
     }
-  }, [micActive, onVoiceStart, onVoiceStop, onSend]);
+  }, [micActive, onVoiceStart, onVoiceStop]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
