@@ -87,9 +87,9 @@ export function useAudioQueue({ userEmail, persona, lang, onSpeakingChange }: Us
   }, [fetchAudio, setSpeaking]);
 
   const enqueue = useCallback((text: string) => {
-    const sentences = text.match(/[^.!?]+[.!?]*/g) ?? [text];
-    for (const s of sentences) {
-      if (s.trim().length > 2) queueRef.current.push({ text: s.trim() });
+    // Push the whole chunk — no sentence splitting delay
+    if (text.trim().length > 1) {
+      queueRef.current.push({ text: text.trim() });
     }
     if (!isPlayingRef.current) playNext();
   }, [playNext]);
