@@ -770,14 +770,14 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         correct_persona = domain_reroute["correct_persona"]
         reason          = domain_reroute["reason"]
         # Build handoff message in the current persona's voice
-        PERSONA_NAMES = {{
+        PERSONA_NAMES = {
             "mechanic":  "The Mechanic",  "doctor":    "The Doctor",
             "lawyer":    "Legal Shield",  "wealth":    "Wealth Architect",
             "therapist": "The Therapist", "career":    "Career Coach",
             "tutor":     "The Tutor",     "vitality":  "Vitality Coach",
             "hype":      "Hype Engine",   "bestie":    "The Bestie",
             "pastor":    "The Pastor",    "guardian":  "The Guardian",
-        }}
+        }
         correct_name = PERSONA_NAMES.get(correct_persona, correct_persona.capitalize())
 
         # ── Voiced handoff: each persona speaks in their own voice ───────────
