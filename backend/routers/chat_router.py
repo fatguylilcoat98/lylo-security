@@ -35,7 +35,7 @@ from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
     build_hard_boundary_block, get_seat9_theology,
 )
-from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences
+from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
 from services.scam_detector import analyze_scam_indicators, detect_prompt_injection, _build_injection_response, _build_impatience_response
 from services.audio_service import generate_audio_inline
