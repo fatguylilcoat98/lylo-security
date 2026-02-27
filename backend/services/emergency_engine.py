@@ -16,6 +16,22 @@ from typing import List, Dict, Optional, Tuple, Any, Union
 
 logger = logging.getLogger("LYLO.Emergency")
 
+_PERSONA_DISPLAY_NAMES = {
+    "guardian":  "The Guardian",
+    "doctor":    "The Doctor",
+    "lawyer":    "Legal Shield",
+    "wealth":    "Wealth Architect",
+    "therapist": "The Therapist",
+    "mechanic":  "The Mechanic",
+    "career":    "Career Coach",
+    "vitality":  "Vitality Coach",
+    "tutor":     "The Tutor",
+    "hype":      "Hype Engine",
+    "bestie":    "The Bestie",
+    "pastor":    "The Pastor",
+}
+
+
 _EMERGENCY_PERSONA_ROUTER = {
     "car wreck":            "lawyer",
     "car accident":         "lawyer",
