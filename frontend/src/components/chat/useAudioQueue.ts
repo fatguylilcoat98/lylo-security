@@ -1,128 +1,104 @@
 /**
  * LYLO OS — chat/useAudioQueue.ts
- * Manages the TTS audio queue.
- * Sentences are enqueued and played back in order.
- * New audio is only fetched when the previous one finishes.
+ * Fixed: FormData (not JSON), audio_b64 (not audio_base64), typewriter default
  */
 import { useRef, useCallback, useState } from 'react';
-import type { AudioQueueEntry } from '../../types';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://lylo-backend.onrender.com';
+const API_BASE = (import.meta.env.VITE_API_URL as string)?.replace(/\/$/, '')
+  ?? 'https://lylo-backend.onrender.com';
+
+// Per-persona OpenAI voice assignments
+const PERSONA_VOICES: Record<string, string> = {
+  guardian:  'onyx',
+  doctor:    'nova',
+  lawyer:    'alloy',
+  wealth:    'echo',
+  therapist: 'shimmer',
+  career:    'alloy',
+  tutor:     'nova',
+  vitality:  'echo',
+  hype:      'onyx',
+  bestie:    'shimmer',
+  pastor:    'fable',
+  mechanic:  'onyx',
+};
 
 interface UseAudioQueueOptions {
   userEmail: string;
-  persona: string;
-  lang: 'en' | 'es';
+  persona:   string;
+  lang:      'en' | 'es';
   onSpeakingChange: (isSpeaking: boolean) => void;
 }
 
-export function useAudioQueue({
-  userEmail,
-  persona,
-  lang,
-  onSpeakingChange,
-}: UseAudioQueueOptions) {
-  const queueRef       = useRef<AudioQueueEntry[]>([]);
-  const isPlayingRef   = useRef(false);
-  const currentAudio   = useRef<HTMLAudioElement | null>(null);
+export function useAudioQueue({ userEmail, persona, lang, onSpeakingChange }: UseAudioQueueOptions) {
+  const queueRef     = useRef<{ text: string }[]>([]);
+  const isPlayingRef = useRef(false);
+  const currentAudio = useRef<HTMLAudioElement | null>(null);
+  const personaRef   = useRef(persona);
   const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Keep personaRef in sync so audio always uses current persona voice
+  personaRef.current = persona;
 
   const setSpeaking = useCallback((val: boolean) => {
     setIsSpeaking(val);
     onSpeakingChange(val);
   }, [onSpeakingChange]);
 
-  // ── Fetch audio for a text chunk ──────────────────────────────────────────
   const fetchAudio = useCallback(async (text: string): Promise<string | null> => {
     try {
-      const res = await fetch(`${API_BASE}/generate-audio`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, email: userEmail, persona, lang }),
-      });
+      const voice = PERSONA_VOICES[personaRef.current] ?? 'onyx';
+      const form = new FormData();
+      form.append('text',  text);
+      form.append('voice', voice);
+
+      const res = await fetch(`${API_BASE}/generate-audio`, { method: 'POST', body: form });
       if (!res.ok) return null;
       const data = await res.json();
-      return data.audio_base64 ?? null;
+      // Backend returns audio_b64
+      return data.audio_b64 ?? data.audio_base64 ?? null;
     } catch {
       return null;
     }
-  }, [userEmail, persona, lang]);
+  }, []);
 
-  // ── Play the next item in the queue ───────────────────────────────────────
   const playNext = useCallback(async () => {
     if (isPlayingRef.current || queueRef.current.length === 0) return;
-
     isPlayingRef.current = true;
     setSpeaking(true);
 
     const entry = queueRef.current.shift()!;
     const b64   = await fetchAudio(entry.text);
 
-    if (!b64) {
-      isPlayingRef.current = false;
-      if (queueRef.current.length > 0) {
-        playNext();
-      } else {
-        setSpeaking(false);
-      }
-      return;
-    }
+    const advance = () => {
+      isPlayingRef.current  = false;
+      currentAudio.current  = null;
+      if (queueRef.current.length > 0) playNext();
+      else setSpeaking(false);
+    };
+
+    if (!b64) { advance(); return; }
 
     const audio = new Audio(`data:audio/mpeg;base64,${b64}`);
     currentAudio.current = audio;
-
-    audio.onended = () => {
-      isPlayingRef.current = false;
-      currentAudio.current = null;
-      if (queueRef.current.length > 0) {
-        playNext();
-      } else {
-        setSpeaking(false);
-      }
-    };
-
-    audio.onerror = () => {
-      isPlayingRef.current = false;
-      currentAudio.current = null;
-      if (queueRef.current.length > 0) {
-        playNext();
-      } else {
-        setSpeaking(false);
-      }
-    };
-
-    try {
-      await audio.play();
-    } catch {
-      isPlayingRef.current = false;
-      setSpeaking(false);
-    }
+    audio.onended = advance;
+    audio.onerror = advance;
+    try { await audio.play(); } catch { advance(); }
   }, [fetchAudio, setSpeaking]);
 
-  // ── Enqueue sentences ─────────────────────────────────────────────────────
   const enqueue = useCallback((text: string) => {
-    // Split into sentences for more natural playback
     const sentences = text.match(/[^.!?]+[.!?]*/g) ?? [text];
     for (const s of sentences) {
-      const trimmed = s.trim();
-      if (trimmed.length > 2) {
-        queueRef.current.push({ text: trimmed });
-      }
+      if (s.trim().length > 2) queueRef.current.push({ text: s.trim() });
     }
-    if (!isPlayingRef.current) {
-      playNext();
-    }
+    if (!isPlayingRef.current) playNext();
   }, [playNext]);
 
-  // ── Stop everything ───────────────────────────────────────────────────────
   const stopAll = useCallback(() => {
-    queueRef.current      = [];
-    isPlayingRef.current  = false;
+    queueRef.current     = [];
+    isPlayingRef.current = false;
     setSpeaking(false);
-    try {
-      currentAudio.current?.pause();
-      currentAudio.current = null;
-    } catch {}
+    try { currentAudio.current?.pause(); currentAudio.current = null; } catch {}
   }, [setSpeaking]);
 
   return { enqueue, stopAll, isSpeaking };
