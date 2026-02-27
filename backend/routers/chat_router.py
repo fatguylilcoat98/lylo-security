@@ -1583,13 +1583,13 @@ RULES:
             confidence     = winner.get("confidence_score", 85)
             # ── Recalculate confidence from NLI trust layer if available ──────
             # trust_scores collected during sentence streaming — use average
-            _trust_scores = getattr(request.state, "trust_scores", None) if hasattr(request, "state") else None
+            _trust_scores = None  # request.state not available in this context
             # Fallback: derive from model used
+            model_used     = winner.get("model", openai_engine)
             if model_used and "claude" in model_used.lower():
                 confidence = max(confidence, 88)
             elif model_used and "gemini" in model_used.lower():
                 confidence = max(confidence, 82)
-            model_used     = winner.get("model", openai_engine)
             threat_level   = "high" if scam_detected else "low"
 
             meta = {
