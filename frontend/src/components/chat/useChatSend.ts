@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { ChatMessage, TrustAudit, IntakeProfile, BestieConfig } from '../../types';
 
-// Reads VITE_API_URL or VITE_BACKEND_URL (whichever is set in Render)
 const API_BASE = (
   (import.meta.env.VITE_API_URL as string) ||
   (import.meta.env.VITE_BACKEND_URL as string) ||
@@ -53,7 +52,10 @@ export function useChatSend({
     const content = (text ?? input).trim();
     if (!content && !imageFile) return;
 
-    setMessages(prev => [...prev, { role: 'user', content, timestamp: Date.now(), image_url: imagePreview ?? undefined }]);
+    setMessages(prev => [...prev, {
+      role: 'user', content, timestamp: Date.now(),
+      image_url: imagePreview ?? undefined,
+    }]);
     setInput('');
     inputTextRef.current = '';
     clearImage();
@@ -76,26 +78,26 @@ export function useChatSend({
       console.log(`[LYLO] → ${API_BASE}/chat | persona=${persona}`);
 
       const res = await fetch(`${API_BASE}/chat`, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      if (!res.ok) throw new Error(`Server error ${res.status}: ${await res.text().catch(() => '')}`);
 
       const contentType = res.headers.get('content-type') ?? '';
       let reply = '';
 
       if (contentType.includes('text/event-stream')) {
-        // SSE streaming — speak each sentence as it arrives
-        const reader = res.body!.getReader();
+        const reader  = res.body!.getReader();
         const decoder = new TextDecoder();
-        const assistantMsg: ChatMessage = { role: 'assistant', content: '', persona, timestamp: Date.now() };
-        setMessages(prev => [...prev, assistantMsg]);
+
+        // Stable timestamp ID — safe even if greeting appends mid-stream
+        const msgId = Date.now();
+        setMessages(prev => [...prev, { role: 'assistant', content: '', persona, timestamp: msgId }]);
 
         let sentenceBuffer = '';
-        const FLUSH_CHARS = 120; // speak every ~120 chars even without punctuation
 
         const flushSentence = (force = false) => {
           const match = sentenceBuffer.match(/^(.*?[.!?])\s*/s);
-          const longEnough = sentenceBuffer.length >= FLUSH_CHARS;
+          const longEnough = sentenceBuffer.length >= 100;
           if (match || force || longEnough) {
-            const toSpeak = match ? match[1].trim() : sentenceBuffer.trim();
+            const toSpeak = (match ? match[1] : sentenceBuffer).trim();
             if (toSpeak.length > 3) onAudio(toSpeak);
             sentenceBuffer = match ? sentenceBuffer.slice(match[0].length) : '';
           }
@@ -104,33 +106,36 @@ export function useChatSend({
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const lines = decoder.decode(value).split('\n');
-          for (const line of lines) {
+          for (const line of decoder.decode(value).split('\n')) {
             if (!line.startsWith('data: ')) continue;
             try {
-              const parsed = JSON.parse(line.slice(6));
-              if (parsed.type === 'text' && parsed.content) {
-                reply += parsed.content;
-                sentenceBuffer += parsed.content;
+              const p = JSON.parse(line.slice(6));
+              if (p.type === 'text' && p.content) {
+                reply += p.content;
+                sentenceBuffer += p.content;
                 flushSentence();
-                setMessages(prev => {
-                  const updated = [...prev];
-                  updated[updated.length - 1] = { ...assistantMsg, content: reply };
-                  return updated;
-                });
+                // Find message by stable ID — never breaks if list grows
+                setMessages(prev => prev.map(m =>
+                  m.timestamp === msgId ? { ...m, content: reply } : m
+                ));
               }
-              if (parsed.type === 'meta') {
-                if (parsed.full_answer) reply = parsed.full_answer;
-                if (parsed.emergency_protocol && onEmergency) onEmergency(parsed.emergency_protocol);
+              if (p.type === 'meta') {
+                if (p.full_answer) reply = p.full_answer;
+                if (p.emergency_protocol && onEmergency) onEmergency(p.emergency_protocol);
               }
-            } catch { /* skip */ }
+            } catch { /* malformed SSE chunk */ }
           }
         }
-        // Flush any remaining buffer
         flushSentence(true);
 
+        // Ensure final content is committed even if SSE ended abruptly
+        if (reply) {
+          setMessages(prev => prev.map(m =>
+            m.timestamp === msgId ? { ...m, content: reply } : m
+          ));
+        }
+
       } else {
-        // JSON fallback
         const data = await res.json();
         if (data.emergency_protocol && onEmergency) onEmergency(data.emergency_protocol);
         reply = data.response ?? data.message ?? data.answer ?? data.full_answer ?? '';
@@ -147,7 +152,7 @@ export function useChatSend({
     } catch (e: any) {
       console.error('[LYLO] Chat error:', e);
       setError(e.message?.includes('Failed to fetch')
-        ? `Can't reach server. URL being used: ${API_BASE}`
+        ? `Can't reach server (${API_BASE}). Check VITE_BACKEND_URL in Render.`
         : (e.message ?? 'Connection failed'));
     } finally {
       setIsLoading(false);
