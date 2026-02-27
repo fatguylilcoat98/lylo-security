@@ -1,13 +1,8 @@
 /**
  * LYLO OS — ChatInterface.tsx  (v31.0 Modular)
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- * This is the shell. All logic lives in hooks. All UI lives in chat/ui/.
- *
- * Adding a new feature?
- *   - New backend logic    → routers/ or services/
- *   - New React state/API  → chat/use*.ts hook
- *   - New UI element       → chat/ui/*.tsx component
- *   - DON'T add logic here
+ * Persona switching is handled by the sidebar (Layout.tsx).
+ * No modal picker here.
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -24,7 +19,6 @@ import { useIntake }     from './chat/useIntake';
 import { useChatSend }   from './chat/useChatSend';
 
 // UI Components
-import { PersonaGrid }      from './chat/ui/PersonaGrid';
 import { MessageBubble }    from './chat/ui/MessageBubble';
 import { BottomBar }        from './chat/ui/BottomBar';
 import { EmergencyOverlay } from './chat/ui/EmergencyOverlay';
@@ -38,18 +32,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   userTier = 'free',
   lang = DEFAULT_LANG,
   onSignOut,
+  currentPersonaId,       // passed from Layout/Dashboard when sidebar changes
 }) => {
   // ── UI state ───────────────────────────────────────────────────────────────
-  const [showPersonaGrid, setShowPersonaGrid] = useState(false);
-  const [isRecording,     setIsRecording]     = useState(false);
-  const [emergency,       setEmergency]       = useState<any>(null);
-  const [trustVisible,    setTrustVisible]    = useState(false);
+  const [isRecording,  setIsRecording]  = useState(false);
+  const [emergency,    setEmergency]    = useState<any>(null);
+  const [trustVisible, setTrustVisible] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // ── Audio queue ────────────────────────────────────────────────────────────
   const { enqueue: enqueueAudio, stopAll: stopAudio, isSpeaking } = useAudioQueue({
     userEmail,
-    persona: 'guardian',   // updated below after persona hook
+    persona: 'guardian',
     lang,
     onSpeakingChange: () => {},
   });
@@ -62,9 +56,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     saveAnswer, submitRound, nextStep, prevStep,
   } = useIntake({
     userEmail,
-    onIntakeComplete: (profile: IntakeProfile) => {
-      // Persona hook will re-fire after intake with real name
-    },
+    onIntakeComplete: (profile: IntakeProfile) => {},
   });
 
   // ── Persona ────────────────────────────────────────────────────────────────
@@ -84,6 +76,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       enqueueAudio(text);
     },
   });
+
+  // ── Sync persona from sidebar ──────────────────────────────────────────────
+  useEffect(() => {
+    if (currentPersonaId && currentPersonaId !== currentPersona) {
+      switchPersona(currentPersonaId);
+    }
+  }, [currentPersonaId]);
 
   // ── Chat send ──────────────────────────────────────────────────────────────
   const {
@@ -127,7 +126,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [loadIntakeProfile]);
 
   useEffect(() => {
-    // Auto-scroll to bottom on new message
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -154,34 +152,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         />
       )}
 
-      {/* ── Persona Grid ── */}
-      {showPersonaGrid && (
-        <PersonaGrid
-          current={currentPersona}
-          userTier={userTier}
-          onSelect={(id) => { switchPersona(id); setShowPersonaGrid(false); }}
-          onClose={() => setShowPersonaGrid(false)}
-        />
-      )}
-
       {/* ── Top Bar ── */}
       <div
         className="flex items-center justify-between px-4 py-3 border-b border-white/5"
         style={{ borderBottomColor: personaColor + '22' }}
       >
-        {/* Persona badge */}
-        <button
-          onClick={() => setShowPersonaGrid(true)}
-          className="flex items-center gap-2 rounded-2xl px-3 py-1.5 bg-white/5 border border-white/10 hover:border-white/25 transition-all"
-        >
+        {/* Persona badge — display only, no click to open modal */}
+        <div className="flex items-center gap-2 rounded-2xl px-3 py-1.5 bg-white/5 border border-white/10">
           <span className="text-lg">{personaConfig.emoji}</span>
           <span className="text-white/80 text-sm font-medium">{personaConfig.label}</span>
-          <span className="text-white/30 text-xs">▾</span>
-        </button>
+        </div>
 
         {/* Right controls */}
         <div className="flex items-center gap-2">
-          {/* Trust toggle */}
           <button
             onClick={() => setTrustVisible(v => !v)}
             className={`text-xs px-2 py-1 rounded-lg border transition-all ${
@@ -193,7 +176,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             🛡 Trust
           </button>
 
-          {/* Med-Vault */}
           <button
             onClick={() => vault.setVaultSetupOpen(true)}
             className="text-xs px-2 py-1 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all"
@@ -201,7 +183,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             💊 Vault
           </button>
 
-          {/* Sign out */}
           {onSignOut && (
             <button
               onClick={onSignOut}
@@ -271,7 +252,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onVoiceStart={startRecording}
         onVoiceStop={() => {
           stopRecording();
-          // Auto-send after voice input
           setTimeout(() => {
             if (inputTextRef.current.trim()) sendMessage();
           }, 300);
