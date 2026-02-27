@@ -89,15 +89,14 @@ export function useChatSend({
         setMessages(prev => [...prev, assistantMsg]);
 
         let sentenceBuffer = '';
+        const FLUSH_CHARS = 120; // speak every ~120 chars even without punctuation
 
         const flushSentence = (force = false) => {
-          // Speak when we hit sentence-ending punctuation
           const match = sentenceBuffer.match(/^(.*?[.!?])\s*/s);
-          if (match || force) {
+          const longEnough = sentenceBuffer.length >= FLUSH_CHARS;
+          if (match || force || longEnough) {
             const toSpeak = match ? match[1].trim() : sentenceBuffer.trim();
-            if (toSpeak.length > 3) {
-              onAudio(toSpeak);  // ← speak immediately, don't wait for full response
-            }
+            if (toSpeak.length > 3) onAudio(toSpeak);
             sentenceBuffer = match ? sentenceBuffer.slice(match[0].length) : '';
           }
         };
