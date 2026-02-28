@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 31.2.0 — FONT SIZE BUTTON + BELL TOAST + SPANISH HIGHLIGHT
+// Version: 31.6.0 — PHASE 1 VOICE ARCHITECTURE: inputMode + 3-sentence cap + silence detection + emergency auto-shield
 // ─────────────────────────────────────────────────────────────────────────────
 // V31.2 Changes:
 //  [V31.2-1] FONT SIZE BUTTON — Aa button in bottom bar cycles 4 sizes
@@ -493,6 +493,12 @@ function ChatInterface({
 
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
   const [sessionContent, setSessionContent]             = useState('');
+  // ── Phase 1 Voice Architecture ─────────────────────────────────────────
+  const [toneAnalysis]                                  = useState(false); // disabled at launch — pipeline ready
+  const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceWarningRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showSilenceCheck, setShowSilenceCheck]         = useState(false);
+  const [emergencyShieldAuto, setEmergencyShieldAuto]   = useState(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -677,6 +683,10 @@ function ChatInterface({
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
+      // ── Phase 1: user spoke — clear silence timers ──
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+      setShowSilenceCheck(false); setEmergencyShieldAuto(false);
       try { recognitionRef.current?.stop(); } catch {} recognitionRef.current = null;
       setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
     } else {
@@ -751,6 +761,7 @@ function ChatInterface({
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
       fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
       fd.append('lang', lang);
+      fd.append('input_mode', isRecording ? 'voice' : 'text'); // Phase 1 voice architecture
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
@@ -758,6 +769,10 @@ function ChatInterface({
       if (readingMode === 'sync') setStreamingMsgId(botMsgId);
       setStreamingText(''); setLoading(false);
       aqm.stop();
+      // ── Phase 1: clear any previous silence timers when new response starts ──
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+      setShowSilenceCheck(false); setEmergencyShieldAuto(false);
       const reader = apiRes.body!.getReader(); const decoder = new TextDecoder();
       let buffer = ''; let fullAnswer = ''; let metaData: any = null;
       outer: while (true) {
@@ -778,6 +793,22 @@ function ChatInterface({
       }
       const finalText = fullAnswer.trim();
       appendSessionContent(finalText, 'bot');
+      // ── Phase 1 Silence Detection — only in voice mode on emergency personas ──
+      const _isVoiceMode = isRecording || isRecordingRef.current;
+      const _isEmergencyPersona = ['guardian','doctor','lawyer','wealth','mechanic'].includes(activePersona.id);
+      const _isHighStakes = metaData?.threat_level === 'high' || metaData?.emergency;
+      if (_isVoiceMode && _isEmergencyPersona && _isHighStakes) {
+        // 15 seconds — give them time to physically do the action
+        silenceTimerRef.current = setTimeout(() => {
+          setShowSilenceCheck(true); // show soft check "I'm still here"
+          // 5 more seconds then surface emergency shield
+          silenceWarningRef.current = setTimeout(() => {
+            setShowSilenceCheck(false);
+            setEmergencyShieldAuto(true);
+            setShowCrisisShield(true); // surface the shield
+          }, 5000);
+        }, 15000);
+      }
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
 
@@ -1111,6 +1142,30 @@ function ChatInterface({
   return (
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
+
+      {/* SILENCE CHECK — Phase 1 "I'm still here" soft prompt */}
+      {showSilenceCheck && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200001] flex items-center justify-center p-6 animate-in fade-in duration-500">
+          <div className="bg-[#111] border border-yellow-500/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(234,179,8,0.2)]">
+            <div className="text-5xl mb-4">🛡️</div>
+            <h2 className="text-white font-black text-xl mb-3 leading-tight">
+              {lang === 'es' ? 'Aquí sigo contigo.' : "I'm still here."}
+            </h2>
+            <p className="text-yellow-400 font-bold text-sm mb-6">
+              {lang === 'es' ? 'Di cualquier cosa para que sepa que estás bien.' : "Say anything so I know you're okay."}
+            </p>
+            <button
+              onClick={() => {
+                setShowSilenceCheck(false);
+                if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+              }}
+              className="w-full py-4 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest text-sm hover:bg-yellow-400 transition-all active:scale-95"
+            >
+              {lang === 'es' ? 'Estoy Bien' : "I'm Okay"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* [V31.2-2] BELL TOAST */}
       {bellToast && (
