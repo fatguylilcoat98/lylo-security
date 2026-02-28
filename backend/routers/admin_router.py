@@ -29,6 +29,7 @@ class WaitlistRequest(BaseModel):
 
 WAITLIST_FILE   = "waitlist.json"
 PAID_QUEUE_FILE = "paid_queue.json"
+ADMIN_EMAILS    = ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]
 
 try:
     with open(WAITLIST_FILE, "r") as _f:
@@ -43,6 +44,11 @@ except Exception:
     PAID_QUEUE_DB = {}
 
 
+def _check_admin(admin_email: str):
+    if admin_email.lower().strip() not in ADMIN_EMAILS:
+        raise HTTPException(status_code=401, detail="UNAUTHORIZED")
+
+
 @router.post("/join-waitlist")
 async def join_waitlist(request: WaitlistRequest):
     email_clean = request.email.lower().strip()
@@ -53,7 +59,6 @@ async def join_waitlist(request: WaitlistRequest):
     except Exception as e:
         logger.error(f"Failed to save waitlist: {e}")
 
-    # ── Notify Chris every time someone joins ─────────────────────────────
     try:
         import smtplib
         from email.mime.text import MIMEText
@@ -86,21 +91,20 @@ async def join_waitlist(request: WaitlistRequest):
 
 @router.get("/view-waitlist/{admin_email}")
 async def view_waitlist(admin_email: str):
-    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+    if admin_email.lower().strip() in ADMIN_EMAILS:
         return {"status": "AUTHORIZED", "total_waiting": len(WAITLIST_DB), "emails": list(WAITLIST_DB)}
     return {"error": "UNAUTHORIZED ACCESS"}
 
 
 @router.get("/beta-status/{admin_email}")
 async def beta_status(admin_email: str):
-    """Admin endpoint — see all 20 beta slots, which are filled vs open."""
-    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+    if admin_email.lower().strip() not in ADMIN_EMAILS:
         return {"error": "UNAUTHORIZED"}
     slots = {
         email: data for email, data in ELITE_USERS.items()
         if data.get("beta") is True
     }
-    filled = {e: d for e, d in slots.items() if "placeholder.com" not in e}
+    filled   = {e: d for e, d in slots.items() if "placeholder.com" not in e}
     open_slots = {e: d for e, d in slots.items() if "placeholder.com" in e}
     return {
         "total_slots":  20,
@@ -119,8 +123,7 @@ async def activate_beta(
     tester_name:  str = Form(...),
     slot_number:  int = Form(...),
 ):
-    """Admin endpoint — fill a beta slot with a real tester email."""
-    if admin_email.lower().strip() not in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+    if admin_email.lower().strip() not in ADMIN_EMAILS:
         return {"error": "UNAUTHORIZED"}
     slot_key = f"beta_slot_{slot_number}@placeholder.com"
     if slot_key not in ELITE_USERS:
@@ -128,20 +131,133 @@ async def activate_beta(
     del ELITE_USERS[slot_key]
     clean_email = tester_email.lower().strip()
     clean_name  = tester_name.strip()
-    # Save to persistent file — survives ALL redeploys
-    _BETA_USERS_DB[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
-    _save_beta_users(_BETA_USERS_DB)
-    # Update runtime immediately
+    beta_db = _load_beta_users()
+    beta_db[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
+    _save_beta_users(beta_db)
     ELITE_USERS[clean_email] = {"tier": "pro", "name": clean_name, "beta": True, "slot": slot_number}
     logger.info(f"✅ Beta slot {slot_number} activated → {clean_email} persisted to beta_users.json")
     return {"status": "activated", "slot": slot_number, "email": clean_email, "name": clean_name}
 
 
+# =============================================================================
+# NEW SIMPLE ENDPOINTS — no slot numbers needed
+# =============================================================================
+
+class AddUserRequest(BaseModel):
+    admin_email: str
+    email: str
+    name: str
+    tier: Optional[str] = "pro"
+
+
+class RemoveUserRequest(BaseModel):
+    admin_email: str
+    email: str
+
+
+@router.post("/admin/add-user")
+async def admin_add_user(req: AddUserRequest):
+    """Add or update a beta user directly. No slot number needed."""
+    _check_admin(req.admin_email)
+    clean_email = req.email.lower().strip()
+    clean_name  = req.name.strip()
+    clean_tier  = (req.tier or "pro").lower().strip()
+
+    beta_db = _load_beta_users()
+    beta_db[clean_email] = {
+        "tier":     clean_tier,
+        "name":     clean_name,
+        "beta":     True,
+        "added_at": datetime.now().isoformat(),
+    }
+    _save_beta_users(beta_db)
+    ELITE_USERS[clean_email] = beta_db[clean_email]
+    logger.info(f"✅ Admin added user: {clean_email} ({clean_tier})")
+    return {"status": "success", "message": f"{clean_name} ({clean_email}) added as {clean_tier.upper()}"}
+
+
+@router.post("/admin/remove-user")
+async def admin_remove_user(req: RemoveUserRequest):
+    """Remove a beta user from both memory and persistent file."""
+    _check_admin(req.admin_email)
+    clean_email = req.email.lower().strip()
+
+    beta_db = _load_beta_users()
+    in_file = clean_email in beta_db
+    in_mem  = clean_email in ELITE_USERS
+
+    if not in_file and not in_mem:
+        return {"status": "not_found", "message": f"{clean_email} not found"}
+
+    if in_file:
+        del beta_db[clean_email]
+        _save_beta_users(beta_db)
+    if in_mem:
+        del ELITE_USERS[clean_email]
+
+    logger.info(f"🚫 Admin removed user: {clean_email}")
+    return {"status": "success", "message": f"{clean_email} removed"}
+
+
+@router.post("/admin/list-users")
+async def admin_list_users(req: dict):
+    """List all active beta users from persistent file."""
+    _check_admin(req.get("admin_email", ""))
+    beta_db = _load_beta_users()
+    users = []
+    for email, data in beta_db.items():
+        if "placeholder.com" in email:
+            continue
+        users.append({
+            "email":    email,
+            "name":     data.get("name", ""),
+            "tier":     data.get("tier", "pro"),
+            "added_at": data.get("added_at", ""),
+        })
+    users.sort(key=lambda x: x["added_at"], reverse=True)
+    return {"status": "success", "count": len(users), "users": users}
+
+
+@router.get("/admin/check-user/{email}")
+async def admin_check_user(email: str, admin_email: str):
+    """Quick lookup for a single email."""
+    _check_admin(admin_email)
+    clean = email.lower().strip()
+    if clean in ELITE_USERS:
+        data = ELITE_USERS[clean]
+        return {"found": True, "name": data.get("name", ""), "tier": data.get("tier", "pro")}
+    return {"found": False}
+
+
+# =============================================================================
+# CHECK-BETA-ACCESS — what the website login button calls
+# =============================================================================
+
+class BetaAccessRequest(BaseModel):
+    email: str
+
+@router.post("/check-beta-access")
+async def check_beta_access(req: BetaAccessRequest):
+    email = req.email.lower().strip()
+    if email in ELITE_USERS:
+        data = ELITE_USERS[email]
+        logger.info(f"✅ Beta access granted: {email}")
+        return {
+            "access": True,
+            "name":   data.get("name", "Friend"),
+            "tier":   data.get("tier", "pro"),
+            "email":  email,
+        }
+    logger.info(f"🚫 Beta access denied: {email}")
+    return {"access": False}
+
+
 @router.get("/view-paid-queue/{admin_email}")
 async def view_paid_queue(admin_email: str):
-    if admin_email.lower().strip() in ["mylylo.ai@gmail.com", "stangman9898@gmail.com"]:
+    if admin_email.lower().strip() in ADMIN_EMAILS:
         return {"status": "AUTHORIZED", "total_pending": len(PAID_QUEUE_DB), "pending_users": PAID_QUEUE_DB}
     return {"error": "UNAUTHORIZED ACCESS"}
+
 
 # =============================================================================
 # STRIPE WEBHOOK
