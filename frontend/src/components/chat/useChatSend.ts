@@ -137,27 +137,25 @@ export function useChatSend({
             const sentence = chunk.content as string;
             fullAnswer += (fullAnswer ? ' ' : '') + sentence;
 
-            // ── Update text in UI immediately ───────────────────────────
+            // ── Update text in UI immediately ────────────────────────────
             setMessages(prev => prev.map(m =>
               m.timestamp === msgId
                 ? { ...m, content: fullAnswer }
                 : m
             ));
 
-            // ── Play audio at the SAME TIME text appears ────────────────
-            // audio_b64 comes pre-generated from backend per sentence
+            // ── Audio: inline b64 takes priority, falls back to queue ───
+            // Only call onAudio once per sentence — never both paths
             if (chunk.audio_b64) {
               try {
                 const audio = new Audio(`data:audio/mpeg;base64,${chunk.audio_b64}`);
-                audio.play().catch(() => {
-                  // Fallback: use the onAudio queue if inline fails
-                  onAudio(sentence);
-                });
+                await audio.play();
               } catch {
+                // inline play blocked (e.g. iOS autoplay policy) — fall back
                 onAudio(sentence);
               }
             } else {
-              // No inline audio — send to queue
+              // No inline audio from backend — send to TTS queue
               onAudio(sentence);
             }
           }
