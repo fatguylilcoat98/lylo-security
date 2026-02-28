@@ -22,6 +22,7 @@ from typing import Optional
 logger = logging.getLogger("LYLO.Veracore")
 logger.setLevel(logging.WARNING)  # Production mode
 
+
 # ── Path injection: HK engine lives in backend/hk/ ──────────────────────────
 _HK_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hk")
 if _HK_DIR not in sys.path:
@@ -80,7 +81,7 @@ async def _get_hk_engine():
 # Personas where accuracy is life-critical
 HK_PERSONAS = {"doctor", "lawyer", "wealth", "guardian"}
 
-def should_use_hk(persona: str, message: str) -> tuple[bool, int]:
+def should_use_veracore(persona: str, message: str) -> tuple[bool, int]:
     """
     Returns (should_run: bool, risk_tier: int).
     Pure Python — zero API calls, sub-millisecond.
@@ -129,7 +130,7 @@ def should_use_hk(persona: str, message: str) -> tuple[bool, int]:
 # HK PIPELINE RUNNER
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def run_hk_verification(
+async def run_veracore_verification(
     question: str,
     persona: str,
     user_name: str = "User",
@@ -214,7 +215,7 @@ async def run_hk_verification(
 # Decides whether to use HK result or race winner
 # ══════════════════════════════════════════════════════════════════════════════
 
-def merge_hk_with_winner(
+def merge_veracore_with_winner(
     race_winner: dict,
     hk_result: Optional[dict],
     risk_tier: int,
@@ -266,7 +267,7 @@ def merge_hk_with_winner(
 # Returns human-readable badge for frontend display
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_hk_badge(result: dict, used_hk: bool) -> str:
+def get_veracore_badge(result: dict, used_hk: bool) -> str:
     """Returns a short badge string for the LYLO UI trust indicator."""
     if not used_hk:
         return ""
