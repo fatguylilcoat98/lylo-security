@@ -48,6 +48,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userEmail, userName, user
   const [showCrisis,      setShowCrisis]      = useState(false);
   const [showBestieSetup, setShowBestieSetup] = useState(false);
   const [bestieName,      setBestieName]      = useState('');
+  const [bestieVibe,      setBestieVibe]      = useState('chill');
   const [bestieEnergy,    setBestieEnergy]    = useState('chill');
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +96,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userEmail, userName, user
 
   const handleBestieSubmit = useCallback(() => {
     if (!bestieName.trim()) return;
-    saveBestieConfig({ name: bestieName.trim(), relationship: 'bestie', energy: bestieEnergy, topics: [] });
+    saveBestieConfig({ name: bestieName.trim(), relationship: 'bestie', energy: bestieVibe, topics: [] });
     setShowBestieSetup(false);
   }, [bestieName, bestieVibe, saveBestieConfig]);
 
@@ -137,7 +138,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ userEmail, userName, user
                 <label className="text-white/70 text-xs mb-2 block">What's the vibe?</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[{ id: 'chill', label: '😌 Chill' }, { id: 'real', label: '💯 Real Talk' }, { id: 'hype', label: '🔥 Hype Me' }].map(v => (
-                    <button key={v.id} onClick={() => setBestieVibe(v.id)} className={`py-2 rounded-xl text-xs border transition-all ${bestieEnergy === v.id ? 'border-pink-500 bg-pink-500/20 text-pink-300' : 'border-white/10 text-white/50 hover:border-white/30'}`}>{v.label}</button>
+                    <button key={v.id} onClick={() => setBestieVibe(v.id)} className={`py-2 rounded-xl text-xs border transition-all ${bestieVibe === v.id ? 'border-pink-500 bg-pink-500/20 text-pink-300' : 'border-white/10 text-white/50 hover:border-white/30'}`}>{v.label}</button>
                   ))}
                 </div>
               </div>
