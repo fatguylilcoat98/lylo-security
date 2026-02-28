@@ -39,7 +39,7 @@ from services.llm_clients import call_gemini_vision, call_openai_bodyguard, vali
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
 from services.scam_detector import analyze_scam_indicators, detect_prompt_injection, _build_injection_response, _build_impatience_response
 from services.audio_service import generate_audio_inline
-from services.hk_service import should_use_hk, run_hk_verification, merge_hk_with_winner, get_hk_badge
+from services.hk_service import should_use_veracore, run_veracore_verification, merge_veracore_with_winner, get_veracore_badge
 from services.pdf_mailer import generate_mission_report_pdf, send_mission_report_email
 from services.web_search import search_personalized_web
 from lylo_kernel import build_system_prompt, fetch_memory_pins, upsert_memory_pin
@@ -83,6 +83,7 @@ except ImportError:
     PERSONA_COLORS = {}
     async def generate_medical_pdf(*a, **k): return None
 logger = logging.getLogger("LYLO.Chat")
+logger.setLevel(logging.WARNING)  # Production: suppress INFO/DEBUG noise
 router = APIRouter()
 async def _noop_vault():
     """Placeholder used when vault is disabled or persona can't read medical data."""
@@ -1236,21 +1237,21 @@ MEMORY INTEGRITY RULE:
             validate_with_claude(persona, msg, winner_answer, user_data["name"])
         )
 
-    # ── HallucinationKiller — fires for doctor/lawyer/wealth/guardian on HIGH-risk ──
+    # ── Veracore — fires for doctor/lawyer/wealth/guardian on HIGH-risk ──
     # Runs in parallel with Director. Zero cost for low-risk queries.
-    _hk_should_run, _hk_risk_tier = should_use_hk(persona, msg)
-    _hk_task = None
+    _veracore_should_run, _veracore_risk_tier = should_use_veracore(persona, msg)
+    _veracore_task = None
 
-    if _hk_should_run:
-        _hk_task = asyncio.ensure_future(
-            run_hk_verification(
+    if _veracore_should_run:
+        _veracore_task = asyncio.ensure_future(
+            run_veracore_verification(
                 question  = msg,
                 persona   = persona,
                 user_name = user_data["name"],
                 timeout   = 30.0,
             )
         )
-        logger.info(f"🔬 HK task fired for [{persona}] Tier {_hk_risk_tier}")
+        logger.info(f"🔬 Veracore™ task fired for [{persona}] Tier {_veracore_risk_tier}")
 
     tier_limit = limit
 
@@ -1269,26 +1270,31 @@ MEMORY INTEGRITY RULE:
                 validated = {}
                 answer    = winner_answer
 
-            # ── Await HK and merge ────────────────────────────────────────────
-            _hk_result = None
-            _used_hk   = False
-            _hk_badge  = ""
+            # ── Veracore™ verification loading signal ─────────────────────────
+            if _veracore_task is not None:
+                _verify_msg = "Veracore™ este verificando esta respuesta..." if lang == "es" else "Veracore™ is verifying this response..."
+                yield f"data: {json.dumps({'type':'text','content':' ','veracore_verifying':True,'veracore_msg':_verify_msg})}\n\n"
 
-            if _hk_task is not None:
+            # ── Await Veracore and merge ──────────────────────────────────────
+            _veracore_result = None
+            _veracore_used   = False
+            _veracore_badge  = ""
+
+            if _veracore_task is not None:
                 try:
-                    _hk_result = await asyncio.wait_for(asyncio.shield(_hk_task), timeout=35.0)
+                    _veracore_result = await asyncio.wait_for(asyncio.shield(_veracore_task), timeout=35.0)
                 except (asyncio.TimeoutError, Exception) as _hk_err:
-                    logger.warning(f"⚡ HK await error: {_hk_err} — using Director answer")
-                    _hk_result = None
+                    logger.warning(f"⚡ Veracore™ await error: {_hk_err} — using Director answer")
+                    _veracore_result = None
 
-                if _hk_result:
-                    _merged, _used_hk = merge_hk_with_winner(winner, _hk_result, _hk_risk_tier)
-                    if _used_hk:
-                        answer = _hk_result["answer"]
-                        logger.info(f"✅ HK answer used [{persona}] — {_hk_result['confidence_color']} {_hk_result['confidence_score']}%")
+                if _veracore_result:
+                    _merged, _veracore_used = merge_veracore_with_winner(winner, _veracore_result, _veracore_risk_tier)
+                    if _veracore_used:
+                        answer = _veracore_result["answer"]
+                        logger.info(f"✅ Veracore™ answer used [{persona}] — {_veracore_result['confidence_color']} {_veracore_result['confidence_score']}%")
                     else:
                         logger.info(f"⚡ Race winner kept — HK metadata merged [{persona}]")
-                    _hk_badge = get_hk_badge(_hk_result, _used_hk)
+                    _veracore_badge = get_veracore_badge(_veracore_result, _veracore_used)
 
             # ── Empty-answer safety net ───────────────────────────────────────
             if not answer or not answer.strip():
@@ -1525,24 +1531,30 @@ RULES:
 
             meta = {
                 "type":             "meta",
-                "confidence_score": _hk_result["confidence_score"] if _used_hk and _hk_result else confidence,
+                "confidence_score": _veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence,
                 "scam_detected":    scam_detected,
                 "threat_level":     threat_level,
                 "action_trigger":   action_trigger,
                 "audio_b64":        "",
                 "full_answer":      answer,
-                "model":            _hk_result.get("model") if _used_hk and _hk_result else model_used,
+                "model":            _veracore_result.get("model") if _veracore_used and _veracore_result else model_used,
                 "scam_indicators":  indicators,
                 "claude_validated": validated.get("claude_validated", False),
                 "usage_count":      current_count,
                 "limit":            tier_limit,
                 # ── HK fields ─────────────────────────────────────────────────
-                "hk_validated":     _used_hk,
-                "hk_confidence":    _hk_result.get("confidence_score") if _hk_result else None,
-                "hk_color":         _hk_result.get("confidence_color") if _hk_result else None,
-                "hk_badge":         _hk_badge,
-                "hk_sources":       _hk_result.get("sources", []) if _hk_result else [],
-                "hk_concerns":      _hk_result.get("concerns", []) if _hk_result else [],
+                "veracore_validated":     _veracore_used,
+                "veracore_confidence":    _veracore_result.get("confidence_score") if _veracore_result else None,
+                "veracore_color":         _veracore_result.get("confidence_color") if _veracore_result else None,
+                "veracore_badge":         _veracore_badge,
+                "veracore_sources":       _veracore_result.get("sources", []) if _veracore_result else [],
+                "veracore_concerns":      _veracore_result.get("concerns", []) if _veracore_result else [],
+                # ── #7 Confidence tier label ──────────────────────────────────
+                "confidence_tier":   (
+                    "high"     if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 80
+                    else "moderate" if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 60
+                    else "low"
+                ),
             }
             yield f"data: {json.dumps(meta)}\n\n"
 
