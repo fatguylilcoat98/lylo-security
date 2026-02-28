@@ -10,17 +10,6 @@
 //                              No more auto-spam on every message
 //  [V31.1-4] SPANISH TOGGLE  — EN/ES button in header AND login screen
 //                              All UI strings switch language
-// ─────────────────────────────────────────────────────────────────────────────
-// V30.9 Changes (preserved):
-//  [V30.9-1] BESTIE RETUNE   — Blunt, high-energy, protective. Real Talk mode.
-//  [V30.9-2] CAREER RETUNE  — Cold calculating shark. Zero feelings, pure strategy.
-//  [V30.9-3] UNIQUE INTROS  — Every persona gets a distinct voice/opening hook.
-// ─────────────────────────────────────────────────────────────────────────────
-// V30.8 Changes (preserved):
-//  [V30.8-1] SENTINEL IMPORT — useSentinel from ../lib/useSentinel
-//  [V30.8-2] SENTINEL HOOK  — sentinel = useSentinel({ userEmail, deviceId })
-//  [V30.8-3] ENGAGEMENT RESET — sentinel.onEngagement() in handleSend finally
-//  [V30.8-4] PUSH REGISTER   — sentinel.onPermissionGranted() after permission
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -62,19 +51,22 @@ export interface PersonaConfig {
 
 interface BestieConfig { gender: 'male' | 'female'; voiceId: string; vibeLabel: string; }
 
+// ── FIX: Added userTier prop, made layout props optional so Dashboard can pass freely ──
 interface ChatInterfaceProps {
-  currentPersona?: PersonaConfig; userEmail: string; zoomLevel: number;
-  onZoomChange: (zoom: number) => void; onPersonaChange: (persona: PersonaConfig) => void;
-  onLogout: () => void; onUsageUpdate?: () => void;
+  currentPersona?: PersonaConfig;
+  userEmail: string;
+  userTier?: string;
+  zoomLevel?: number;
+  onZoomChange?: (zoom: number) => void;
+  onPersonaChange?: (persona: PersonaConfig) => void;
+  onLogout?: () => void;
+  onUsageUpdate?: () => void;
 }
 
 interface IntakeProfile { faith: string; occupation: string; mission: string; vibe: string; relationship: string; }
 
 interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; }
 
-// [V31.1-1] NEW INTAKE QUESTIONS — Religion first, then work/mission/vibe/relationship
-// Round 1: shown on first login
-// Round 2: gentle banner after first session
 const INTAKE_QUESTIONS_R1 = [
   {
     id: 'faith',
@@ -254,7 +246,6 @@ const COLOR_MAP: Record<string, Record<string, string>> = {
 
 const getColor = (color: string, key: string) => COLOR_MAP[color]?.[key] ?? COLOR_MAP.blue[key];
 
-// [V31.1-4] UI STRINGS — English + Spanish
 const UI_STRINGS: Record<string, Record<string, string>> = {
   en: {
     welcome:          'Welcome to LYLO',
@@ -425,7 +416,12 @@ function scrollIfNearBottom(el: HTMLDivElement, threshold = 150) {
 // COMPONENT
 // ============================================================================
 function ChatInterface({
-  currentPersona: initialPersona, userEmail = '', onPersonaChange = () => {}, onLogout = () => {}, onUsageUpdate = () => {},
+  currentPersona: initialPersona,
+  userEmail = '',
+  userTier: userTierProp,
+  onPersonaChange = () => {},
+  onLogout = () => {},
+  onUsageUpdate = () => {},
 }: ChatInterfaceProps) {
 
   const [intakeProfile, setIntakeProfile]               = useState<Partial<IntakeProfile>>({});
@@ -446,7 +442,6 @@ function ChatInterface({
     if (desired.id !== activePersona.id) setActivePersona(desired);
   }, [initialPersona?.id]);
 
-  // [V31.1-4] Language state
   const [lang, setLang] = useState<'en' | 'es'>(() =>
     (localStorage.getItem('lylo_lang') as 'en' | 'es') || 'en'
   );
@@ -469,7 +464,8 @@ function ChatInterface({
   const [isSpeaking, setIsSpeaking]                     = useState(false);
   const [showDropdown, setShowDropdown]                 = useState(false);
   const [showCameraMenu, setShowCameraMenu]             = useState(false);
-  const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>('max');
+  // ── FIX: Initialize userTier from prop first, then localStorage fallback ──
+  const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>((userTierProp as any) ?? 'max');
   const [communicationStyle, setCommunicationStyle]     = useState('standard');
   const [fontLevel, setFontLevel]                       = useState(1);
   const [isVoiceEnabled, setIsVoiceEnabled]             = useState(true);
@@ -493,14 +489,12 @@ function ChatInterface({
   const [showInstallModal, setShowInstallModal]         = useState(false);
   const [canInstall, setCanInstall]                     = useState(false);
 
-  // [V31.1-2] Emergency step-by-step state
   const [showEmergency, setShowEmergency]               = useState(false);
   const [emergencySteps, setEmergencySteps]             = useState<string[]>([]);
   const [emergencyStep, setEmergencyStep]               = useState(0);
   const [emergencyTitle, setEmergencyTitle]             = useState('');
   const [emergencyWarning, setEmergencyWarning]         = useState('');
 
-  // [V31.1-3] End Session + PDF modal state
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
   const [sessionContent, setSessionContent]             = useState('');
 
@@ -523,7 +517,6 @@ function ChatInterface({
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
   const sentinel = useSentinel({ userEmail, deviceId });
 
-  // PWA install prompt
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in window.navigator && (window.navigator as any).standalone === true);
     if (isStandalone) return;
@@ -545,12 +538,13 @@ function ChatInterface({
     else alert('ANDROID SECURE INSTALL:\n\n1. Tap the 3 dots in Chrome.\n2. Tap "Install app".');
   };
 
-  // Restore persisted settings on mount
   useEffect(() => {
     const emailRaw = userEmail.toLowerCase();
-    const storedName = localStorage.getItem('userName'); const storedTier = localStorage.getItem('userTier') as any;
+    const storedName = localStorage.getItem('userName');
+    const storedTier = localStorage.getItem('userTier') as any;
     if (storedName) setUserName(storedName); else if (emailRaw.includes('stangman')) setUserName('Christopher');
-    if (storedTier) setUserTier(storedTier);
+    // Only use localStorage tier if no prop was provided
+    if (!userTierProp && storedTier) setUserTier(storedTier);
     const savedBestie = localStorage.getItem('lylo_bestie_config'); if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
     const rawStyle = localStorage.getItem('lylo_communication_style');
     if (rawStyle) { const migrated = LEGACY_VIBE_MAP[rawStyle] ?? rawStyle; if (migrated !== rawStyle) localStorage.setItem('lylo_communication_style', migrated); setCommunicationStyle(migrated); }
@@ -563,13 +557,11 @@ function ChatInterface({
     const hasOnboarded = localStorage.getItem(`lylo_onboarded_${emailRaw}`);
     if (!hasOnboarded) { setShowOnboarding(true); setOnboardingRound(1); }
     else {
-      // Check if round 2 is pending
       const r2pending = localStorage.getItem(`lylo_round2_pending_${emailRaw}`);
       if (r2pending) setShowRound2Prompt(true);
     }
   }, [userEmail]);
 
-  // Prefetch persona hooks
   useEffect(() => {
     if (!userEmail || hooksFetchedRef.current) return;
     hooksFetchedRef.current = true;
@@ -585,7 +577,6 @@ function ChatInterface({
     const timer = setTimeout(prefetchAll, 800); return () => clearTimeout(timer);
   }, [userEmail]);
 
-  // Back-button / unload guard
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; return ''; };
     const lock = () => window.history.pushState(null, '', window.location.href);
@@ -648,7 +639,7 @@ function ChatInterface({
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
     streamingTextRef.current = ''; setStreamingText(''); setStreamingMsgId(msgId);
-    
+
     const startTyping = (msPerChar: number) => {
       let i = 0;
       typewriterRef.current = setInterval(() => {
@@ -660,12 +651,8 @@ function ChatInterface({
     };
 
     if (audioEl && isVoiceEnabled) {
-      // START TYPING IMMEDIATELY — don't wait for audio metadata
-      // Calculate a reasonable speed: ~40ms per char for natural reading pace
-      // Then play audio in parallel — they run together
       const estimatedMs = Math.max(18, Math.min(45, (3500) / Math.max(text.length, 1)));
       startTyping(estimatedMs);
-      // Play audio right away — no waiting
       audioEl.play().catch(() => {});
     } else {
       startTyping(readingMode === 'fast' ? 0 : 28);
@@ -730,7 +717,6 @@ function ChatInterface({
     img.onerror = () => { URL.revokeObjectURL(objUrl); setSelectedImage(file); }; img.src = objUrl;
   };
 
-  // [V31.1-3] Collect session content as messages arrive
   const appendSessionContent = (content: string, sender: 'user' | 'bot') => {
     if (content.trim()) setSessionContent(prev => prev + (prev ? '\n' : '') + `[${sender.toUpperCase()}]: ${content}`);
   };
@@ -753,6 +739,7 @@ function ChatInterface({
       fd.append('user_location', ''); fd.append('vibe', communicationStyle);
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
       fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
+      fd.append('lang', lang);
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
@@ -783,13 +770,11 @@ function ChatInterface({
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
 
-      // Emergency auto-switch persona
       if (metaData?.emergency && metaData?.persona_switched && metaData?.switched_persona) {
         const emergencyPersona = PERSONAS.find(p => p.id === metaData.switched_persona);
         if (emergencyPersona) { setActivePersona(emergencyPersona); localStorage.setItem('lylo_selected_persona', emergencyPersona.id); onPersonaChange(emergencyPersona); }
       }
 
-      // [V31.1-2] Show step-by-step emergency UI if steps are present
       if (metaData?.emergency && metaData?.emergency_steps?.length) {
         setEmergencySteps(metaData.emergency_steps);
         setEmergencyStep(0);
@@ -870,10 +855,8 @@ function ChatInterface({
     new Notification(`✅ Reminder Set — ${minutes} min`, { body: `"${msg.slice(0, 80)}..."`, icon: '/logo.png' });
   };
 
-  // [V31.1-3] End Session handler — shows PDF confirm modal
   const handleEndSession = () => { setShowDropdown(false); setShowEndSessionModal(true); };
 
-  // [V31.1-3] Send session report to backend
   const sendSessionReport = async () => {
     setShowEndSessionModal(false);
     if (!sessionContent.trim()) { setSessionContent(''); return; }
@@ -911,7 +894,6 @@ function ChatInterface({
     localStorage.setItem(`lylo_onboarded_${userEmail.toLowerCase()}`, 'true');
     localStorage.setItem(`lylo_round2_pending_${userEmail.toLowerCase()}`, 'true');
     setShowOnboarding(false);
-    // Don't show round 2 prompt immediately — show it after their first real session
   };
 
   const completeRound2 = () => {
@@ -923,7 +905,7 @@ function ChatInterface({
   const getInputFontSize = () => { switch (fontLevel) { case 2: return 'text-lg'; case 3: return 'text-xl'; case 4: return 'text-2xl'; default: return 'text-sm'; } };
 
   // ==========================================================================
-  // [V31.1-1] ONBOARDING — Round 1 & 2
+  // ONBOARDING
   // ==========================================================================
   if (showOnboarding) {
     const questions = onboardingRound === 1 ? INTAKE_QUESTIONS_R1 : INTAKE_QUESTIONS_R2;
@@ -937,7 +919,6 @@ function ChatInterface({
 
     return (
       <div className="fixed inset-0 bg-[#080808] flex flex-col items-center justify-center p-4 z-[999999] overflow-y-auto">
-        {/* Language toggle on intake screen */}
         <button onClick={toggleLang} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-xs font-bold hover:bg-white/10 transition-all">
           <Globe className="w-3.5 h-3.5" /> {t('lang_toggle')}
         </button>
@@ -1087,7 +1068,7 @@ function ChatInterface({
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
 
-      {/* [V31.1-2] EMERGENCY STEP-BY-STEP OVERLAY */}
+      {/* EMERGENCY STEP-BY-STEP OVERLAY */}
       {showEmergency && emergencySteps.length > 0 && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[100010] p-4">
           <div className="bg-[#0a0a0a] border border-red-500 rounded-2xl max-w-md w-full p-6 shadow-[0_0_60px_rgba(239,68,68,0.2)]">
@@ -1110,17 +1091,11 @@ function ChatInterface({
               </div>
             )}
             {emergencyStep < emergencySteps.length - 1 ? (
-              <button
-                onClick={() => setEmergencyStep(s => s + 1)}
-                className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-base transition-all active:scale-95"
-              >
+              <button onClick={() => setEmergencyStep(s => s + 1)} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-base transition-all active:scale-95">
                 ✅ {t('emerg_next')}
               </button>
             ) : (
-              <button
-                onClick={() => setShowEmergency(false)}
-                className="w-full py-4 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black font-black rounded-xl text-base transition-all active:scale-95"
-              >
+              <button onClick={() => setShowEmergency(false)} className="w-full py-4 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black font-black rounded-xl text-base transition-all active:scale-95">
                 {t('emerg_done')}
               </button>
             )}
@@ -1128,25 +1103,15 @@ function ChatInterface({
         </div>
       )}
 
-      {/* [V31.1-3] END SESSION PDF MODAL */}
+      {/* END SESSION PDF MODAL */}
       {showEndSessionModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100009] p-4">
           <div className="bg-[#0a0a0a] border border-[#39FF14]/30 rounded-2xl max-w-sm w-full p-6 shadow-[0_0_40px_rgba(57,255,20,0.1)]">
             <h3 className="text-white font-black text-lg mb-2">📄 {t('send_report')}</h3>
             <p className="text-gray-400 text-sm mb-6">{t('report_prompt')}</p>
             <div className="flex gap-3">
-              <button
-                onClick={sendSessionReport}
-                className="flex-1 py-3 bg-[#39FF14] text-black font-black rounded-xl text-sm hover:bg-[#39FF14]/90 transition-all active:scale-95"
-              >
-                {t('report_yes')}
-              </button>
-              <button
-                onClick={() => { setShowEndSessionModal(false); setSessionContent(''); }}
-                className="flex-1 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-all active:scale-95"
-              >
-                {t('report_no')}
-              </button>
+              <button onClick={sendSessionReport} className="flex-1 py-3 bg-[#39FF14] text-black font-black rounded-xl text-sm hover:bg-[#39FF14]/90 transition-all active:scale-95">{t('report_yes')}</button>
+              <button onClick={() => { setShowEndSessionModal(false); setSessionContent(''); }} className="flex-1 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-all active:scale-95">{t('report_no')}</button>
             </div>
           </div>
         </div>
@@ -1157,14 +1122,12 @@ function ChatInterface({
         <div className="flex items-center justify-between">
           <div className="relative flex items-center gap-2 z-10">
             {!showPersonaGrid && (<button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>)}
-
             {showPersonaGrid && (
               <div className="flex flex-col justify-center ml-1">
                 <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
                 <p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p>
               </div>
             )}
-
           </div>
 
           <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
@@ -1173,7 +1136,6 @@ function ChatInterface({
           </div>
 
           <div className="flex items-center gap-2 z-10">
-            {/* [V31.1-4] Language toggle in header */}
             <button onClick={toggleLang} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-[10px] font-black uppercase hover:text-white hover:bg-white/10 transition-all">{lang === 'en' ? 'ES' : 'EN'}</button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
@@ -1181,7 +1143,7 @@ function ChatInterface({
         </div>
       </div>
 
-      {/* [V31.1-1] Round 2 gentle reminder banner */}
+      {/* Round 2 gentle reminder banner */}
       {showRound2Prompt && !showPersonaGrid && (
         <div className="mx-3 mt-2 p-3 bg-[#39FF14]/5 border border-[#39FF14]/20 rounded-xl flex items-center justify-between flex-shrink-0">
           <div>
@@ -1189,18 +1151,8 @@ function ChatInterface({
             <p className="text-gray-500 text-[10px] mt-0.5">{t('profile_prompt')}</p>
           </div>
           <div className="flex gap-2 ml-3">
-            <button
-              onClick={() => { setOnboardingRound(2); setOnboardingStep(1); setShowRound2Prompt(false); setShowOnboarding(true); }}
-              className="px-3 py-1.5 bg-[#39FF14] text-black text-[10px] font-black rounded-lg whitespace-nowrap"
-            >
-              {t('profile_cta')}
-            </button>
-            <button
-              onClick={() => setShowRound2Prompt(false)}
-              className="px-3 py-1.5 bg-gray-800 text-gray-400 text-[10px] font-bold rounded-lg"
-            >
-              {t('profile_skip')}
-            </button>
+            <button onClick={() => { setOnboardingRound(2); setOnboardingStep(1); setShowRound2Prompt(false); setShowOnboarding(true); }} className="px-3 py-1.5 bg-[#39FF14] text-black text-[10px] font-black rounded-lg whitespace-nowrap">{t('profile_cta')}</button>
+            <button onClick={() => setShowRound2Prompt(false)} className="px-3 py-1.5 bg-gray-800 text-gray-400 text-[10px] font-bold rounded-lg">{t('profile_skip')}</button>
           </div>
         </div>
       )}
