@@ -93,8 +93,8 @@ export function useChatSend({
 
     try {
       const form = new FormData();
-      form.append('email',   userEmail);
-      form.append('message', content);
+      form.append('user_email', userEmail);
+      form.append('msg',        content);
       form.append('persona', persona);
       form.append('lang',    lang);
 
