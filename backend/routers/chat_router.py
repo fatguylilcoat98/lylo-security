@@ -185,6 +185,7 @@ async def generate_audio(
 async def persona_hook(
     persona:    str = Form(...),
     user_email: str = Form(""),
+    lang:       str = Form("en"),          # [V31.3] accept language param
 ):
     try:
         email_lower = user_email.lower().strip()
@@ -201,25 +202,45 @@ async def persona_hook(
         if user_name == "Protected User" and "@" in email_lower:
             user_name = email_lower.split("@")[0].replace(".", " ").title()
 
-        PERSONA_HOOKS = {
-            "mechanic":  f"Alright {user_name}, I'm under the hood. What's the problem?",
-            "doctor":    f"{user_name}, I'm here. Tell me what's going on with you.",
-            "lawyer":    f"{user_name}, Legal Shield active. What situation are we handling?",
-            "wealth":    f"{user_name}, Wealth Architect online. Let's talk strategy.",
-            "therapist": f"I'm here, {user_name}. Take your time — what's on your mind?",
-            "career":    f"{user_name}, Career Coach locked in. What's your next move?",
-            "tutor":     f"Ready to learn, {user_name}? What are we tackling today?",
-            "vitality":  f"{user_name}, Vitality Coach here. How's your body feeling?",
-            "hype":      f"LET'S GO {user_name}! Hype Engine is LIVE — what's the mission?",
-            "bestie":    f"Hey {user_name}! Your bestie is here — spill it, what's going on?",
-            "pastor":    f"Peace to you, {user_name}. What's weighing on your spirit today?",
-            "guardian":  f"{user_name}, Guardian online. Your digital perimeter is secure. What's the threat?",
-        }
-        hook = PERSONA_HOOKS.get(persona, f"Hello {user_name}, I'm ready to help.")
+        # [V31.3] Bilingual hooks — Spanish when lang == "es"
+        if lang == "es":
+            PERSONA_HOOKS = {
+                "mechanic":  f"Listo {user_name}, estoy revisando el motor. ¿Cuál es el problema?",
+                "doctor":    f"{user_name}, estoy aquí. Cuéntame qué está pasando.",
+                "lawyer":    f"{user_name}, Escudo Legal activo. ¿Qué situación estamos manejando?",
+                "wealth":    f"{user_name}, Arquitecto de Riqueza en línea. Hablemos de estrategia.",
+                "therapist": f"Aquí estoy, {user_name}. Tómate tu tiempo — ¿qué tienes en mente?",
+                "career":    f"{user_name}, Coach de Carrera listo. ¿Cuál es tu próximo movimiento?",
+                "tutor":     f"¿Listo para aprender, {user_name}? ¿Qué estamos trabajando hoy?",
+                "vitality":  f"{user_name}, Coach de Vitalidad aquí. ¿Cómo se siente tu cuerpo?",
+                "hype":      f"¡VAMOS {user_name}! Motor de Energía ACTIVO — ¿cuál es la misión?",
+                "bestie":    f"¡Hola {user_name}! Tu mejor amigo/a está aquí — cuéntame todo, ¿qué está pasando?",
+                "pastor":    f"Paz para ti, {user_name}. ¿Qué está pesando en tu espíritu hoy?",
+                "guardian":  f"{user_name}, Guardián en línea. Tu perímetro digital está seguro. ¿Cuál es la amenaza?",
+            }
+            fallback = f"Hola {user_name}, estoy listo para ayudarte."
+        else:
+            PERSONA_HOOKS = {
+                "mechanic":  f"Alright {user_name}, I'm under the hood. What's the problem?",
+                "doctor":    f"{user_name}, I'm here. Tell me what's going on with you.",
+                "lawyer":    f"{user_name}, Legal Shield active. What situation are we handling?",
+                "wealth":    f"{user_name}, Wealth Architect online. Let's talk strategy.",
+                "therapist": f"I'm here, {user_name}. Take your time — what's on your mind?",
+                "career":    f"{user_name}, Career Coach locked in. What's your next move?",
+                "tutor":     f"Ready to learn, {user_name}? What are we tackling today?",
+                "vitality":  f"{user_name}, Vitality Coach here. How's your body feeling?",
+                "hype":      f"LET'S GO {user_name}! Hype Engine is LIVE — what's the mission?",
+                "bestie":    f"Hey {user_name}! Your bestie is here — spill it, what's going on?",
+                "pastor":    f"Peace to you, {user_name}. What's weighing on your spirit today?",
+                "guardian":  f"{user_name}, Guardian online. Your digital perimeter is secure. What's the threat?",
+            }
+            fallback = f"Hello {user_name}, I'm ready to help."
+
+        hook = PERSONA_HOOKS.get(persona, fallback)
         return {"hook": hook}
     except Exception as e:
         logger.warning(f"⚠️ persona-hook error: {e}")
-        return {"hook": "I'm ready. What do you need?"}
+        return {"hook": "I'm ready. What do you need?" if lang != "es" else "Estoy listo. ¿En qué puedo ayudarte?"}
 
 
 @router.post("/chat")
