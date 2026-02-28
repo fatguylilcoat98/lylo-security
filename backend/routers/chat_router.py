@@ -1213,7 +1213,50 @@ MEMORY INTEGRITY RULE:
         )
     # ── End image detection ───────────────────────────────────────────────
 
-    system_prompt = (_voice_block + "\n\n" if _voice_block else "") + HONESTY_DIRECTIVE + "\n\n" + system_prompt
+    # Voice block at TOP (sets intent) + HONESTY + persona prompt + voice HARD RULE at BOTTOM (enforces it)
+    system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
+
+    if _is_voice_mode:
+        # Hard rule at the VERY END — LLMs weight final instructions most heavily
+        if persona in _TIER_A_PERSONAS:
+            _voice_hard_rule = (
+                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
+                "You are speaking OUT LOUD. The user CANNOT read. They can only listen.\n"
+                "ABSOLUTE MAXIMUM: 3 sentences. Count them. Stop after 3.\n"
+                "In emergencies: MAX 2 sentences then STOP and ask ONE confirmation question.\n"
+                "NO bullet points. NO numbered lists. NO markdown formatting.\n"
+                "NO long explanations. Give the MOST IMPORTANT point only.\n"
+                "End with ONE short question to hand the turn back.\n"
+                "If you write more than 3 sentences you are breaking the user experience.\n"
+                "━━━ END VOICE HARD RULE ━━━"
+            )
+        elif persona in _TIER_B_PERSONAS:
+            _voice_hard_rule = (
+                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
+                "You are speaking OUT LOUD. The user CANNOT read. They can only listen.\n"
+                "ABSOLUTE MAXIMUM: 3 sentences. Count them. Stop after 3.\n"
+                "Stay warm and in character — do NOT go cold or robotic.\n"
+                "NO bullet points. NO numbered lists. NO markdown.\n"
+                "End with a natural warm handoff question.\n"
+                "━━━ END VOICE HARD RULE ━━━"
+            )
+        else:
+            _voice_hard_rule = (
+                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
+                "You are speaking OUT LOUD. MAXIMUM 3 sentences. No lists. No markdown.\n"
+                "━━━ END VOICE HARD RULE ━━━"
+            )
+        if lang == "es":
+            _voice_hard_rule = (
+                "\n\n━━━ REGLA ESTRICTA DE VOZ ━━━\n"
+                "Estás hablando en VOZ ALTA. El usuario NO puede leer, solo escuchar.\n"
+                "MÁXIMO ABSOLUTO: 3 oraciones. Cuéntalas. Para después de 3.\n"
+                "En emergencias: MÁX 2 oraciones, luego DETENTE y haz UNA pregunta de confirmación.\n"
+                "SIN viñetas. SIN listas numeradas. SIN markdown.\n"
+                "Termina con UNA pregunta corta para devolver el turno.\n"
+                "━━━ FIN REGLA DE VOZ ━━━"
+            )
+        system_prompt = system_prompt + _voice_hard_rule
 
     if lang == "es":
         system_prompt = "IMPORTANT: The user has selected Spanish. Respond ENTIRELY in Spanish (Latin American). Do not mix languages.\n\n" + system_prompt
@@ -1442,6 +1485,30 @@ MEMORY INTEGRITY RULE:
                 logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
 
             sentences = split_into_sentences(answer)
+
+            # ── VOICE CAP ENFORCEMENT — hard cut in code, never trust LLM to self-cap ──
+            if _is_voice_mode:
+                _is_emergency_topic = (
+                    len([i for i in analyze_scam_indicators(msg) if i]) > 0
+                    or any(w in msg.lower() for w in [
+                        "wreck","crash","accident","heart","chest","stroke","attack",
+                        "emergency","911","dying","can't breathe","unconscious","bleeding",
+                        "scam","fraud","stolen","theft","robbery","threatened",
+                        "accidente","corazón","emergencia","muriendo","sangre","estafa","fraude"
+                    ])
+                )
+                _cap = 2 if (_is_emergency_topic and persona in _TIER_A_PERSONAS) else 3
+                if len(sentences) > _cap:
+                    # Keep first (_cap - 1) sentences + add handoff question
+                    _kept = sentences[:_cap - 1]
+                    _handoff_q = (
+                        "¿Qué más necesitas saber?" if lang == "es"
+                        else "What else do you need from me?"
+                    )
+                    sentences = _kept + [_handoff_q]
+                    answer = " ".join(sentences)
+                    logger.info(f"✅ Voice cap enforced [{persona}] — trimmed to {len(sentences)} sentences")
+            # ── End voice cap enforcement ─────────────────────────────────────
 
             async def _nli_trust_score(sentence: str, claim_type: str) -> dict:
                 _client = claude_client or anthropic_client
