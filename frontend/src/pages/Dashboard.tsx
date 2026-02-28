@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import Layout, { personas, PersonaConfig } from '../components/Layout';
-import ChatInterface from '../components/ChatInterface';
+import Layout, { personas, PersonaConfig as LayoutPersona } from '../components/Layout';
+import ChatInterface, { PersonaConfig as ChatPersona } from '../components/ChatInterface';
 
 export default function Dashboard() {
   const [currentPersona, setCurrentPersona] = useState('guardian');
@@ -33,7 +33,6 @@ export default function Dashboard() {
     if (currentPersona) localStorage.setItem('lylo_selected_persona', currentPersona);
   }, [currentPersona]);
 
-  const handlePersonaChange = (persona: PersonaConfig) => setCurrentPersona(persona.id);
   const handleLogout = () => { localStorage.clear(); window.location.href = '/'; };
 
   if (!userEmail) return null;
@@ -41,7 +40,7 @@ export default function Dashboard() {
   return (
     <Layout
       currentPersona={currentPersonaConfig}
-      onPersonaChange={handlePersonaChange}
+      onPersonaChange={(p: LayoutPersona) => setCurrentPersona(p.id)}
       userEmail={userEmail}
       fontSize={fontSize}
       onFontSizeChange={setFontSize}
@@ -84,13 +83,12 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── FIXED: renamed currentPersonaId→currentPersona, onSignOut→onLogout ── */}
         <ChatInterface
           userEmail={userEmail}
           userTier={userTier}
-          currentPersona={currentPersonaConfig}
+          currentPersona={currentPersonaConfig as unknown as ChatPersona}
           onLogout={handleLogout}
-          onPersonaChange={handlePersonaChange}
+          onPersonaChange={(p: ChatPersona) => setCurrentPersona(p.id)}
         />
       </div>
     </Layout>
