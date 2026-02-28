@@ -1,15 +1,11 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 31.1.0 — STEP-BY-STEP EMERGENCY + RELIGION INTAKE + SPANISH + END SESSION PDF
+// Version: 31.2.0 — FONT SIZE BUTTON + BELL TOAST + SPANISH HIGHLIGHT
 // ─────────────────────────────────────────────────────────────────────────────
-// V31.1 Changes:
-//  [V31.1-1] RELIGION Q1     — Faith question is first in intake (sets up Pastor)
-//  [V31.1-2] STEP EMERGENCY  — Emergency protocol shows one step at a time
-//                              with "Done — Next Step" button after each step
-//  [V31.1-3] END SESSION PDF — PDF only sends when user taps End Session + confirms
-//                              No more auto-spam on every message
-//  [V31.1-4] SPANISH TOGGLE  — EN/ES button in header AND login screen
-//                              All UI strings switch language
+// V31.2 Changes:
+//  [V31.2-1] FONT SIZE BUTTON — Aa button in bottom bar cycles 4 sizes
+//  [V31.2-2] BELL TOAST       — Visual feedback toast when bell is tapped
+//  [V31.2-3] SPANISH TOGGLE   — Gold highlight + flag emoji when ES active
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -51,7 +47,6 @@ export interface PersonaConfig {
 
 interface BestieConfig { gender: 'male' | 'female'; voiceId: string; vibeLabel: string; }
 
-// ── FIX: Added userTier prop, made layout props optional so Dashboard can pass freely ──
 interface ChatInterfaceProps {
   currentPersona?: PersonaConfig;
   userEmail: string;
@@ -464,13 +459,13 @@ function ChatInterface({
   const [isSpeaking, setIsSpeaking]                     = useState(false);
   const [showDropdown, setShowDropdown]                 = useState(false);
   const [showCameraMenu, setShowCameraMenu]             = useState(false);
-  // ── FIX: Initialize userTier from prop first, then localStorage fallback ──
   const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>((userTierProp as any) ?? 'max');
   const [communicationStyle, setCommunicationStyle]     = useState('standard');
   const [fontLevel, setFontLevel]                       = useState(1);
   const [isVoiceEnabled, setIsVoiceEnabled]             = useState(true);
   const [readingMode, setReadingMode]                   = useState<'sync' | 'fast'>('sync');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [bellToast, setBellToast]                       = useState('');          // [V31.2-2] Bell toast
   const [selectedImage, setSelectedImage]               = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]                     = useState<string | null>(null);
   const [showCrisisShield, setShowCrisisShield]         = useState(false);
@@ -543,7 +538,6 @@ function ChatInterface({
     const storedName = localStorage.getItem('userName');
     const storedTier = localStorage.getItem('userTier') as any;
     if (storedName) setUserName(storedName); else if (emailRaw.includes('stangman')) setUserName('Christopher');
-    // Only use localStorage tier if no prop was provided
     if (!userTierProp && storedTier) setUserTier(storedTier);
     const savedBestie = localStorage.getItem('lylo_bestie_config'); if (savedBestie) setBestieConfig(JSON.parse(savedBestie));
     const rawStyle = localStorage.getItem('lylo_communication_style');
@@ -835,15 +829,36 @@ function ChatInterface({
   const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
   const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
+  // [V31.2-2] Bell toast helper
+  const showBellToastMsg = (msg: string) => {
+    setBellToast(msg);
+    setTimeout(() => setBellToast(''), 3000);
+  };
+
   const requestMobileAlerts = async () => {
-    if (!('Notification' in window)) { alert('Push notifications not supported.'); return; }
-    if (Notification.permission === 'granted') { setNotificationsEnabled(true); return; }
+    if (!('Notification' in window)) {
+      showBellToastMsg('Notifications not supported on this browser');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      setNotificationsEnabled(true);
+      showBellToastMsg('🛡️ Alerts already active!');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      showBellToastMsg('⚠️ Blocked — enable in browser settings');
+      return;
+    }
     const p = await Notification.requestPermission();
     if (p === 'granted') {
       setNotificationsEnabled(true);
+      showBellToastMsg('🔔 Alerts activated!');
       new Notification('LYLO Alerts Active 🛡️', { body: 'Mission reminders enabled.', icon: '/logo.png' });
       sentinel.onPermissionGranted();
-    } else { setNotificationsEnabled(false); }
+    } else {
+      setNotificationsEnabled(false);
+      showBellToastMsg('Alerts turned off');
+    }
   };
 
   const scheduleMobileReminder = (msg: string, minutes = 30) => {
@@ -1068,6 +1083,15 @@ function ChatInterface({
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
 
+      {/* [V31.2-2] BELL TOAST */}
+      {bellToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200000] animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-none">
+          <div className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-black text-sm shadow-[0_0_30px_rgba(99,102,241,0.4)] flex items-center gap-2 whitespace-nowrap">
+            <Bell className="w-4 h-4" /> {bellToast}
+          </div>
+        </div>
+      )}
+
       {/* EMERGENCY STEP-BY-STEP OVERLAY */}
       {showEmergency && emergencySteps.length > 0 && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[100010] p-4">
@@ -1136,7 +1160,17 @@ function ChatInterface({
           </div>
 
           <div className="flex items-center gap-2 z-10">
-            <button onClick={toggleLang} className="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-gray-400 text-[10px] font-black uppercase hover:text-white hover:bg-white/10 transition-all">{lang === 'en' ? 'ES' : 'EN'}</button>
+            {/* [V31.2-3] Spanish toggle — gold highlight when ES active */}
+            <button
+              onClick={toggleLang}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
+                lang === 'es'
+                  ? 'bg-yellow-500 border-yellow-400 text-black shadow-[0_0_12px_rgba(234,179,8,0.4)]'
+                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {lang === 'en' ? '🇲🇽 ES' : '🇺🇸 EN'}
+            </button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
@@ -1287,6 +1321,19 @@ function ChatInterface({
             <button onClick={() => { if (streamingMsgId) bailoutTypewriter(); toggleVoice(); }} className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${isVoiceEnabled ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-white/10 text-gray-400 border border-white/10'}`}>
               {isVoiceEnabled ? <><Volume2 className="w-4 h-4" /><span>On</span></> : <><VolumeX className="w-4 h-4" /><span>Off</span></>}
             </button>
+            {/* [V31.2-1] FONT SIZE BUTTON */}
+            <button
+              onClick={cycleFontSize}
+              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border ${
+                fontLevel === 1 ? 'bg-white/10 border-white/10 text-gray-400'
+                : fontLevel === 2 ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
+                : fontLevel === 3 ? 'bg-purple-500/20 border-purple-500/40 text-purple-400'
+                : 'bg-orange-500/20 border-orange-500/40 text-orange-400'
+              }`}
+            >
+              <span className={`leading-none font-black ${fontLevel === 1 ? 'text-sm' : fontLevel === 2 ? 'text-base' : fontLevel === 3 ? 'text-lg' : 'text-xl'}`}>Aa</span>
+              <span>{fontLevel === 1 ? 'Sm' : fontLevel === 2 ? 'Md' : fontLevel === 3 ? 'Lg' : 'XL'}</span>
+            </button>
           </div>
 
           <div className="flex gap-2">
@@ -1313,7 +1360,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.1</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.2</p>
           </div>
         </div>
       </div>
