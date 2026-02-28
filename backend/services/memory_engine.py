@@ -17,6 +17,7 @@ from typing import List, Dict, Optional, Tuple, Any, Union
 from services.config import (
     memory_index, openai_client,
     _PROFILE_CACHE, _PROFILE_CACHE_TTL, create_user_id,
+    MED_VAULT_ENABLED,
 )
 
 # ── Vector ID suffixes ────────────────────────────────────────────────────────
@@ -326,3 +327,5 @@ async def store_intake_profile(user_id: str, profile: dict):
         logger.info(f"✅ Intake profile stored for {user_id}")
     except Exception as e:
         logger.error(f"Intake Profile Store Error: {e}")
+
+
