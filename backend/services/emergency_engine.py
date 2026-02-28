@@ -279,11 +279,11 @@ _EMERGENCY_TRIGGERS = {
     },
     "mechanic": {
         "keywords": [
-            "brake failure","brakes failed","brakes aren't working","can't stop","no brakes",
+            "brake failure","brakes failed","brakes aren't working","can't stop the car","no brakes","brakes went out",
             "tire blowout","blew a tire","flat tire on highway","tire exploded",
             "car broke down","broke down on highway","stranded on road","engine died",
             "smoke coming from engine","car is smoking","engine overheating","overheated",
-            "car won't start","dead battery on highway","out of gas on highway",
+            "dead battery on highway","out of gas on highway","stranded on highway","broke down on freeway",
             "steering failed","lost steering","power steering gone",
         ],
         "protocols": {
