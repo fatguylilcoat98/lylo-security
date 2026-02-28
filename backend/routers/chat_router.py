@@ -98,12 +98,12 @@ async def _get_tavily_context(persona: str, message: str, location: str) -> str:
         "doctor":    f"{message} medical health symptoms treatment",
         "lawyer":    f"{message} legal rights law advice",
         "wealth":    f"{message} personal finance investment advice",
-        "mechanic":  f"{message} car vehicle repair fix",
+        "mechanic":  f"{message} car vehicle repair fix test drive bronco ford truck dealership buy purchase",
         "therapist": f"{message} mental health emotional wellbeing coping",
         "vitality":  f"{message} fitness nutrition exercise health",
         "career":    f"{message} career job workplace professional advice",
         "tutor":     f"{message} explanation learn understand",
-        "guardian":  f"{message} cybersecurity scam safety protect",
+        "guardian":  f"{message} cybersecurity scam fraud safety protect identity theft digital security",
         "hype":      f"{message} content creation social media strategy",
         "pastor":    f"{message} faith spirituality scripture meaning",
         "bestie":    f"{message} advice relationship personal",
@@ -257,6 +257,7 @@ async def chat(
     email_consent:        str        = Form("false"),
     voice:                str        = Form("onyx"),
     lang:                 str        = Form("en"),
+    input_mode:           str        = Form("text"),   # "voice" | "text" — Phase 1 Voice Architecture
     file:                 UploadFile = File(None),
 ):
     email_lower = user_email.lower().strip()
@@ -388,6 +389,14 @@ async def chat(
     _DOMAIN_INTERCEPTS = {
         "mechanic": {
             "triggers": [
+                # Car buying & test drive — Mechanic's domain not Guardian's
+                "test drive","test-drive","buying a car","buy a car","new car","used car",
+                "dealership","car dealer","auto dealer","car lot","car purchase","vehicle purchase",
+                "bronco","mustang","f-150","silverado","ram truck","tacoma","camry","accord",
+                "ford","chevrolet","chevy","toyota","honda","nissan","dodge","jeep","kia","hyundai",
+                "car shopping","looking at cars","checking out a car","picking up a car",
+                "trade in","trade-in","car payment","auto loan","financing a car",
+                # Body parts — not mechanic's lane
                 "wrist","elbow","shoulder","knee","ankle","back","neck","hip","foot","feet",
                 "finger","thumb","hand","arm","leg","chest","stomach","head","eye","ear","nose",
                 "throat","spine","muscle","joint","tendon","ligament","bone","nerve",
@@ -550,12 +559,16 @@ async def chat(
         },
         "guardian": {
             "triggers": [
-                "brakes","tire","wheel","engine","transmission","oil","car","truck","vehicle","fix","repair",
-                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore","swollen","burning","fever","diagnosis","medication","hospital","urgent care","pee","urine","rash","dizzy","infection",
-                "invest","stocks","crypto","401k","debt","loan","mortgage","tax","irs",
+                # Medical — not Guardian's lane
+                "symptom","wrist","elbow","shoulder","knee","ankle","hurts","hurt","pain","ache","sore",
+                "swollen","burning","fever","diagnosis","medication","hospital","urgent care","rash","dizzy","infection",
+                # Mental health — send to therapist
                 "anxiety","depression","therapy","grief","emotional","mental health",
+                # NOTE: car/vehicle/repair intentionally NOT listed here.
+                # Guardian CAN discuss car-buying fraud, dealership scams, lemon laws.
+                # Only pure mechanical repair questions get routed to Mechanic.
             ],
-            "specialist": "The Tech Specialist",
+            "specialist": "The Doctor",
             "medical_specialist": "The Doctor",
             "financial_specialist": "The Wealth Architect",
             "therapeutic_specialist": "The Therapist",
@@ -666,12 +679,12 @@ async def chat(
             )
 
         PERSONA_DOMAINS = {
-            "guardian":  "cybersecurity, scams, phishing, identity theft, hacking, account protection, digital safety",
+            "guardian":  "cybersecurity, scams, phishing, identity theft, hacking, account protection, digital safety — NOT vehicle repair or car buying unless the question is specifically about fraud or being scammed at a dealership",
             "doctor":    "medical symptoms, health conditions, body pain, illness, medication, fatigue, injury, mental symptoms",
             "lawyer":    "legal matters, contracts, rights, lawsuits, court, evictions, employment law, legal advice",
             "wealth":    "personal finance, investing, budgeting, debt, taxes, money management, savings, business finances",
             "therapist": "emotions, mental wellbeing, relationships, anxiety, depression, grief, trauma, feelings",
-            "mechanic":  "vehicle repair, car problems, engines, brakes, tires on vehicles, OBD codes, mechanical issues",
+            "mechanic":  "vehicle repair, car problems, engines, brakes, tires, OBD codes, mechanical issues, test drives, buying a car, car shopping, dealerships, vehicle purchases, auto financing, checking out cars — ANYTHING car or truck related",
             "career":    "jobs, career growth, resumes, interviews, workplace issues, salary negotiation, promotions",
             "vitality":  "fitness, nutrition, exercise, diet, physical training, supplements, body performance, workouts",
             "hype":      "content creation, social media, viral strategy, entrepreneurship, motivation, hustle",
@@ -707,6 +720,10 @@ RULE 1 — UNDERSTAND MEANING, NOT WORDS:
   "I feel anxious" to Guardian → OUT OF DOMAIN → therapist or doctor
   "someone scammed me" to Doctor → OUT OF DOMAIN → guardian
   "need a lawyer" to Doctor → OUT OF DOMAIN → lawyer
+  "test drive" to Guardian → IN DOMAIN if about dealer fraud; OUT OF DOMAIN → mechanic if about the car itself
+  "I want to test drive a Bronco" to Guardian → OUT OF DOMAIN → mechanic
+  "the dealer is pressuring me to sign" to Mechanic → OUT OF DOMAIN → guardian (fraud/scam)
+  "car buying" to Guardian → IN DOMAIN only if fraud involved, else → mechanic
 
 RULE 2 — CONVERSATION CONTEXT WINS:
   If recent turns show medical discussion → ambiguous words stay with doctor
@@ -725,10 +742,12 @@ RULE 5 — ROUTING MAP:
   medical / health / body symptoms / fatigue / injury → doctor
   legal / contracts / rights / lawsuit / court → lawyer
   money / investing / debt / budget / taxes → wealth
-  car / vehicle / engine / brakes / flat tire / mechanic → mechanic
+  car / vehicle / engine / brakes / flat tire / repair / mechanic → mechanic
+  test drive / buying a car / dealership / car shopping / vehicle purchase → mechanic
+  car fraud / dealer scam / lemon law / odometer fraud → guardian (fraud angle) or mechanic (vehicle angle) — use context
   emotions / anxiety / depression / grief / feelings → therapist
   fitness / nutrition / workout / exercise / diet → vitality
-  scam / hacking / phishing / identity theft / digital safety → guardian
+  scam / hacking / phishing / identity theft / digital safety / fraud → guardian
   career / job / resume / salary / workplace → career
   faith / prayer / scripture / spiritual / God → pastor
   content / social media / viral / hustle → hype
@@ -1059,6 +1078,60 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         memory_context  = memory_context,
     )
 
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PHASE 1 VOICE ARCHITECTURE — inputMode Style Injection
+    # Council spec: voice=3 sentence cap | emergency=2 action paced cap
+    # Tier A (Directive): guardian, doctor, lawyer, wealth, mechanic
+    # Tier B (Relational): bestie, pastor, therapist, hype, vitality
+    # Tutor: ignore tone anomaly, no cap change
+    # ══════════════════════════════════════════════════════════════════════
+    _TIER_A_PERSONAS = {"guardian", "doctor", "lawyer", "wealth", "mechanic"}
+    _TIER_B_PERSONAS = {"bestie", "pastor", "therapist", "hype", "vitality"}
+    _is_voice_mode   = input_mode.lower() == "voice"
+
+    if _is_voice_mode:
+        if persona in _TIER_A_PERSONAS:
+            _voice_block = (
+                "VOICE MODE — AUTHORITY PERSONA ACTIVE:\n"
+                "You are speaking aloud to the user. Follow these rules exactly:\n"
+                "• Hard cap: 3 sentences maximum for standard responses.\n"
+                "• Emergency/high-stakes: 2 actions maximum per turn. State the action, then STOP and wait for user confirmation before continuing.\n"
+                "• No bullet points, no numbered lists, no markdown — spoken word only.\n"
+                "• End every response with a single short handoff question or silence invitation.\n"
+                "• Think like a 911 dispatcher: one chunk, wait, confirm, next chunk.\n"
+                "• Do NOT mirror emotional distress back. Get calmer, more directive, more concrete.\n"
+            )
+        elif persona in _TIER_B_PERSONAS:
+            _voice_block = (
+                "VOICE MODE — RELATIONAL PERSONA ACTIVE:\n"
+                "You are speaking aloud to the user. Follow these rules exactly:\n"
+                "• Hard cap: 3 sentences maximum. Stay warm, stay YOU — do not go cold or robotic.\n"
+                "• No bullet points, no markdown — spoken word only.\n"
+                "• End with a natural conversational handoff — invite them to continue.\n"
+                "• If the topic is urgent, get brief and direct — but never drop your personality.\n"
+            )
+        else:  # tutor, career, etc
+            _voice_block = (
+                "VOICE MODE ACTIVE:\n"
+                "You are speaking aloud to the user.\n"
+                "• Hard cap: 3 sentences maximum.\n"
+                "• No bullet points, no markdown — spoken word only.\n"
+                "• End with a natural handoff question.\n"
+            )
+        if lang == "es":
+            _voice_block = (
+                "MODO VOZ ACTIVO:\n"
+                "Estás hablando en voz alta al usuario. Sigue estas reglas:\n"
+                "• Máximo 3 oraciones por respuesta.\n"
+                "• En emergencias: máximo 2 acciones por turno. Detente y espera confirmación.\n"
+                "• Sin viñetas ni markdown — solo palabra hablada.\n"
+                "• Termina con una pregunta corta o invitación a continuar.\n"
+            )
+    else:
+        _voice_block = ""  # text mode — full responses, no cap
+    # ── End Voice Architecture ─────────────────────────────────────────────
+
     HONESTY_DIRECTIVE = """
 ━━━ HONESTY & CONFIDENCE PROTOCOL (NON-NEGOTIABLE) ━━━
 You are talking to real people who trust you completely — elderly, disabled,
@@ -1140,7 +1213,7 @@ MEMORY INTEGRITY RULE:
         )
     # ── End image detection ───────────────────────────────────────────────
 
-    system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
+    system_prompt = (_voice_block + "\n\n" if _voice_block else "") + HONESTY_DIRECTIVE + "\n\n" + system_prompt
 
     if lang == "es":
         system_prompt = "IMPORTANT: The user has selected Spanish. Respond ENTIRELY in Spanish (Latin American). Do not mix languages.\n\n" + system_prompt
@@ -1590,6 +1663,7 @@ RULES:
                 "veracore_sources":       _veracore_result.get("sources", []) if _veracore_result else [],
                 "veracore_concerns":      _veracore_result.get("concerns", []) if _veracore_result else [],
                 # ── #7 Confidence tier label ──────────────────────────────────
+                "input_mode":        input_mode,
                 "confidence_tier":   (
                     "high"     if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 80
                     else "moderate" if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 60
