@@ -19,7 +19,8 @@ import time
 from functools import lru_cache
 from typing import Optional
 
-logger = logging.getLogger("LYLO.HK")
+logger = logging.getLogger("LYLO.Veracore")
+logger.setLevel(logging.WARNING)  # Production mode
 
 # ── Path injection: HK engine lives in backend/hk/ ──────────────────────────
 _HK_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "hk")
