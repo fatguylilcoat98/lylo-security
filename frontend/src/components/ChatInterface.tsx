@@ -1256,12 +1256,25 @@ function ChatInterface({
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
                 : msg.content
               }
-              {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1"><span>Confidence</span><span className="text-green-400">{msg.confidenceScore}%</span></div>
-                  <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden"><div className="h-full bg-green-500" style={{ width: `${msg.confidenceScore}%` }} /></div>
-                </div>
-              )}
+              {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (() => {
+                const score = msg.confidenceScore ?? 0;
+                const tier = score >= 80 ? 'high' : score >= 60 ? 'moderate' : 'low';
+                const tierLabel = tier === 'high' ? (lang === 'es' ? 'Alta Confianza' : 'High Confidence') : tier === 'moderate' ? (lang === 'es' ? 'Confianza Moderada' : 'Moderate Confidence') : (lang === 'es' ? 'Baja Confianza' : 'Low Confidence');
+                const tierColor = tier === 'high' ? 'text-green-400' : tier === 'moderate' ? 'text-yellow-400' : 'text-red-400';
+                const barColor  = tier === 'high' ? 'bg-green-500' : tier === 'moderate' ? 'bg-yellow-500' : 'bg-red-500';
+                return (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase mb-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-500">Veracore™</span>
+                        <span className={tierColor}>· {tierLabel}</span>
+                      </span>
+                      <span className={tierColor}>{score}%</span>
+                    </div>
+                    <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden"><div className={`h-full ${barColor}`} style={{ width: `${score}%` }} /></div>
+                  </div>
+                );
+              })()}
             </div>
             {msg.sender === 'bot' && (msg as any).actionTrigger && (
               <div className="mt-3 mb-3 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -1278,10 +1291,15 @@ function ChatInterface({
 
         {loading && (
           <div className="flex justify-start">
-            <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex items-center gap-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="p-5 rounded-3xl bg-white/5 border border-white/10 rounded-tl-none flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest animate-pulse">
+                {lang === 'es' ? 'Veracore™ procesando...' : 'Veracore™ processing...'}
+              </p>
             </div>
           </div>
         )}
