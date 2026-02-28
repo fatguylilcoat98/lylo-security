@@ -505,6 +505,7 @@ function ChatInterface({
   const photoInputRef    = useRef<HTMLInputElement>(null);
   const recognitionRef   = useRef<any>(null);
   const isRecordingRef   = useRef(false);
+  const lastInputModeRef = useRef<'voice' | 'text'>('text'); // captures mode before mic stops
   const accumulatedRef   = useRef('');
   const inputTextRef     = useRef('');
   const typewriterRef    = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -692,6 +693,7 @@ function ChatInterface({
     } else {
       if (isSpeaking) return;
       setIsRecording(true); isRecordingRef.current = true;
+      lastInputModeRef.current = 'voice'; // capture voice mode before send fires
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       recognitionRef.current = buildRecognition();
       if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
@@ -761,7 +763,7 @@ function ChatInterface({
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
       fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
       fd.append('lang', lang);
-      fd.append('input_mode', isRecording ? 'voice' : 'text'); // Phase 1 voice architecture
+      fd.append('input_mode', lastInputModeRef.current); // Phase 1 — captured before mic stops
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
@@ -830,6 +832,7 @@ function ChatInterface({
     } catch (e) {
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
       if (loadingTimeoutRef.current) { clearTimeout(loadingTimeoutRef.current); loadingTimeoutRef.current = null; }
+      lastInputModeRef.current = 'text'; // reset after send
       // [FIX] Show visible error to user instead of silent freeze
       const errText = lang === 'es'
         ? '⚠️ Algo salió mal. Por favor intenta de nuevo.'
@@ -1452,7 +1455,7 @@ function ChatInterface({
             <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input
-              value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; }}
+              value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }}
               disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
               placeholder={`Type to ${activePersona.name}…`}
               className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
