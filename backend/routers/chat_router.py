@@ -1100,6 +1100,46 @@ MEMORY INTEGRITY RULE:
   • Never invent connections between unrelated memories and the current question.
   • If unsure whether a memory is relevant, leave it out entirely.
 """
+
+    # ── Image generation detection — graceful refusal ─────────────────────
+    _image_request_keywords = [
+        "show me a picture", "show me an image", "show a picture", "show an image",
+        "picture of", "image of", "photo of", "show me photo", "display image",
+        "generate image", "generate a picture", "create image", "create a picture",
+        "draw", "can you show", "can i see a picture", "can i see an image",
+        "what does it look like", "what does the", "show what",
+    ]
+    _msg_lower = msg.lower()
+    _is_image_request = any(kw in _msg_lower for kw in _image_request_keywords)
+
+    if _is_image_request and not file:
+        # Graceful image refusal with helpful redirect
+        if lang == "es":
+            _img_msg = (
+                "No puedo mostrar imágenes directamente, pero puedo describírtelo con todo detalle. "
+                "Para ver imágenes, te recomiendo buscar en Google Imágenes o en Bible Gateway si es algo bíblico. "
+                "¿Quieres que te describa lo que estás buscando en detalle?"
+            )
+        else:
+            _img_msg = (
+                "I can't display images directly, but I can describe it in vivid detail for you. "
+                "To see pictures, I'd recommend a quick Google Images search — or if it's something biblical, "
+                "Bible Gateway has great visual resources at biblegateway.com. "
+                "Would you like me to describe it in detail instead?"
+            )
+        _img_audio = await generate_audio_inline(_img_msg, voice)
+
+        async def _img_refusal():
+            yield f"data: {json.dumps({'type': 'text', 'content': _img_msg, 'audio_b64': _img_audio})}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'confidence_score': 99, 'scam_detected': False, 'threat_level': 'low', 'action_trigger': None, 'audio_b64': '', 'full_answer': _img_msg, 'model': 'LYLO-SafeRoute', 'usage_count': USAGE_TRACKER[user_id], 'limit': limit, 'confidence_tier': 'high'})}\n\n"
+
+        return StreamingResponse(
+            _img_refusal(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+    # ── End image detection ───────────────────────────────────────────────
+
     system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
 
     if lang == "es":
