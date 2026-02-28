@@ -1241,7 +1241,7 @@ MEMORY INTEGRITY RULE:
 
             # ── Await Director ────────────────────────────────────────────────
             try:
-                validated = await asyncio.wait_for(asyncio.shield(director_task), timeout=10.0)
+                validated = await asyncio.wait_for(asyncio.shield(director_task), timeout=15.0)
                 answer    = validated.get("answer", winner_answer)
             except (asyncio.TimeoutError, Exception):
                 logger.warning(f"⚡ Director timeout in stream — using winner directly")
@@ -1255,7 +1255,7 @@ MEMORY INTEGRITY RULE:
 
             if _hk_task is not None:
                 try:
-                    _hk_result = await asyncio.wait_for(asyncio.shield(_hk_task), timeout=5.0)
+                    _hk_result = await asyncio.wait_for(asyncio.shield(_hk_task), timeout=35.0)
                 except (asyncio.TimeoutError, Exception) as _hk_err:
                     logger.warning(f"⚡ HK await error: {_hk_err} — using Director answer")
                     _hk_result = None
