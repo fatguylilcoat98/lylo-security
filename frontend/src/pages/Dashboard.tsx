@@ -84,11 +84,13 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ── FIXED: renamed currentPersonaId→currentPersona, onSignOut→onLogout ── */}
         <ChatInterface
           userEmail={userEmail}
           userTier={userTier}
-          currentPersonaId={currentPersona}
-          onSignOut={handleLogout}
+          currentPersona={currentPersonaConfig}
+          onLogout={handleLogout}
+          onPersonaChange={handlePersonaChange}
         />
       </div>
     </Layout>
