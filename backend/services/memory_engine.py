@@ -21,18 +21,74 @@ from services.config import (
 )
 
 # ── Vector ID suffixes ────────────────────────────────────────────────────────
-# Try to import from intelligence_data; fall back to safe defaults
 try:
     from intelligence_data import PROFILE_VECTOR_ID_SUFFIX, INTAKE_VECTOR_ID_SUFFIX
 except ImportError:
     PROFILE_VECTOR_ID_SUFFIX = "_profile"
     INTAKE_VECTOR_ID_SUFFIX  = "_intake"
+
 logger = logging.getLogger("LYLO.Memory")
+
+# =============================================================================
+# MISSING CONSTANTS — defined here so the module is self-contained
+# =============================================================================
+
+PROFILE_EMBEDDING_ANCHOR = "user profile summary identity background occupation goals"
+
+SYNTHESIS_MEMORY_WINDOW = 20
+
+PIN_KEYWORDS: Dict[str, List[str]] = {
+    "medical":    ["doctor", "medication", "diagnosis", "symptom", "surgery", "prescription",
+                   "hospital", "pain", "condition", "treatment", "allergy", "blood pressure"],
+    "legal":      ["lawsuit", "attorney", "contract", "eviction", "lawsuit", "court",
+                   "legal", "sue", "rights", "warrant", "settlement", "lease"],
+    "financial":  ["debt", "loan", "credit", "invest", "savings", "budget", "mortgage",
+                   "bankruptcy", "income", "tax", "retirement", "401k"],
+    "family":     ["wife", "husband", "kids", "children", "divorce", "marriage",
+                   "mom", "dad", "parent", "family", "relationship"],
+    "career":     ["job", "work", "boss", "fired", "hired", "salary", "resume",
+                   "interview", "promotion", "career", "business", "startup"],
+    "vehicle":    ["car", "truck", "vehicle", "engine", "brake", "transmission",
+                   "mechanic", "repair", "oil change", "tire", "accident"],
+    "housing":    ["rent", "lease", "landlord", "mortgage", "house", "apartment",
+                   "eviction", "deposit", "tenant", "property"],
+    "identity":   ["my name is", "i am", "i'm a", "i work as", "i live in",
+                   "i have", "my age", "i was born", "i moved"],
+}
+
+PROFILE_SYNTHESIS_SYSTEM_PROMPT = """You are a profile synthesis engine for LYLO OS.
+Analyze the user's conversation history and extract a structured profile.
+Return ONLY valid JSON with these fields:
+{
+  "name": "user's name if mentioned",
+  "occupation": "job or role",
+  "location": "city/state if mentioned",
+  "family": "family situation summary",
+  "goals": ["list of key goals"],
+  "challenges": ["list of current challenges"],
+  "health_notes": "any health info mentioned",
+  "financial_notes": "any financial info mentioned",
+  "vehicles": ["any vehicles mentioned"],
+  "housing": "housing situation",
+  "key_facts": ["any other important facts"],
+  "last_updated": ""
+}
+Keep values concise. Use empty string or empty list if unknown."""
+
+PROFILE_SYNTHESIS_USER_TEMPLATE = """Analyze these conversation fragments and build the user profile:
+
+{memory_text}
+
+Return the profile as JSON only."""
+
+# =============================================================================
+# PIN DETECTION
+# =============================================================================
+
 def auto_detect_pin_category(message: str) -> tuple[str, str] | None:
     """
     Scans user message for pinnable intel.
     Returns (pin_text, category) if detected, else None.
-    Uses the first 200 chars of the message as the pin text.
     """
     msg_lower = message.lower()
     for category, keywords in PIN_KEYWORDS.items():
@@ -58,14 +114,13 @@ async def store_intelligence_sync(user_id: str, content: str, role: str, persona
             "content":     content[:400],
             "timestamp":   datetime.now().isoformat(),
             "record_type": "episodic",
-            "persona":     persona,   # tag which persona stored this memory
+            "persona":     persona,
         })])
     except Exception as e:
         logger.error(f"Memory Sync Error: {e}")
 
 
-# Silo-aware memory retrieval — each persona only pulls its own memories
-# plus "general" memories. Prevents lawyer memories bleeding into pastor, etc.
+# Silo-aware memory retrieval
 _PERSONA_MEMORY_SILOS = {
     "pastor":    {"pastor", "general"},
     "doctor":    {"doctor", "general"},
@@ -78,7 +133,7 @@ _PERSONA_MEMORY_SILOS = {
     "vitality":  {"vitality", "general"},
     "tutor":     {"tutor", "general"},
     "hype":      {"hype", "general"},
-    "bestie":    {"bestie", "therapist", "general"},  # bestie can see emotional context
+    "bestie":    {"bestie", "therapist", "general"},
 }
 
 
@@ -98,7 +153,6 @@ async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "g
         resp = await openai_client.embeddings.create(
             model="text-embedding-3-small", input=asset_query[:300], dimensions=1024
         )
-        # Build persona-aware filter — only pull memories from this persona's allowed silos
         allowed_personas = list(_PERSONA_MEMORY_SILOS.get(persona, {"general"}))
         pinecone_filter = {
             "user_id":     {"$eq": user_id},
@@ -110,7 +164,6 @@ async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "g
             filter=pinecone_filter,
             top_k=5, include_metadata=True,
         )
-        # Fall back to unfiltered if no persona-tagged memories exist yet
         if not results.matches:
             results = memory_index.query(
                 vector=resp.data[0].embedding,
@@ -125,6 +178,7 @@ async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "g
     except Exception as e:
         logger.error(f"Memory Retrieval Error: {e}")
         return ""
+
 
 # =============================================================================
 # PROFILE SYNTHESIS
@@ -199,16 +253,13 @@ async def synthesize_user_profile(user_id: str, user_name: str):
 
 # =============================================================================
 # MED-VAULT PINECONE STORAGE
-# Encrypted vault stored as a separate Pinecone record per user per silo.
-# Nobody — including server operators — can read the encrypted blobs.
 # =============================================================================
 _VAULT_SUFFIX = "_medvault_v1"
 _VAULT_CACHE: dict = {}
-_VAULT_CACHE_TTL = 120  # 2 min cache — vault changes infrequently
+_VAULT_CACHE_TTL = 120
 
 
 async def _load_vault_encrypted(user_id: str) -> Optional[str]:
-    """Loads raw encrypted vault string from Pinecone. Returns None if not found."""
     cached = _VAULT_CACHE.get(user_id)
     if cached:
         blob, ts = cached
@@ -230,7 +281,6 @@ async def _load_vault_encrypted(user_id: str) -> Optional[str]:
     return None
 
 async def _save_vault_encrypted(user_id: str, encrypted_blob: str) -> bool:
-    """Saves encrypted vault blob to Pinecone. Returns True on success."""
     if not memory_index:
         return False
     vault_id   = f"{user_id}{_VAULT_SUFFIX}"
@@ -250,7 +300,6 @@ async def _save_vault_encrypted(user_id: str, encrypted_blob: str) -> bool:
         return False
 
 async def load_vault(user_id: str, email: str, pin: str = "") -> Optional[dict]:
-    """Loads and decrypts the medical vault for a user."""
     if not MED_VAULT_ENABLED:
         return None
     blob = await _load_vault_encrypted(user_id)
@@ -259,19 +308,18 @@ async def load_vault(user_id: str, email: str, pin: str = "") -> Optional[dict]:
     return decrypt_silo(blob, email, pin)
 
 async def save_vault(user_id: str, email: str, vault: dict, pin: str = "") -> bool:
-    """Encrypts and saves the medical vault."""
     if not MED_VAULT_ENABLED:
         return False
     blob = encrypt_silo(vault, email, pin)
     return await _save_vault_encrypted(user_id, blob)
 
 async def get_or_create_vault(user_id: str, email: str, pin: str = "") -> dict:
-    """Loads vault or creates a fresh one if none exists."""
     vault = await load_vault(user_id, email, pin)
     if vault is None:
         vault = empty_medical_vault()
         await save_vault(user_id, email, vault, pin)
     return vault
+
 async def _noop_vault(): return None
 
 
@@ -327,5 +375,3 @@ async def store_intake_profile(user_id: str, profile: dict):
         logger.info(f"✅ Intake profile stored for {user_id}")
     except Exception as e:
         logger.error(f"Intake Profile Store Error: {e}")
-
-
