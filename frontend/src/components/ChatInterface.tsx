@@ -450,6 +450,7 @@ function ChatInterface({
   const [messages, setMessages]                         = useState<Message[]>([]);
   const [input, setInput]                               = useState('');
   const [loading, setLoading]                           = useState(false);
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // [FIX] auto-reset loading
   const [userName, setUserName]                         = useState('User');
   const [bestieConfig, setBestieConfig]                 = useState<BestieConfig | null>(null);
   const [showBestieSetup, setShowBestieSetup]           = useState(false);
@@ -720,6 +721,22 @@ function ChatInterface({
     if (!text && !selectedImage) return;
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
     setLoading(true); setInput(''); inputTextRef.current = ''; accumulatedRef.current = ''; setShowPersonaGrid(false);
+    // [FIX] Safety net: if loading never resolves, auto-reset after 20s so user isn't frozen
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      setLoading(false);
+      setStreamingMsgId(null);
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.sender === 'bot' && last.content === '') {
+          const errMsg = lang === 'es'
+            ? '⚠️ La respuesta tardó demasiado. Por favor intenta de nuevo.'
+            : '⚠️ The response took too long. Please try again.';
+          return [...prev.slice(0, -1), { ...last, content: errMsg }];
+        }
+        return prev;
+      });
+    }, 20000);
     const imgPreview = previewUrl;
     const userMsg: Message = { id: Date.now().toString(), content: text || 'Analyzing image…', sender: 'user', timestamp: new Date(), imageUrl: imgPreview };
     setMessages(prev => [...prev, userMsg]);
@@ -781,6 +798,18 @@ function ChatInterface({
       if (isLockout) { aqm.stop(); return; }
     } catch (e) {
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
+      if (loadingTimeoutRef.current) { clearTimeout(loadingTimeoutRef.current); loadingTimeoutRef.current = null; }
+      // [FIX] Show visible error to user instead of silent freeze
+      const errText = lang === 'es'
+        ? '⚠️ Algo salió mal. Por favor intenta de nuevo.'
+        : '⚠️ Something went wrong. Please try again — tap the mic or type your question.';
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.sender === 'bot' && last.content === '') {
+          return [...prev.slice(0, -1), { ...last, content: errText }];
+        }
+        return [...prev, { id: `err-${Date.now()}`, content: errText, sender: 'bot' as const, timestamp: new Date() }];
+      });
     } finally {
       setSelectedImage(null); setEmailConsent(false);
       sentinel.onEngagement();
