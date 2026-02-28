@@ -1,199 +1,381 @@
+/**
+ * LYLO OS — ChatInterface.tsx  (Phase 1)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * Phase 1 additions:
+ * - Dynamic top bar per persona (real-world resources)
+ * - Voice 3-click toggle (typewriter+voice / instant+voice / text only)
+ * - Crisis resources with warm 988 wording
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+
 import type { ChatInterfaceProps, IntakeProfile } from '../types';
+
 import { useVoice }      from './chat/useVoice';
 import { useAudioQueue } from './chat/useAudioQueue';
 import { usePersona, PERSONAS } from './chat/usePersona';
 import { useVault }      from './chat/useVault';
 import { useIntake }     from './chat/useIntake';
 import { useChatSend }   from './chat/useChatSend';
+
+import { PersonaGrid }      from './chat/ui/PersonaGrid';
 import { MessageBubble }    from './chat/ui/MessageBubble';
 import { BottomBar }        from './chat/ui/BottomBar';
 import { EmergencyOverlay } from './chat/ui/EmergencyOverlay';
 
-const DEFAULT_LANG: 'en' | 'es' = 'en';
+// ── Voice mode: 0 = typewriter+voice, 1 = instant+voice, 2 = text only ──────
+type VoiceMode = 0 | 1 | 2;
 
-const PERSONA_LINKS: Record<string, { label: string; href: string }> = {
-  guardian:  { label: 'Report a Threat',        href: 'mailto:mylylo.ai@gmail.com?subject=Guardian%3A%20Security%20Threat' },
-  doctor:    { label: 'Request Medical Review',  href: 'mailto:mylylo.ai@gmail.com?subject=Doctor%3A%20Medical%20Review' },
-  lawyer:    { label: 'Request Legal Help',      href: 'mailto:mylylo.ai@gmail.com?subject=Lawyer%3A%20Legal%20Help' },
-  wealth:    { label: 'Financial Review',        href: 'mailto:mylylo.ai@gmail.com?subject=Wealth%3A%20Financial%20Review' },
-  therapist: { label: 'Request Support Session', href: 'mailto:mylylo.ai@gmail.com?subject=Therapist%3A%20Support%20Session' },
-  career:    { label: 'Career Consultation',     href: 'mailto:mylylo.ai@gmail.com?subject=Career%3A%20Consultation' },
-  tutor:     { label: 'Request a Session',       href: 'mailto:mylylo.ai@gmail.com?subject=Tutor%3A%20Session' },
-  vitality:  { label: 'Wellness Check-In',       href: 'mailto:mylylo.ai@gmail.com?subject=Vitality%3A%20Wellness' },
-  hype:      { label: 'Get Motivated',           href: 'mailto:mylylo.ai@gmail.com?subject=Hype%3A%20Motivation' },
-  bestie:    { label: 'Connect',                 href: 'mailto:mylylo.ai@gmail.com?subject=Bestie%3A%20Connect' },
-  pastor:    { label: 'Request Pastoral Care',   href: 'mailto:mylylo.ai@gmail.com?subject=Pastor%3A%20Care' },
-  mechanic:  { label: 'Get Auto Help',           href: 'mailto:mylylo.ai@gmail.com?subject=Mechanic%3A%20Auto%20Help' },
+const VOICE_MODE_LABELS: Record<VoiceMode, string> = {
+  0: '🔊 Voice',
+  1: '⚡ Fast',
+  2: '🔇 Silent',
 };
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  userEmail, userTier = 'free', lang = DEFAULT_LANG, onSignOut, currentPersonaId,
-}) => {
-  const [isRecording,       setIsRecording]       = useState(false);
-  const [emergency,         setEmergency]         = useState<any>(null);
-  const [trustVisible,      setTrustVisible]      = useState(false);
-  const [currentPersonaLocal, setCurrentPersonaLocal] = useState(currentPersonaId ?? 'guardian');
+const VOICE_MODE_TIPS: Record<VoiceMode, string> = {
+  0: 'Typewriter text + voice',
+  1: 'Instant text + voice',
+  2: 'Text only, no audio',
+};
 
-  const bottomRef      = useRef<HTMLDivElement>(null);
-  const lastPersonaRef = useRef<string>('');
+// ── Per-persona resource button config ───────────────────────────────────────
+const PERSONA_RESOURCES: Record<string, { label: string; url: string; crisis?: boolean }> = {
+  guardian:  { label: '🛡 Report a Scam',        url: 'https://reportfraud.ftc.gov/' },
+  doctor:    { label: '🩺 Find a Doctor',         url: 'https://www.zocdoc.com/' },
+  lawyer:    { label: '⚖️ Free Legal Aid',        url: 'https://www.lawhelp.org/' },
+  wealth:    { label: '💰 CFPB Resources',        url: 'https://www.consumerfinance.gov/' },
+  therapist: { label: '💜 Talk to Someone Now',   url: 'https://988lifeline.org/', crisis: true },
+  mechanic:  { label: '🔧 Find a Mechanic',       url: 'https://www.repairpal.com/' },
+  career:    { label: '💼 Job Search',            url: 'https://www.indeed.com/' },
+  vitality:  { label: '⚡ Find a Gym Near You',   url: 'https://www.google.com/maps/search/gym+near+me' },
+  tutor:     { label: '📚 Khan Academy',          url: 'https://www.khanacademy.org/' },
+  pastor:    { label: '🙏 Find a Church Near You',url: 'https://www.google.com/maps/search/church+near+me' },
+  hype:      { label: '🔥 Daily Motivation',      url: 'https://www.youtube.com/results?search_query=morning+motivation' },
+  bestie:    { label: '💜 You\'re Not Alone',     url: 'https://988lifeline.org/', crisis: true },
+};
+
+const DEFAULT_LANG: 'en' | 'es' = 'en';
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  userEmail,
+  userName,
+  userTier = 'free',
+  lang = DEFAULT_LANG,
+  onSignOut,
+}) => {
+  const [showPersonaGrid, setShowPersonaGrid] = useState(false);
+  const [isRecording,     setIsRecording]     = useState(false);
+  const [emergency,       setEmergency]       = useState<any>(null);
+  const [trustVisible,    setTrustVisible]    = useState(false);
+  const [voiceMode,       setVoiceMode]       = useState<VoiceMode>(0);
+  const [showCrisis,      setShowCrisis]      = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Cycle voice mode: 0 → 1 → 2 → 0
+  const cycleVoiceMode = useCallback(() => {
+    setVoiceMode(v => ((v + 1) % 3) as VoiceMode);
+  }, []);
 
   const { enqueue: enqueueAudio, stopAll: stopAudio, isSpeaking } = useAudioQueue({
-    userEmail, persona: currentPersonaLocal, lang, onSpeakingChange: () => {},
+    userEmail,
+    persona: 'guardian',
+    lang,
+    onSpeakingChange: () => {},
   });
 
-  const { intakeProfile, loadIntakeProfile } = useIntake({
-    userEmail, onIntakeComplete: (_: IntakeProfile) => {},
+  // Wrap enqueueAudio to respect voice mode
+  const maybeEnqueueAudio = useCallback((text: string) => {
+    if (voiceMode === 0 || voiceMode === 1) {
+      enqueueAudio(text);
+    }
+  }, [voiceMode, enqueueAudio]);
+
+  const {
+    intakeProfile, showIntake, setShowIntake,
+    loadIntakeProfile,
+    intakeRound, intakeStep, intakeAnswers, intakeLoading,
+    saveAnswer, submitRound, nextStep, prevStep,
+  } = useIntake({
+    userEmail,
+    onIntakeComplete: (profile: IntakeProfile) => {},
   });
 
-  const { currentPersona, bestieConfig, switchPersona } = usePersona({
-    userEmail, lang, intakeProfile,
+  const {
+    currentPersona, bestieConfig,
+    showBestieSetup, setShowBestieSetup,
+    switchPersona, saveBestieConfig,
+  } = usePersona({
+    userEmail,
+    lang,
+    intakeProfile,
     onGreeting: (text) => {
-      // APPEND greeting — never wipe existing messages (would kill in-flight responses)
       setMessages(prev => [
         ...prev,
-        { role: 'assistant' as const, content: text, persona: currentPersona, timestamp: Date.now() }
+        { role: 'assistant', content: text, persona: currentPersona, timestamp: Date.now() },
       ]);
-      enqueueAudio(text);
+      maybeEnqueueAudio(text);
     },
   });
 
-  const doSwitch = useCallback((personaId: string) => {
-    if (personaId === lastPersonaRef.current) return;
-    lastPersonaRef.current = personaId;
-    setCurrentPersonaLocal(personaId);
-    stopAudio();
-    setMessages([]); // clear now — greeting will append once it arrives
-    switchPersona(personaId);
-  }, [switchPersona, stopAudio]);
-
-  useEffect(() => {
-    if (currentPersonaId) doSwitch(currentPersonaId);
-  }, [currentPersonaId]); // eslint-disable-line
-
   const {
     messages, setMessages,
-    input, setInput, inputTextRef,
+    input, setInput,
+    inputTextRef,
     isLoading, error,
     imageFile, imagePreview,
     handleImageSelect, clearImage,
     sendMessage,
   } = useChatSend({
-    userEmail, persona: currentPersonaLocal, lang,
-    intakeProfile, bestieConfig,
-    onAudio: enqueueAudio,
+    userEmail,
+    persona: currentPersona,
+    lang,
+    intakeProfile,
+    bestieConfig,
+    onAudio: maybeEnqueueAudio,
     onEmergency: setEmergency,
   });
 
   const { startRecording, stopRecording } = useVoice({
-    lang, isSpeaking,
-    onTranscript: (text) => { setInput(text); inputTextRef.current = text; },
-    onInterim:    (text) => setInput(text),
+    lang,
+    isSpeaking,
+    onTranscript: (text) => {
+      setInput(text);
+      inputTextRef.current = text;
+    },
+    onInterim: (text) => {
+      setInput(text);
+    },
     onRecordingChange: setIsRecording,
   });
 
-  useVault({ userEmail, persona: currentPersonaLocal });
-  useEffect(() => { loadIntakeProfile(); }, [loadIntakeProfile]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  const vault = useVault({ userEmail, persona: currentPersona });
 
-  const personaConfig = PERSONAS.find(p => p.id === currentPersonaLocal) ?? PERSONAS[0];
-  const personaColor  = personaConfig.color;
-  const personaLink   = PERSONA_LINKS[currentPersonaLocal];
+  useEffect(() => {
+    loadIntakeProfile();
+  }, [loadIntakeProfile]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Stop audio when switching to silent mode
+  useEffect(() => {
+    if (voiceMode === 2) stopAudio();
+  }, [voiceMode, stopAudio]);
+
+  const personaConfig  = PERSONAS.find(p => p.id === currentPersona) ?? PERSONAS[0];
+  const personaColor   = personaConfig.color;
+  const resourceConfig = PERSONA_RESOURCES[currentPersona] ?? PERSONA_RESOURCES.guardian;
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }, [sendMessage]);
 
   return (
-    <div className="flex flex-col h-full bg-[#080808] text-white overflow-hidden">
-      {emergency && <EmergencyOverlay protocol={emergency} onDismiss={() => setEmergency(null)} />}
+    <div className="flex flex-col h-screen bg-[#080808] text-white overflow-hidden">
 
-      {/* ── Thin persona action bar (no hamburger, no persona picker — that's in Layout) ── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0"
-        style={{ borderBottomColor: personaColor + '25', backgroundColor: personaColor + '08' }}>
+      {/* ── Emergency Overlay ── */}
+      {emergency && (
+        <EmergencyOverlay
+          protocol={emergency}
+          onDismiss={() => setEmergency(null)}
+        />
+      )}
 
-        {/* Active persona label — compact, just name + color indicator */}
-        <div className="flex items-center gap-2">
-          <span className="text-base">{personaConfig.emoji}</span>
-          <span className="text-sm font-bold" style={{ color: personaColor }}>
-            {personaConfig.label}
-          </span>
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse"
-            style={{ backgroundColor: personaColor }} />
-        </div>
-
-        {/* Right: action link + trust toggle */}
-        <div className="flex items-center gap-2">
-          {personaLink && (
-            <a href={personaLink.href}
-              className="text-xs px-3 py-1.5 rounded-xl border font-semibold transition-all"
-              style={{ borderColor: personaColor + '50', color: personaColor, backgroundColor: personaColor + '10' }}>
-              {personaLink.label}
+      {/* ── Crisis Modal ── */}
+      {showCrisis && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-sm rounded-3xl border border-purple-500/40 bg-[#0a0010] p-6 text-center">
+            <div className="text-4xl mb-3">💜</div>
+            <h3 className="text-white font-bold text-lg mb-2">You're not alone</h3>
+            <p className="text-white/70 text-sm mb-4">
+              If you're going through something hard right now, real support is available — 
+              any time, day or night. You deserve to feel better.
+            </p>
+            <a
+              href="tel:988"
+              className="block w-full py-3 rounded-2xl bg-purple-600 text-white font-bold text-lg mb-2 hover:bg-purple-500 transition-colors"
+            >
+              📞 Call or Text 988
             </a>
-          )}
-          <button onClick={() => setTrustVisible(v => !v)}
-            className="w-8 h-8 rounded-xl border flex items-center justify-center text-sm transition-all"
-            style={trustVisible
-              ? { borderColor: personaColor + '66', backgroundColor: personaColor + '18' }
-              : { borderColor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }}>
+            <p className="text-white/40 text-xs mb-4">Suicide & Crisis Lifeline — free, confidential, 24/7</p>
+            <a
+              href="https://988lifeline.org/chat/"
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full py-2 rounded-2xl border border-purple-500/30 text-purple-300 text-sm mb-3 hover:bg-purple-500/10 transition-colors"
+            >
+              💬 Chat Online Instead
+            </a>
+            <button
+              onClick={() => setShowCrisis(false)}
+              className="text-white/30 text-sm hover:text-white/60 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Persona Grid ── */}
+      {showPersonaGrid && (
+        <PersonaGrid
+          current={currentPersona}
+          userTier={userTier}
+          onSelect={(id) => { switchPersona(id); setShowPersonaGrid(false); }}
+          onClose={() => setShowPersonaGrid(false)}
+        />
+      )}
+
+      {/* ── Dynamic Resource Top Bar ── */}
+      <button
+        onClick={() => {
+          if (resourceConfig.crisis) {
+            setShowCrisis(true);
+          } else {
+            window.open(resourceConfig.url, '_blank');
+          }
+        }}
+        className="w-full py-2.5 px-4 text-xs font-semibold tracking-wide transition-all hover:opacity-80 active:scale-[0.99]"
+        style={{
+          backgroundColor: personaColor + '15',
+          borderBottom: `1px solid ${personaColor}30`,
+          color: personaColor,
+        }}
+      >
+        {resourceConfig.label}
+        {resourceConfig.crisis && <span className="ml-2 opacity-60">— tap for immediate support</span>}
+      </button>
+
+      {/* ── Top Bar ── */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5 border-b border-white/5"
+        style={{ borderBottomColor: personaColor + '22' }}
+      >
+        {/* Persona badge */}
+        <button
+          onClick={() => setShowPersonaGrid(true)}
+          className="flex items-center gap-2 rounded-2xl px-3 py-1.5 bg-white/5 border border-white/10 hover:border-white/25 transition-all"
+        >
+          <span className="text-lg">{personaConfig.emoji}</span>
+          <span className="text-white/80 text-sm font-medium">{personaConfig.label}</span>
+          <span className="text-white/30 text-xs">▾</span>
+        </button>
+
+        {/* Right controls */}
+        <div className="flex items-center gap-2">
+
+          {/* Voice mode toggle — 3 clicks */}
+          <button
+            onClick={cycleVoiceMode}
+            title={VOICE_MODE_TIPS[voiceMode]}
+            className={`text-xs px-2 py-1 rounded-lg border transition-all ${
+              voiceMode === 2
+                ? 'border-white/10 text-white/30'
+                : 'border-white/20 text-white/70 bg-white/5'
+            }`}
+          >
+            {VOICE_MODE_LABELS[voiceMode]}
+          </button>
+
+          {/* Trust toggle */}
+          <button
+            onClick={() => setTrustVisible(v => !v)}
+            className={`text-xs px-2 py-1 rounded-lg border transition-all ${
+              trustVisible
+                ? 'border-green-500/50 text-green-400 bg-green-500/10'
+                : 'border-white/10 text-white/30 hover:text-white/60'
+            }`}
+          >
             🛡
           </button>
+
+          {/* Sign out */}
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              className="text-xs text-white/20 hover:text-white/50 transition-colors ml-1"
+            >
+              ⏻
+            </button>
+          )}
         </div>
       </div>
 
       {/* ── Messages ── */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-        {messages.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 pb-8">
-            <span className="text-5xl opacity-20">{personaConfig.emoji}</span>
-            <p className="text-sm opacity-20" style={{ color: personaColor }}>
-              Talk to your {personaConfig.label}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-40">
+            <span className="text-5xl">{personaConfig.emoji}</span>
+            <p className="text-white/60 text-sm">
+              {lang === 'es'
+                ? `Habla con tu ${personaConfig.label}`
+                : `Talk to your ${personaConfig.label}`}
             </p>
           </div>
         )}
+
         {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} showTrust={trustVisible} personaColor={personaColor} />
+          <MessageBubble
+            key={i}
+            message={msg}
+            showTrust={trustVisible}
+          />
         ))}
+
         {isLoading && (
           <div className="flex justify-start mb-3">
-            <div className="rounded-2xl rounded-bl-sm px-4 py-3 border"
-              style={{ backgroundColor: personaColor + '10', borderColor: personaColor + '25' }}>
-              <div className="flex gap-1 items-center">
+            <div className="bg-white/5 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3">
+              <div className="flex gap-1">
                 {[0,1,2].map(i => (
-                  <div key={i} className="w-2 h-2 rounded-full animate-bounce"
-                    style={{ backgroundColor: personaColor, animationDelay: `${i * 150}ms` }} />
+                  <div
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full animate-bounce"
+                    style={{
+                      backgroundColor: personaColor,
+                      animationDelay: `${i * 150}ms`,
+                      opacity: 0.7,
+                    }}
+                  />
                 ))}
               </div>
             </div>
           </div>
         )}
+
         {error && (
-          <div className="mx-1 p-3 rounded-xl border border-red-500/30 bg-red-500/10">
-            <p className="text-red-400 text-xs leading-relaxed">{error}</p>
-          </div>
+          <div className="text-center text-red-400/70 text-xs py-2">{error}</div>
         )}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Bottom input bar ── */}
+      {/* ── Bottom Bar ── */}
       <BottomBar
-        input={input} isLoading={isLoading} isRecording={isRecording}
-        isSpeaking={isSpeaking} imagePreview={imagePreview}
+        input={input}
+        isLoading={isLoading}
+        isRecording={isRecording}
+        isSpeaking={isSpeaking && voiceMode !== 2}
+        imagePreview={imagePreview}
         onInputChange={setInput}
         onSend={sendMessage}
-        onImageSelect={handleImageSelect} onImageClear={clearImage}
+        onImageSelect={handleImageSelect}
+        onImageClear={clearImage}
         onVoiceStart={startRecording}
         onVoiceStop={() => {
           stopRecording();
           setTimeout(() => {
-            const text = inputTextRef.current.trim();
-            if (text) { inputTextRef.current = ''; sendMessage(text); }
-          }, 200);
+            if (inputTextRef.current.trim()) sendMessage();
+          }, 300);
         }}
         onKeyDown={handleKeyDown}
         personaColor={personaColor}
         lang={lang}
       />
+
     </div>
   );
 };
