@@ -41,40 +41,31 @@ from services.llm_clients import call_gemini_vision, call_openai_bodyguard, vali
 import re as _re
 
 def _split_sentences_safe(text: str) -> list:
-    """
-    Splits text into sentences without breaking on abbreviations like Dr., Mr., St.
-    Uses placeholder substitution to protect known abbreviations before splitting.
-    """
-    ABBREVS = [
-        'Dr','Mr','Mrs','Ms','Prof','Sr','Jr','St','Ave','Blvd',
-        'Inc','Ltd','Corp','Co','Vs','Etc','Approx','No','Vol',
-        'Fig','Jan','Feb','Mar','Apr','Jun','Jul','Aug','Sep',
-        'Oct','Nov','Dec','Dept','Est','Govt','Max','Min','Req',
-        'dr','mr','mrs','ms','prof','sr','jr','st','ave','blvd',
-        'inc','ltd','corp','co','vs','etc','approx','no','vol',
-        'fig','jan','feb','mar','apr','jun','jul','aug','sep',
-        'oct','nov','dec','dept','est','govt','max','min','req',
-        'e.g','i.e','a.m','p.m','u.s','u.k','E.g','I.e',
+    """Splits text into sentences, respecting abbreviations like Dr. Mr. St."""
+    import re as re2
+    abbrevs = [
+        "Dr","Mr","Mrs","Ms","Prof","Sr","Jr","St","Ave","Blvd",
+        "Inc","Ltd","Corp","Co","Vs","Etc","No","Vol","Fig",
+        "Jan","Feb","Mar","Apr","Jun","Jul","Aug","Sep",
+        "Oct","Nov","Dec","Dept","Est","Max","Min",
+        "dr","mr","mrs","ms","prof","sr","jr","st","ave",
+        "inc","ltd","corp","co","vs","etc","no","vol",
     ]
     protected = text
-    replacements = {}
-    for i, abbrev in enumerate(ABBREVS):
-        placeholder = f'<<A{i}>>'
-        pattern = r'(?<!\w)' + _re.escape(abbrev) + r'\.'
-        if _re.search(pattern, protected):
-            replacements[placeholder] = abbrev + '.'
-            protected = _re.sub(pattern, placeholder, protected)
-    protected = _re.sub(r'(\d+)\.(\d+)', r'\1<<DEC>>\2', protected)
-    parts = _re.split(r'(?<=[.!?])\s+(?=[A-Z"'\(])', protected)
-    sentences = []
-    for part in parts:
-        restored = part
-        for ph, orig in replacements.items():
-            restored = restored.replace(ph, orig)
-        restored = restored.replace('<<DEC>>', '.').strip()
-        if restored:
-            sentences.append(restored)
-    return sentences if sentences else [text]
+    for i, ab in enumerate(abbrevs):
+        tag = "<<" + str(i) + ">>"
+        protected = re2.sub(r"(?<!\w)" + re2.escape(ab) + r"\.", ab + tag, protected)
+    protected = re2.sub(r"(\d+)\.(\d+)", lambda m: m.group(1) + "<<D>>" + m.group(2), protected)
+    parts = re2.split(r"(?<=[.!?])\s+(?=[A-Z])", protected)
+    result = []
+    for p in parts:
+        r = p
+        for i, ab in enumerate(abbrevs):
+            r = r.replace(ab + "<<" + str(i) + ">>", ab + ".")
+        r = re2.sub(r"(\d+)<<D>>(\d+)", lambda m: m.group(1) + "." + m.group(2), r).strip()
+        if r:
+            result.append(r)
+    return result if result else [text]
 
 
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
