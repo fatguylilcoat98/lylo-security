@@ -117,6 +117,17 @@ except ImportError:
 logger = logging.getLogger("LYLO.Chat")
 logger.setLevel(logging.WARNING)  # Production: suppress INFO/DEBUG noise
 router = APIRouter()
+
+# ── Prompt Leakage Filter — strips instruction labels LLM accidentally speaks ─
+_LEAKAGE_PATTERN = re.compile(
+    r"(SYSTEM\s+PRIORITY\s*:?\s*|SYSTEM\s+NOTE\s*:?\s*|ACTION\s+REQUIRED\s*:?\s*|"
+    r"NEXT\s+STEP\s*:?\s*|YOUR\s+TASK\s*:?\s*)",
+    re.IGNORECASE
+)
+def _strip_leakage(text: str) -> str:
+    """Strip prompt instruction labels the LLM accidentally includes in responses."""
+    return _LEAKAGE_PATTERN.sub("", text).strip()
+
 async def _noop_vault():
     """Placeholder used when vault is disabled or persona can't read medical data."""
     return None
