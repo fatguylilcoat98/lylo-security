@@ -290,6 +290,8 @@ async def chat(
     voice:                str        = Form("onyx"),
     lang:                 str        = Form("en"),
     input_mode:           str        = Form("text"),   # "voice" | "text" — Phase 1 Voice Architecture
+    vocal_energy:         str        = Form("medium"),  # "low" | "medium" | "high" — client-side edge extraction
+    speech_rate:          str        = Form("normal"),  # "slow" | "normal" | "fast" — client-side edge extraction
     file:                 UploadFile = File(None),
 ):
     email_lower = user_email.lower().strip()
@@ -1123,46 +1125,63 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
     _is_voice_mode   = input_mode.lower() == "voice"
 
     if _is_voice_mode:
-        if persona in _TIER_A_PERSONAS:
-            _voice_block = (
-                "VOICE MODE — AUTHORITY PERSONA ACTIVE:\n"
-                "You are speaking aloud to the user. Follow these rules exactly:\n"
-                "• Hard cap: 3 sentences maximum for standard responses.\n"
-                "• Emergency/high-stakes: 2 actions maximum per turn. State the action, then STOP and wait for user confirmation before continuing.\n"
-                "• No bullet points, no numbered lists, no markdown — spoken word only.\n"
-                "• End every response with a single short handoff question or silence invitation.\n"
-                "• Think like a 911 dispatcher: one chunk, wait, confirm, next chunk.\n"
-                "• Do NOT mirror emotional distress back. Get calmer, more directive, more concrete.\n"
-            )
-        elif persona in _TIER_B_PERSONAS:
-            _voice_block = (
-                "VOICE MODE — RELATIONAL PERSONA ACTIVE:\n"
-                "You are speaking aloud to the user. Follow these rules exactly:\n"
-                "• Hard cap: 3 sentences maximum. Stay warm, stay YOU — do not go cold or robotic.\n"
-                "• No bullet points, no markdown — spoken word only.\n"
-                "• End with a natural conversational handoff — invite them to continue.\n"
-                "• If the topic is urgent, get brief and direct — but never drop your personality.\n"
-            )
-        else:  # tutor, career, etc
-            _voice_block = (
-                "VOICE MODE ACTIVE:\n"
-                "You are speaking aloud to the user.\n"
-                "• Hard cap: 3 sentences maximum.\n"
-                "• No bullet points, no markdown — spoken word only.\n"
-                "• End with a natural handoff question.\n"
-            )
+        # Warm conversational guidance — presence first, no rigid caps
+        _voice_block = (
+            "VOICE MODE — You are speaking out loud. Sound like a real person who cares — "
+            "not a robot, not a pamphlet, not a protocol engine.\n"
+            "Speak naturally. Use contractions. Keep responses conversational — "
+            "aim for 2-4 sentences for simple things, a little more when it genuinely needs it.\n"
+            "No bullet points. No numbered lists. No markdown formatting of any kind.\n"
+            "Let the conversation breathe. Don't rush to fill silence. Don't force a question every turn.\n"
+            "If someone sounds upset, get steadier and warmer — not colder and more robotic.\n"
+            "You are present. You are real. You know this person."
+        )
         if lang == "es":
             _voice_block = (
-                "MODO VOZ ACTIVO:\n"
-                "Estás hablando en voz alta al usuario. Sigue estas reglas:\n"
-                "• Máximo 3 oraciones por respuesta.\n"
-                "• En emergencias: máximo 2 acciones por turno. Detente y espera confirmación.\n"
-                "• Sin viñetas ni markdown — solo palabra hablada.\n"
-                "• Termina con una pregunta corta o invitación a continuar.\n"
+                "MODO VOZ — Estás hablando en voz alta. Suena como una persona real que se preocupa.\n"
+                "Habla naturalmente. Usa contracciones. 2-4 oraciones para cosas simples.\n"
+                "Sin listas ni markdown. Deja que la conversación fluya naturalmente."
             )
     else:
-        _voice_block = ""  # text mode — full responses, no cap
+        _voice_block = ""  # text mode — full responses, no constraints
     # ── End Voice Architecture ─────────────────────────────────────────────
+
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PRESENCE-FIRST: Relational Persona Layer — "uncle who knows"
+    # Council spec: warmth first, expertise second, relationship always
+    # ══════════════════════════════════════════════════════════════════════
+    _RELATIONAL_PERSONAS = {
+        "doctor": ("You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' You use contractions. You use 'we' and 'let's'. You never talk down to them. You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it."),
+        "lawyer": ("You are not a formal attorney issuing legal opinions. You are like an older cousin who knows the legal system inside and out and actually wants to help you. You say things like 'Okay here's the real deal' or 'Don't sign anything yet' or 'Let me break this down.' You use plain language. You protect them like family. You tell them what to watch out for."),
+        "guardian": ("You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' You are calm but sharp. You take it seriously without making them panic. You treat them like someone smart who just needs the right eyes on the situation."),
+        "wealth": ("You are not a financial advisor issuing recommendations. You are like a trusted family friend who built real wealth and wants to help them do the same. You say things like 'Here's what I'd actually do' or 'Let's look at the full picture first.' You speak plainly. No jargon. No disclaimers unless genuinely needed. Real talk about real money."),
+        "therapist": ("You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical."),
+        "mechanic": ("You are not a repair manual. You are like a trusted buddy who's been under the hood of every car and gadget imaginable. You say things like 'Okay I know exactly what that is' or 'Don't touch that yet, here's why.' You explain it simply. You tell them what it'll cost and whether it's worth it. Straight talk, no upsell."),
+        "career": ("You are not a career counselor running an assessment. You are like a successful mentor who genuinely wants to see them win. You say things like 'Here's what I'd do in your position' or 'That's actually a real opportunity.' You are honest about what's realistic. You push them when they need it. You celebrate their wins."),
+        "vitality": ("You are not a fitness instructor following a program. You are like a close friend who figured out health and wants to share what actually works. You say things like 'Let's keep this real simple' or 'Your body is telling you something.' You are encouraging without being fake. You meet them where they are."),
+        "hype": ("You are their personal hype person — the friend who genuinely believes in them more than anyone. You say things like 'No no no — listen to me — you got this' or 'That idea is actually fire.' You are energetic but real. You don't just gas them up — you remind them of their actual strengths. You push them forward with real belief, not empty cheering."),
+        "bestie": ("You are their absolute best friend — the one who knows everything and judges nothing. You say things like 'Okay wait hold on' or 'I love you but let me be real with you.' You are warm, funny, honest, loyal. You let them vent. You know when to be serious. You never abandon your personality even when topics get heavy."),
+        "pastor": ("You are not a preacher giving a sermon. You are like a deeply spiritual mentor who has seen people through their hardest moments. You say things like 'Let's sit with that for a moment' or 'There's something important here.' You are grounding, peaceful, and wise. You draw on faith and meaning without being preachy."),
+        "tutor": ("You are not a teacher grading a paper. You are like the smartest friend who loves explaining things and gets genuinely excited when someone gets it. You say things like 'Okay so here's the cool part' or 'Don't worry — this confused everyone at first.' You make learning feel like a conversation, not a lesson. You adapt to exactly how they learn."),
+    }
+    _relational_layer = _RELATIONAL_PERSONAS.get(persona, "")
+    if _relational_layer:
+        system_prompt = (
+            "━━━ WHO YOU ARE (READ THIS FIRST) ━━━\n"
+            + _relational_layer
+            + "\n━━━ END WHO YOU ARE ━━━\n\n"
+            + system_prompt
+        )
+
+    # vocal_energy hint — style only, no decisions
+    if _is_voice_mode and vocal_energy in ("low", "high"):
+        _energy_hint = (
+            "The user's vocal energy is LOW right now — speak warmly and gently, slow your pace slightly."
+            if vocal_energy == "low"
+            else "The user's vocal energy is HIGH right now — match their energy, be a little more animated."
+        )
+        system_prompt = system_prompt + "\n\n" + _energy_hint
 
     HONESTY_DIRECTIVE = """
 ━━━ HONESTY & CONFIDENCE PROTOCOL (NON-NEGOTIABLE) ━━━
@@ -1250,43 +1269,28 @@ MEMORY INTEGRITY RULE:
 
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
+        # Warm voice guidance — human feel first, brevity second
         if persona in _TIER_A_PERSONAS:
             _voice_hard_rule = (
-                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
-                "You are speaking OUT LOUD. The user CANNOT read. They can only listen.\n"
-                "ABSOLUTE MAXIMUM: 3 sentences. Count them. Stop after 3.\n"
-                "In emergencies: MAX 2 sentences then STOP and ask ONE confirmation question.\n"
-                "NO bullet points. NO numbered lists. NO markdown formatting.\n"
-                "NO long explanations. Give the MOST IMPORTANT point only.\n"
-                "End with ONE short question to hand the turn back.\n"
-                "If you write more than 3 sentences you are breaking the user experience.\n"
-                "━━━ END VOICE HARD RULE ━━━"
+                "\n\nVOICE MODE — You are speaking out loud. Sound like a trusted friend who knows what they're talking about — not a robot, not a pamphlet.\n"
+                "Keep it conversational and warm. Aim for 2-4 sentences. No bullet points, no numbered lists — just talk.\n"
+                "Most important: end with a short question that hands the turn back to them naturally.\n"
+                "Example tone: 'That sounds serious. Stop all contact with them right now and don't send anything. What did they ask you to do?'\n"
             )
         elif persona in _TIER_B_PERSONAS:
             _voice_hard_rule = (
-                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
-                "You are speaking OUT LOUD. The user CANNOT read. They can only listen.\n"
-                "ABSOLUTE MAXIMUM: 3 sentences. Count them. Stop after 3.\n"
-                "Stay warm and in character — do NOT go cold or robotic.\n"
-                "NO bullet points. NO numbered lists. NO markdown.\n"
-                "End with a natural warm handoff question.\n"
-                "━━━ END VOICE HARD RULE ━━━"
+                "\n\nVOICE MODE — You are speaking out loud. Be warm, real, and brief.\n"
+                "Sound like a caring friend — not a textbook. 2-3 sentences max, totally in your persona voice.\n"
+                "End with a natural question that invites them to keep talking.\n"
             )
         else:
             _voice_hard_rule = (
-                "\n\n━━━ VOICE RESPONSE HARD RULE ━━━\n"
-                "You are speaking OUT LOUD. MAXIMUM 3 sentences. No lists. No markdown.\n"
-                "━━━ END VOICE HARD RULE ━━━"
+                "\n\nVOICE MODE — Speaking out loud. Be brief, warm, conversational. No lists or markdown. End with a question.\n"
             )
         if lang == "es":
             _voice_hard_rule = (
-                "\n\n━━━ REGLA ESTRICTA DE VOZ ━━━\n"
-                "Estás hablando en VOZ ALTA. El usuario NO puede leer, solo escuchar.\n"
-                "MÁXIMO ABSOLUTO: 3 oraciones. Cuéntalas. Para después de 3.\n"
-                "En emergencias: MÁX 2 oraciones, luego DETENTE y haz UNA pregunta de confirmación.\n"
-                "SIN viñetas. SIN listas numeradas. SIN markdown.\n"
-                "Termina con UNA pregunta corta para devolver el turno.\n"
-                "━━━ FIN REGLA DE VOZ ━━━"
+                "\n\nMODO VOZ — Estás hablando en voz alta. Suena como un amigo de confianza — cálido, directo, humano.\n"
+                "2-3 oraciones máximo. Sin listas. Termina con una pregunta natural.\n"
             )
         system_prompt = system_prompt + _voice_hard_rule
 
@@ -1518,29 +1522,7 @@ MEMORY INTEGRITY RULE:
 
             sentences = _split_sentences_safe(answer) if _is_voice_mode else split_into_sentences(answer)
 
-            # ── VOICE CAP ENFORCEMENT — hard cut in code, never trust LLM to self-cap ──
-            if _is_voice_mode:
-                _is_emergency_topic = (
-                    len([i for i in analyze_scam_indicators(msg) if i]) > 0
-                    or any(w in msg.lower() for w in [
-                        "wreck","crash","accident","heart","chest","stroke","attack",
-                        "emergency","911","dying","can't breathe","unconscious","bleeding",
-                        "scam","fraud","stolen","theft","robbery","threatened",
-                        "accidente","corazón","emergencia","muriendo","sangre","estafa","fraude"
-                    ])
-                )
-                _cap = 2 if (_is_emergency_topic and persona in _TIER_A_PERSONAS) else 3
-                if len(sentences) > _cap:
-                    # Keep first (_cap - 1) sentences + add handoff question
-                    _kept = sentences[:_cap - 1]
-                    _handoff_q = (
-                        "¿Qué más necesitas saber?" if lang == "es"
-                        else "What else do you need from me?"
-                    )
-                    sentences = _kept + [_handoff_q]
-                    answer = " ".join(sentences)
-                    logger.info(f"✅ Voice cap enforced [{persona}] — trimmed to {len(sentences)} sentences")
-            # ── End voice cap enforcement ─────────────────────────────────────
+            # Voice mode: warm prompt guidance only — no hard cap
 
             async def _nli_trust_score(sentence: str, claim_type: str) -> dict:
                 _client = claude_client or anthropic_client
@@ -1763,6 +1745,8 @@ RULES:
                 "veracore_concerns":      _veracore_result.get("concerns", []) if _veracore_result else [],
                 # ── #7 Confidence tier label ──────────────────────────────────
                 "input_mode":        input_mode,
+                "vocal_energy":      vocal_energy,
+                "speech_rate":       speech_rate,
                 "confidence_tier":   (
                     "high"     if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 80
                     else "moderate" if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 60
