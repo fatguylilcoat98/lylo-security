@@ -60,7 +60,7 @@ interface ChatInterfaceProps {
 
 interface IntakeProfile { faith: string; occupation: string; mission: string; vibe: string; relationship: string; }
 
-interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; }
+interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; pauseBeforeMs?: number; pauseAfterMs?: number; }
 
 const INTAKE_QUESTIONS_R1 = [
   {
@@ -343,8 +343,16 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     if (!audio) { playNext(); return; }
     if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current.currentTime = 0; }
     currentAudioRef.current = audio; isPlayingRef.current = true; speakingCbRef.current(true);
-    audio.onended = () => playNext();
-    audio.play().catch(() => playNext());
+    const doPlay = () => {
+      currentAudioRef.current = audio; isPlayingRef.current = true; speakingCbRef.current(true);
+      audio.onended = () => {
+        const afterMs = nextReady.pauseAfterMs ?? 250;
+        if (afterMs > 0) { setTimeout(playNext, afterMs); } else { playNext(); }
+      };
+      audio.play().catch(() => playNext());
+    };
+    const beforeMs = nextReady.pauseBeforeMs ?? 0;
+    if (beforeMs > 0) { setTimeout(doPlay, beforeMs); } else { doPlay(); }
   }, []);
 
   const stop = useCallback(() => {
@@ -378,9 +386,9 @@ function useAudioQueueManager(isVoiceEnabled: boolean, onSpeakingChange: (s: boo
     }
   }, [stop, playNext]);
 
-  const push = useCallback(async (sentence: string, voice: string, inlineAudioB64?: string) => {
+  const push = useCallback(async (sentence: string, voice: string, inlineAudioB64?: string, pauseBeforeMs = 0, pauseAfterMs = 250) => {
     if (!isVoiceRef.current) return;
-    const entry: AudioQueueEntry = { sentence, audio: null, status: 'fetching' };
+    const entry: AudioQueueEntry = { sentence, audio: null, status: 'fetching', pauseBeforeMs, pauseAfterMs };
     queueRef.current.push(entry);
     const idx = queueRef.current.length - 1;
     if (inlineAudioB64) {
@@ -957,7 +965,7 @@ function ChatInterface({
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             if (readingMode === 'sync') setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
-            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined);
+            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined, parsed.pause_before_ms ?? 0, parsed.pause_after_ms ?? 250);
           } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
         }
       }
