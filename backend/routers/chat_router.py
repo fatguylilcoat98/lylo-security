@@ -786,6 +786,7 @@ RULE 4 — THE GOLDEN RULE: DEFAULT TO IN_DOMAIN.
   A specialist engaging with an unusual question beats a cold handoff every time.
 
 RULE 5 — NEVER route away for:
+  Greetings or small talk in ANY language (hola, cómo estás, hey, how are you) → ALWAYS stay
   Hypothetical / impossible / silly scenarios → stay, engage with curiosity
   Fictional products, made-up names, slang, jokes → stay, handle with humor or honesty
   "What if" questions → stay, answer or say you're not sure
@@ -912,6 +913,14 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         "going to the bathroom", "be right back", "brb", "one sec", "hold on",
         "give me a second", "i'll be back", "thank you", "thanks", "ok thanks",
         "got it", "that's helpful", "appreciate it", "makes sense", "alright",
+        # Greetings — NEVER route, any persona handles these
+        "hello", "hey", "hi", "what's up", "how are you", "how's it going",
+        "good morning", "good afternoon", "good evening", "good night",
+        "cómo estás", "como estas", "hola", "qué tal", "buenos días",
+        "buenas tardes", "buenas noches", "qué pasa", "cómo te va",
+        # Single-word or short phrases that are clearly not domain questions
+        "ok", "okay", "sure", "yeah", "yes", "no", "nope", "yep",
+        "cool", "nice", "great", "awesome", "interesting", "wow",
     ]
     _msg_lower = msg.lower()
     _is_universal = any(intent in _msg_lower for intent in _UNIVERSAL_INTENTS)
