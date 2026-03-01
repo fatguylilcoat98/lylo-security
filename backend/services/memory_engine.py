@@ -108,6 +108,8 @@ async def store_intelligence_sync(user_id: str, content: str, role: str, persona
         )
         embedding = resp.data[0].embedding
         mem_id    = f"{user_id}_{datetime.now().timestamp()}"
+        # Therapy-Safe Split (Council v1) — domain tag isolates trauma memories
+        domain_tag = "therapy" if persona.lower() == "therapist" else "general"
         memory_index.upsert([(mem_id, embedding, {
             "user_id":     user_id,
             "role":        role,
@@ -115,6 +117,7 @@ async def store_intelligence_sync(user_id: str, content: str, role: str, persona
             "timestamp":   datetime.now().isoformat(),
             "record_type": "episodic",
             "persona":     persona,
+            "domain":      domain_tag,   # NEW: therapy | general
         })])
     except Exception as e:
         logger.error(f"Memory Sync Error: {e}")
@@ -143,36 +146,51 @@ async def retrieve_intelligence_sync(user_id: str, query: str, persona: str = "g
     try:
         _q_lower = query.lower()
         _asset_keywords = ""
-        if any(w in _q_lower for w in ["car","vehicle","drive","broke","fix","mechanic"]):
-            _asset_keywords = " car vehicle repair"
+        if any(w in _q_lower for w in [
+            "car","vehicle","drive","drove","broke","fix","mechanic",
+            "bronco","ford","truck","test drive","dealership","suv","pickup",
+            "mustang","tacoma","silverado","chevy","toyota","honda","jeep",
+        ]):
+            _asset_keywords = " car vehicle test drive purchase bronco ford truck"
         elif any(w in _q_lower for w in ["health","sick","pain","doctor","medication","symptom"]):
             _asset_keywords = " health medical symptom"
         elif any(w in _q_lower for w in ["money","invest","debt","finance","budget"]):
             _asset_keywords = " finance money investment"
+        # Persona-based boost — mechanic context always adds vehicle keywords
+        if persona in {"mechanic"} and not _asset_keywords:
+            _asset_keywords = " car vehicle repair mechanic"
         asset_query = f"{query}{_asset_keywords}"
         resp = await openai_client.embeddings.create(
             model="text-embedding-3-small", input=asset_query[:300], dimensions=1024
         )
-        allowed_personas = list(_PERSONA_MEMORY_SILOS.get(persona, {"general"}))
+        # Therapy-Safe Split (Council v1) — domain filter (legacy-safe via $ne)
+        # Therapist: ONLY therapy memories
+        # Everyone else: anything NOT therapy (preserves legacy untagged records)
+        if persona.lower() == "therapist":
+            domain_filter = {"domain": {"$eq": "therapy"}}
+        else:
+            domain_filter = {"domain": {"$ne": "therapy"}}
+
         pinecone_filter = {
             "user_id":     {"$eq": user_id},
             "record_type": {"$eq": "episodic"},
-            "persona":     {"$in": allowed_personas},
+            **domain_filter,
         }
         results = memory_index.query(
             vector=resp.data[0].embedding,
             filter=pinecone_filter,
-            top_k=5, include_metadata=True,
+            top_k=8, include_metadata=True,
         )
         if not results.matches:
+            # Fallback: same domain restriction, no persona filter — still honor the wall
             results = memory_index.query(
                 vector=resp.data[0].embedding,
-                filter={"user_id": {"$eq": user_id}, "record_type": {"$eq": "episodic"}},
-                top_k=3, include_metadata=True,
+                filter={"user_id": {"$eq": user_id}, "record_type": {"$eq": "episodic"}, **domain_filter},
+                top_k=5, include_metadata=True,
             )
         memories = [
             f"Past Intelligence ({m.metadata['role']}): {m.metadata['content']}"
-            for m in results.matches if m.score > 0.65
+            for m in results.matches if m.score > 0.55  # Lowered from 0.65 — catches older/fuzzier memories
         ]
         return "\n".join(memories)
     except Exception as e:
