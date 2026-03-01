@@ -251,16 +251,20 @@ def _hk_prune():
         _HOOK_CACHE.pop(k, None)
 
 def _hk_recent(user_id: str, persona: str, lang: str, hook_text: str, hook_type: str,
-               hook_window: int = 8, type_window: int = 2) -> bool:
+               hook_window: int = 3, type_window: int = 2) -> bool:
+    """Patch C: only block exact string repeats in last 3. Type gate relaxed to avoid
+    forcing fallback when grammar pool is naturally small."""
     _hk_prune()
     key = _hk_key(user_id, persona, lang)
     h = _hk_hash(hook_text)
     rec = _HOOK_CACHE.get(key)
     if not rec:
         return False
+    # Only block exact hash match in last hook_window (default 3)
     if h in rec.get("hooks", [])[-hook_window:]:
         return True
-    if hook_type and hook_type in rec.get("types", [])[-type_window:]:
+    # Type gate: only block if same type appeared in LAST slot (not last 2)
+    if hook_type and rec.get("types", [])[-1:] == [hook_type]:
         return True
     return False
 
@@ -630,7 +634,24 @@ def generate_hook_v2(persona: str, user_name: str, lang: str, user_id: str,
     }
 
     if P not in G:
-        safe = f"Hey {user_name}. ¿Qué necesitas ahora mismo?" if is_es else f"Hey {user_name}. What do you need right now?"
+        _SAFE_FALLBACK = {
+            "therapist": lambda n, es: (
+                f"Hey {n}. Estoy aquí contigo. Antes de hablar, chequeo rápido — ¿dónde lo sientes más en tu cuerpo ahora?" if es
+                else f"Hey {n}. I'm here with you. Before anything, quick body check — where do you feel it most right now?"
+            ),
+            "mechanic":  lambda n, es: (f"Listo {n}, estoy revisando. ¿Qué está haciendo?" if es else f"Alright {n}, I'm under the hood. What's it doing?"),
+            "doctor":    lambda n, es: (f"Hey {n}. ¿Cuáles son tus síntomas principales ahora?" if es else f"Hey {n}. Tell me what's going on and what symptoms you're noticing."),
+            "lawyer":    lambda n, es: (f"Ok {n} — dame la situación en una frase. ¿Cuál es el riesgo?" if es else f"Alright {n} — give me the situation in one sentence. What's the main risk?"),
+            "wealth":    lambda n, es: (f"Ok {n}, vamos con los números. ¿Qué queremos mejorar?" if es else f"Okay {n}, let's get the numbers straight. What are we trying to improve?"),
+            "career":    lambda n, es: (f"Ok {n} — ¿meta: empleo, ascenso, o escape?" if es else f"Alright {n} — what's the goal: job, promotion, or escape plan?"),
+            "tutor":     lambda n, es: (f"Ok {n} — ¿qué aprendemos hoy? Muéstrame qué te confunde." if es else f"Okay {n} — what are we learning today? Show me what's confusing you."),
+            "vitality":  lambda n, es: (f"Hey {n} — chequeo rápido: ¿cómo está tu energía y tu cuerpo hoy?" if es else f"Hey {n} — quick check: how's your energy and how's your body feeling today?"),
+            "hype":      lambda n, es: (f"Ey {n} — ¿cuál es la misión hoy?" if es else f"Yo {n} — what's the mission today? What are we building?"),
+            "bestie":    lambda n, es: (f"Hey {n}. Estoy aquí. ¿Qué pasó?" if es else f"Hey {n}. I'm here. What happened? Give it to me straight."),
+            "pastor":    lambda n, es: (f"Paz, {n}. ¿Qué está pesando en tu corazón hoy?" if es else f"Peace, {n}. What's heavy on your heart today?"),
+            "guardian":  lambda n, es: (f"{n}, estoy aquí. ¿Qué pasó y qué crees que está comprometido?" if es else f"{n}, I'm here. What happened — and what are you worried might be compromised?"),
+        }
+        safe = _SAFE_FALLBACK.get(P, lambda n, es: (f"Hey {n}. ¿Qué necesitas?" if es else f"Hey {n}. What do you need right now?"))(user_name, is_es)
         _hk_remember(user_id, P, L, safe, "safe")
         return safe
 
@@ -660,7 +681,16 @@ def generate_hook_v2(persona: str, user_name: str, lang: str, user_id: str,
             _hk_remember(user_id, P, L, hook, hook_type)
             return hook
 
-    safe = f"Hey {user_name}. Cuéntame — ¿qué está pasando?" if is_es else f"Hey {user_name}. Talk to me — what's going on?"
+    _SAFE_FALLBACK_LOOP = {
+        "therapist": lambda n, es: (
+            f"Estoy aquí, {n}. Chequeo rápido — ¿dónde sientes más tensión en tu cuerpo ahora?" if es
+            else f"I'm here, {n}. Quick body check — where do you feel the most tension right now?"
+        ),
+        "mechanic":  lambda n, es: (f"A ver {n} — ¿qué síntoma es el más molesto?" if es else f"Alright {n} — what's the most annoying symptom right now?"),
+        "guardian":  lambda n, es: (f"{n}, ¿qué te parece sospechoso?" if es else f"{n}, what's the suspicious thing you're seeing?"),
+    }
+    safe_fn = _SAFE_FALLBACK_LOOP.get(P, lambda n, es: (f"Hey {n}. ¿Qué necesitas?" if es else f"Hey {n}. What do you need right now?"))
+    safe = safe_fn(user_name, is_es)
     _hk_remember(user_id, P, L, safe, "safe")
     return safe
 
