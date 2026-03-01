@@ -751,6 +751,10 @@ function ChatInterface({
       const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
       setInput(full); inputTextRef.current = full;
 
+      // ── Reset silence timers when user speaks ───────────────────────────────
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+      setShowSilenceCheck(false);
       // ── Silence Auto-Send — 1.5s pause triggers send (Gemini council spec) ──
       if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
       if (full.trim().length > 0) {
@@ -967,20 +971,32 @@ function ChatInterface({
       }
       const finalText = fullAnswer.trim();
       appendSessionContent(finalText, 'bot');
-      // ── Phase 1 Silence Detection — only in voice mode on emergency personas ──
-      const _isVoiceMode = isRecording || isRecordingRef.current;
-      const _isEmergencyPersona = ['guardian','doctor','lawyer','wealth','mechanic'].includes(activePersona.id);
-      const _isHighStakes = metaData?.threat_level === 'high' || metaData?.emergency;
-      if (_isVoiceMode && _isEmergencyPersona && _isHighStakes) {
-        // 15 seconds — give them time to physically do the action
+      // ── Silence Detection — fires in ALL voice mode conversations ─────────────
+      const _isVoiceMode = isRecording || isRecordingRef.current || autoReopenRef.current;
+      if (_isVoiceMode) {
+        // Clear any existing timers first
+        if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+        if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+
+        // 15 seconds no speech → "Hey, still there?"
         silenceTimerRef.current = setTimeout(() => {
-          setShowSilenceCheck(true); // show soft check "I'm still here"
-          // 5 more seconds then surface emergency shield
-          silenceWarningRef.current = setTimeout(() => {
-            setShowSilenceCheck(false);
-            setEmergencyShieldAuto(true);
-            setShowCrisisShield(true); // surface the shield
-          }, 5000);
+          if (isRecordingRef.current || autoReopenRef.current) {
+            setShowSilenceCheck(true);
+            // 15 more seconds still nothing → auto shut off mic
+            silenceWarningRef.current = setTimeout(() => {
+              setShowSilenceCheck(false);
+              // Graceful mic shutoff — user walked away
+              autoReopenRef.current = false;
+              closeMicHard();
+              // Emergency personas also get the shield
+              const _isEmergencyPersona = ['guardian','doctor','lawyer','wealth','mechanic'].includes(activePersona.id);
+              const _isHighStakes = metaData?.threat_level === 'high' || metaData?.emergency;
+              if (_isEmergencyPersona && _isHighStakes) {
+                setEmergencyShieldAuto(true);
+                setShowCrisisShield(true);
+              }
+            }, 15000); // 15s after warning = 30s total
+          }
         }, 15000);
       }
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
@@ -1325,15 +1341,21 @@ function ChatInterface({
           <div className="bg-[#111] border border-yellow-500/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(234,179,8,0.2)]">
             <div className="text-5xl mb-4">🛡️</div>
             <h2 className="text-white font-black text-xl mb-3 leading-tight">
-              {lang === 'es' ? 'Aquí sigo contigo.' : "I'm still here."}
+              {lang === 'es' ? 'Oye, ¿sigues ahí?' : "Hey, still there?"}
             </h2>
             <p className="text-yellow-400 font-bold text-sm mb-6">
-              {lang === 'es' ? 'Di cualquier cosa para que sepa que estás bien.' : "Say anything so I know you're okay."}
+              {lang === 'es' ? 'Dime algo cuando estés listo.' : "I'll wait — just say something when you're ready."}
             </p>
             <button
               onClick={() => {
                 setShowSilenceCheck(false);
                 if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+                // User confirmed they're here — restart silence timer fresh
+                silenceTimerRef.current = setTimeout(() => {
+                  if (isRecordingRef.current || autoReopenRef.current) {
+                    setShowSilenceCheck(true);
+                  }
+                }, 15000);
               }}
               className="w-full py-4 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest text-sm hover:bg-yellow-400 transition-all active:scale-95"
             >
