@@ -1565,7 +1565,7 @@ function ChatInterface({
             {PERSONAS.map(p => (
               <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
                 <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
-                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{lang === 'es' ? (PERSONA_NAMES_ES[p.value] ?? p.name) : p.name}</span>
+                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{lang === 'es' ? (PERSONA_NAMES_ES[p.id] ?? p.name) : p.name}</span>
               </button>
             ))}
           </div>
@@ -1705,7 +1705,7 @@ function ChatInterface({
             <input
               value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }}
               disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={lang === 'es' ? `Escríbele a ${activePersona.nameEs ?? activePersona.name}…` : `Type to ${activePersona.name}…`}
+              placeholder={lang === 'es' ? `Escríbele a ${PERSONA_NAMES_ES[activePersona.id] ?? activePersona.name}…` : `Type to ${activePersona.name}…`}
               className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
             />
             <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50"><ArrowRight className="w-6 h-6" /></button>
