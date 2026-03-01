@@ -239,6 +239,7 @@ async def persona_hook(
         email_lower = user_email.lower().strip()
         user_id     = create_user_id(email_lower)
         user_data   = ELITE_USERS.get(email_lower, {"name": "Protected User"})
+        logger.warning(f"[LANG DEBUG] endpoint=persona-hook persona={persona} lang={lang} user={email_lower[:6]}***")
 
         intake_for_hook = await retrieve_intake_profile(user_id)
         user_name = (
@@ -313,6 +314,7 @@ async def chat(
     user_id     = create_user_id(email_lower)
     user_data   = ELITE_USERS.get(email_lower, {"tier": "free", "name": "Protected User"})
     tier        = user_data["tier"]
+    logger.warning(f"[LANG DEBUG] endpoint=chat persona={persona} lang={lang} input_mode={input_mode} user={email_lower[:6]}***")
     _intake_name = ""
     is_admin    = email_lower in ["stangman9898@gmail.com", "mylylo.ai@gmail.com"]
     limit       = 999999 if is_admin else TIER_LIMITS.get(tier, 3)
@@ -1674,45 +1676,76 @@ MEMORY INTEGRITY RULE:
                     )
                 logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
 
-            # ── Hidden State Machine Extraction (Therapist) ──────────────
+            # ── Hidden State Machine Extraction + Runtime Gates (Therapist) ─────
             therapy_state = None
             if persona == "therapist":
                 import re as _re
+                _is_es = (lang == "es")
+
+                # Safe default — gates run even if LLM forgets to emit state block
+                therapy_state = {"phase": "EXPLORE", "tolerance": "GREEN", "intensity": 0}
+
                 state_match = _re.search(r'\[STATE:\s*({.*?})\]', answer)
                 if state_match:
+                    # Strip hidden block — user never sees it, TTS never reads it
+                    answer = answer.replace(state_match.group(0), "").strip()
                     try:
-                        therapy_state = json.loads(state_match.group(1))
-                        # Strip hidden block — user never sees it, TTS never reads it
-                        answer = answer.replace(state_match.group(0), "").strip()
-                        # Crisis override: RED tolerance → hardcoded stabilization response
-                        if therapy_state.get("tolerance") == "RED":
-                            answer = (
-                                "Hey — I'm right here with you. You don't have to explain anything right now. "
-                                "Can you feel your feet on the floor? Just notice that for a second. "
-                                "I'm not going anywhere. Take your time."
-                            )
+                        parsed_state = json.loads(state_match.group(1))
+                        if isinstance(parsed_state, dict):
+                            therapy_state.update(parsed_state)  # merge into safe default
+                    except Exception:
+                        logger.warning("🚨 Therapist state block malformed — using safe default.")
 
-                        # Runtime Lock: Enforce vetted tools in SKILL phase
-                        # If LLM hallucinates an unapproved tool, override before it reaches the user
-                        elif therapy_state.get("phase") == "SKILL":
-                            _answer_l = answer.lower()  # pre-lower once — cheaper + explicit
-                            _approved_keywords = [
-                                "5-4-3-2-1",
-                                "box breathing",
-                                "the container",      # tighter: avoids "put it in a container" false-pass
-                                "cognitive reframing",
-                                "catch it",
-                                "body scan",
-                            ]
-                            if not any(kw in _answer_l for kw in _approved_keywords):
-                                logger.warning("🚨 Therapist output lacked approved skill. Applying runtime fallback.")
-                                answer = (
-                                    "Let's keep things simple right now. Let's do a quick body scan. "
-                                    "Notice your feet on the floor, then your shoulders, then your jaw. "
-                                    "Just notice any tension without trying to fix it. How does that feel?"
-                                )
-                    except (json.JSONDecodeError, Exception):
-                        pass  # Malformed state — continue with default behavior
+                # ── BILINGUAL RUNTIME GATES ───────────────────────────────────
+                # Gate 1: RED tolerance → hardcoded crisis stabilization
+                if therapy_state.get("tolerance") == "RED":
+                    answer = (
+                        "Oye — estoy aquí contigo. No tienes que explicar nada ahora mismo. "
+                        "¿Puedes sentir tus pies en el suelo? Solo nota eso un segundo. "
+                        "No me voy a ir. Tómate tu tiempo."
+                        if _is_es else
+                        "Hey — I'm right here with you. You don't have to explain anything right now. "
+                        "Can you feel your feet on the floor? Just notice that for a second. "
+                        "I'm not going anywhere. Take your time."
+                    )
+
+                # Gate 2: SKILL phase → enforce vetted tool library
+                elif therapy_state.get("phase") == "SKILL":
+                    _answer_l = answer.lower()
+                    _approved_keywords = [
+                        "5-4-3-2-1", "box breathing", "the container",
+                        "cognitive reframing", "catch it", "body scan",
+                    ]
+                    if not any(kw in _answer_l for kw in _approved_keywords):
+                        logger.warning("🚨 Therapist hallucinated unapproved tool — applying runtime fallback.")
+                        answer = (
+                            "Vamos a mantenerlo simple. Hagamos un escaneo corporal rápido. "
+                            "Nota tus pies en el suelo, luego tus hombros, luego tu mandíbula. "
+                            "Solo nota cualquier tensión sin intentar arreglarla. ¿Cómo se siente ahora?"
+                            if _is_es else
+                            "Let's keep things simple right now. Let's do a quick body scan. "
+                            "Notice your feet on the floor, then your shoulders, then your jaw. "
+                            "Just notice any tension without trying to fix it. How does that feel?"
+                        )
+
+                # Gate 3: CLOSE phase → enforce deterministic close structure
+                elif therapy_state.get("phase") == "CLOSE":
+                    _answer_l = answer.lower()
+                    _close_keywords = [
+                        "end here", "stop", "grounding tool",
+                        "terminar aquí", "paramos", "herramienta",
+                    ]
+                    if not any(kw in _answer_l for kw in _close_keywords):
+                        logger.warning("🚨 Therapist missed clean close structure — overriding.")
+                        answer = (
+                            "Lo que te escucho decir es que hoy ya fue demasiado, y tu cuerpo necesita descanso. "
+                            "La idea clave: tu agotamiento tiene sentido. "
+                            "¿Quieres terminar aquí por hoy, o hacemos una herramienta rápida de grounding antes de parar?"
+                            if _is_es else
+                            "What I hear you saying is that today took a lot out of you, and your body needs rest. "
+                            "One takeaway is that your exhaustion makes complete sense. "
+                            "Want to end here for today, or do a quick grounding tool before we stop?"
+                        )
             # ─────────────────────────────────────────────────────────────────
             # Strip leakage from global answer BEFORE splitting or packing into meta
             answer = _strip_leakage(answer)
