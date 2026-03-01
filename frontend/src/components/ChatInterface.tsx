@@ -508,6 +508,7 @@ function ChatInterface({
   const wordTimestamps    = useRef<number[]>([]); // for speech rate
   const autoReopenRef     = useRef(false); // mic auto-reopen after TTS
   const speechPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // silence auto-send
+  const silenceFiringRef = useRef(false); // true when silence timer has fired — blocks onend restart
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -712,13 +713,17 @@ function ChatInterface({
       if (full.trim().length > 0) {
         speechPauseTimeoutRef.current = setTimeout(() => {
           if (isRecordingRef.current) {
+            silenceFiringRef.current = true;  // block onend from restarting
             isRecordingRef.current = false;
             setIsRecording(false);
             autoReopenRef.current = true; // reopen after AI responds
             stopVocalAnalysis();
             playPresenceChime();
             try { recognitionRef.current?.stop(); } catch {}
-            setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 100);
+            setTimeout(() => {
+              silenceFiringRef.current = false; // reset after send
+              if (inputTextRef.current.trim()) handleSend();
+            }, 100);
           }
         }, 1500); // 1.5 seconds of silence = done talking
       }
@@ -730,8 +735,8 @@ function ChatInterface({
       else if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
     };
     rec.onend = () => {
-      // Only auto-restart if we're still in recording mode AND pause timer hasn't fired
-      if (isRecordingRef.current && !isSpeaking) {
+      // Only restart if: still recording mode AND silence timer hasn't taken over AND not speaking
+      if (isRecordingRef.current && !isSpeaking && !silenceFiringRef.current) {
         recognitionRef.current = buildRecognition();
         recognitionRef.current?.start();
       }
@@ -806,6 +811,7 @@ function ChatInterface({
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
       autoReopenRef.current = false; // user manually stopped — disable auto-reopen
+      silenceFiringRef.current = false; // reset silence gate
       if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
       stopVocalAnalysis(); // stop energy extraction
       playPresenceChime(); // micro chime — "I heard you"
