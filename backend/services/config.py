@@ -366,9 +366,10 @@ ADMIN_USERS = {
     "stangman9898@gmail.com":    {"tier": "max", "name": "Christopher"},
     "mylylo.ai@gmail.com":       {"tier": "max", "name": "LYLO Admin"},
     # ── Real beta testers (hardcoded so they always have access) ───────────
-    "bearjcameron@icloud.com":   {"tier": "pro", "name": "Bear",   "beta": True},
-    "paintonmynails80@gmail.com": {"tier": "pro", "name": "Aubrey", "beta": True},
-}
+    "bearjcameron@icloud.com":   {"tier": "max", "name": "Bear",   "beta": True},
+    "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey", "beta": True},
+    "jcdabearman@gmail.com":      {"tier": "max", "name": "Jeff",     "beta": True},
+}}
 
 # Beta testers — loaded from file, survives all redeploys
 _BETA_USERS_DB = _load_beta_users()
