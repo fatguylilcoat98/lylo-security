@@ -1182,13 +1182,15 @@ async def chat(
             except Exception:
                 pass
 
-        recent       = CONVO_CONTEXT.get(email_lower, [])[-4:]
+        recent       = CONVO_CONTEXT.get(email_lower, [])[-8:]
         convo_context = ""
         if recent:
-            convo_context = (
-                "RECENT CONVERSATION (last turns):\n"
-                + "\n".join(f"  [{t['persona'].upper()}]: {t['msg'][:100]}" for t in recent)
-            )
+            _lines = []
+            for t in recent:
+                _lines.append(f"  [USER]: {t['msg'][:150]}")
+                if t.get("response"):
+                    _lines.append(f"  [{t['persona'].upper()}]: {t['response'][:200]}")
+            convo_context = "RECENT CONVERSATION (last turns):\n" + "\n".join(_lines)
 
         PERSONA_DOMAINS = {
             "guardian":  "cybersecurity, scams, phishing, identity theft, hacking, account protection, digital safety — NOT vehicle repair or car buying unless the question is specifically about fraud or being scammed at a dealership",
@@ -1714,9 +1716,63 @@ BODY SCAN (Best for: Opening a session, General check-in)
 """
 
     _RELATIONAL_PERSONAS = {
-        "doctor": ("You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' You use contractions. You use 'we' and 'let's'. You never talk down to them. You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it."),
+        "doctor": (
+            "You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. "
+            "You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. "
+            "You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' "
+            "You use contractions. You use 'we' and 'let's'. You never talk down to them. "
+            "You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it.\n\n"
+            "━━━ DOCTOR SESSION STATE PROTOCOL ━━━\n"
+            "Track the clinical phase and risk level at all times.\n"
+            "- PHASES: INTAKE, ASSESS, DIAGNOSE, PROTOCOL, CLOSE\n"
+            "- RISK: 1 (mild/routine), 2 (concerning), 3 (urgent — needs care today), 4 (emergency — call 911 now)\n\n"
+            "Rule 1: INTAKE. First contact — ask ONE clarifying question max. Never fire multiple intake questions at once.\n"
+            "Rule 2: ASSESS. Map symptoms to likely causes using pattern language: 'These symptoms commonly point to...' "
+            "NEVER say 'I just checked WebMD', 'Studies show', or 'I checked the facts'. "
+            "If Tavily data is available, say 'According to [source]...'. Otherwise draw from training.\n"
+            "Rule 3: PROTOCOL. Risk 3 or 4 — give a numbered action protocol immediately. "
+            "Risk 4: lead with 'Call 911 now' before anything else. Do NOT soften emergency language.\n"
+            "Rule 4: DIRECTIVE MODE. If user says 'just tell me what to do', 'help now', 'what do I do right now', "
+            "'I don't want questions' — skip intake. Give 2-4 concrete steps based on what is already known.\n"
+            "Rule 5: CONTINUITY. If user says 'is it safe', 'what now', 'like this', 'should I worry' — "
+            "always answer in the context of the symptom already being discussed. NEVER ask 'what do you mean?'\n"
+            "Rule 6: PERSONA PURITY. Do not reference cybersecurity, finances, legal matters, or career "
+            "unless the user brought it up in THIS conversation.\n"
+            "Rule 7: CITATION DISCIPLINE. Never imply live browsing unless Tavily data is confirmed. "
+            "Say 'These symptoms commonly suggest...' not 'Research shows...'\n"
+            "Rule 8: AT THE ABSOLUTE END of your response, output a hidden state block on a new line exactly like this:\n"
+            "[DOCTOR_STATE: {\"phase\": \"ASSESS\", \"risk\": 2, \"symptoms\": [\"chest pain\", \"shortness of breath\"]}]\n"
+            "Do not add any text after this block.\n"
+            "━━━ END DOCTOR STATE PROTOCOL ━━━"
+        ),
         "lawyer": ("You are not a formal attorney issuing legal opinions. You are like an older cousin who knows the legal system inside and out and actually wants to help you. You say things like 'Okay here's the real deal' or 'Don't sign anything yet' or 'Let me break this down.' You use plain language. You protect them like family. You tell them what to watch out for."),
-        "guardian": ("You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' You are calm but sharp. You take it seriously without making them panic. You treat them like someone smart who just needs the right eyes on the situation. CRITICAL: You are a cybersecurity and fraud expert — NOT a medical professional. NEVER say 'consult a healthcare professional' or 'please see a doctor' or any medical disclaimer. If anything is relevant to personal safety, say 'consider filing a report with local authorities or the FTC at ReportFraud.ftc.gov' instead."),
+        "guardian": (
+            "You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. "
+            "You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' "
+            "You are calm but sharp. You take it seriously without making them panic. "
+            "You treat them like someone smart who just needs the right eyes on the situation.\n"
+            "CRITICAL: You are a cybersecurity and fraud expert — NOT a medical professional. "
+            "NEVER say 'consult a healthcare professional' or 'please see a doctor' or any medical disclaimer. "
+            "If anything is relevant to personal safety, say 'consider filing a report with local authorities or the FTC at ReportFraud.ftc.gov' instead.\n\n"
+            "━━━ GUARDIAN SESSION STATE PROTOCOL ━━━\n"
+            "Track the incident phase and severity at all times.\n"
+            "- PHASES: INTAKE, TRIAGE, CONTAINMENT, ESCALATION, CLOSE\n"
+            "- SEVERITY: 1 (suspicious/unknown), 2 (likely breach), 3 (confirmed breach), 4 (financial loss)\n\n"
+            "Rule 1: INTAKE. First contact with no prior signals — gather what happened in ONE question max. Never ask two questions at once.\n"
+            "Rule 2: TRIAGE. Suspicious link clicked, phishing email received, strange account activity — assume risk is REAL. Move to CONTAINMENT immediately.\n"
+            "Rule 3: CONTAINMENT. If credentials entered, account accessed, or money sent — DO NOT ask for more context. "
+            "Give numbered containment steps immediately: 1) Change password, 2) Enable 2FA, 3) Check active sessions, 4) Freeze credit if financial data exposed.\n"
+            "Rule 4: ESCALATION. If money was sent via wire, Zelle, Venmo, gift card, or crypto — severity is 4. "
+            "Give bank contact steps immediately. Do NOT minimize. Do NOT say 'it might be okay.'\n"
+            "Rule 5: DIRECTIVE MODE. If user says 'just tell me what to do', 'help now', 'what do I do right now', 'I don't want questions' — "
+            "skip ALL intake. Give 3 concrete numbered steps immediately based on what is already known.\n"
+            "Rule 6: NEVER reset to intake if prior turns already established the incident. Read context. Continue from where you left off.\n"
+            "Rule 7: PERSONA PURITY. Do not reference user's family, wealth goals, health, career, or any other domain unless they brought it up in THIS conversation.\n"
+            "Rule 8: AT THE ABSOLUTE END of your response, output a hidden state block on a new line exactly like this:\n"
+            "[GUARDIAN_STATE: {\"phase\": \"CONTAINMENT\", \"severity\": 3, \"signals\": [\"link_clicked\", \"creds_entered\"]}]\n"
+            "Do not add any text after this block.\n"
+            "━━━ END GUARDIAN STATE PROTOCOL ━━━"
+        ),
         "wealth": ("You are not a financial advisor issuing recommendations. You are like a trusted family friend who built real wealth and wants to help them do the same. You say things like 'Here's what I'd actually do' or 'Let's look at the full picture first.' You speak plainly. No jargon. No disclaimers unless genuinely needed. Real talk about real money."),
         "therapist": (
             "You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical.\n"
@@ -1880,38 +1936,295 @@ MEMORY INTEGRITY RULE:
     if persona == "therapist":
         system_prompt += f"\n\n{_THERAPY_SKILLS_LIBRARY}"
 
-    # ── Guardian: Incident State Injection ───────────────────────────────
-    # Scans recent CONVO_CONTEXT for breach signals and injects them into
-    # the system prompt so Guardian never loses incident context mid-session.
+    # ══════════════════════════════════════════════════════════════════════
+    # GUARDIAN FORTRESS — Full state machine injection + runtime gates
+    # ══════════════════════════════════════════════════════════════════════
+    _guardian_directive_override = None  # set if gate fires before LLM call
+    _guardian_escalation_override = None
+
     if persona == "guardian":
-        _recent_turns = CONVO_CONTEXT.get(email_lower, [])[-8:]
-        _all_recent_text = " ".join(t.get("msg", "").lower() for t in _recent_turns)
+        _recent_turns   = CONVO_CONTEXT.get(email_lower, [])[-8:]
+        _all_user_text  = " ".join(t.get("msg", "").lower() for t in _recent_turns)
+        _all_text       = _all_user_text + " " + msg.lower()
 
-        # Detect what has already happened in this incident
+        # ── Signal detection ──────────────────────────────────────────────
+        _link_signals   = ["clicked", "opened", "visited", "tapped", "link", "url", "site", "website", "phishing"]
+        _cred_signals   = ["password", "entered", "typed", "submitted", "gave", "filled", "login", "credential",
+                           "ssn", "social security", "bank account", "credit card", "card number", "pin"]
+        _access_signals = ["hacked", "account taken", "locked out", "can't log in", "strange login",
+                           "unauthorized", "breach", "compromised", "someone else logged in"]
+        _money_signals  = ["sent money", "wired", "venmo", "zelle", "cash app", "transfer",
+                           "bought gift card", "gift card", "crypto", "bitcoin", "wire transfer"]
+        _directive_signals = ["just tell me what to do", "i don't want questions", "what do i do right now",
+                              "help now", "just help me", "skip the questions", "tell me the steps"]
+        _ambiguous_signals = ["is it safe", "can i drive", "what now", "like this", "like that",
+                              "this thing", "do i do this", "what about this", "is this okay"]
+
+        _sig_link   = any(s in _all_text for s in _link_signals)
+        _sig_cred   = any(s in _all_text for s in _cred_signals)
+        _sig_access = any(s in _all_text for s in _access_signals)
+        _sig_money  = any(s in _all_text for s in _money_signals)
+        _sig_dir    = any(s in msg.lower() for s in _directive_signals)
+        _sig_amb    = any(s in msg.lower() for s in _ambiguous_signals) and len(msg.strip().split()) < 8
+
         _incident_signals = []
-        _link_signals     = ["clicked", "opened", "visited", "tapped", "link", "url", "site", "website"]
-        _cred_signals     = ["password", "entered", "typed", "submitted", "gave", "filled", "login", "credential", "ssn", "social security", "bank account", "credit card", "card number"]
-        _access_signals   = ["hacked", "account taken", "locked out", "can't log in", "strange login", "unauthorized", "breach", "compromised"]
-        _money_signals    = ["sent money", "wired", "venmo", "zelle", "cash app", "transfer", "bought gift card", "gift card"]
+        if _sig_link:   _incident_signals.append("User clicked or opened a suspicious link/site.")
+        if _sig_cred:   _incident_signals.append("User entered credentials or personal/financial info.")
+        if _sig_access: _incident_signals.append("Account may already be compromised or locked.")
+        if _sig_money:  _incident_signals.append("User may have sent money or purchased gift cards.")
 
-        if any(s in _all_recent_text for s in _link_signals):
-            _incident_signals.append("User clicked or opened a suspicious link.")
-        if any(s in _all_recent_text for s in _cred_signals):
-            _incident_signals.append("User entered credentials, personal data, or financial info.")
-        if any(s in _all_recent_text for s in _access_signals):
-            _incident_signals.append("Account may already be compromised or locked.")
-        if any(s in _all_recent_text for s in _money_signals):
-            _incident_signals.append("User may have sent money or purchased gift cards.")
+        # ── Determine phase ───────────────────────────────────────────────
+        if _sig_money:
+            _guardian_phase    = "ESCALATION"
+            _guardian_severity = 4
+        elif _sig_cred or _sig_access:
+            _guardian_phase    = "CONTAINMENT"
+            _guardian_severity = 3
+        elif _sig_link:
+            _guardian_phase    = "TRIAGE"
+            _guardian_severity = 2
+        else:
+            _guardian_phase    = "INTAKE"
+            _guardian_severity = 1
 
+        # ── Gate 1: ESCALATION — money sent (hardcoded, LLM-free) ────────
+        if _sig_money:
+            _guardian_escalation_override = {
+                "en": (
+                    "This is critical — money sent to scammers is hard to recover, but speed matters. "
+                    "Do these right now:\n"
+                    "1. Call your bank immediately and say 'I was scammed — I need to recall a transfer.' "
+                    "Ask for their fraud department.\n"
+                    "2. If Zelle or Venmo: open the app, go to the transaction, and report it as unauthorized fraud.\n"
+                    "3. File a report at ReportFraud.ftc.gov — you'll need this for your bank's investigation.\n"
+                    "4. If gift cards were used, call the gift card company directly — numbers are on the back.\n"
+                    "Do NOT send any more money, even if they promise to 'unlock' your account or return the first payment."
+                ),
+                "es": (
+                    "Esto es crítico — el dinero enviado a estafadores es difícil de recuperar, pero la velocidad importa. "
+                    "Haz esto ahora mismo:\n"
+                    "1. Llama a tu banco de inmediato y di 'Fui víctima de una estafa — necesito cancelar una transferencia.' "
+                    "Pide hablar con el departamento de fraudes.\n"
+                    "2. Si usaste Zelle o Venmo: abre la app, ve a la transacción y repórtala como fraude no autorizado.\n"
+                    "3. Presenta un reporte en ReportFraud.ftc.gov — lo necesitarás para la investigación de tu banco.\n"
+                    "4. Si usaste tarjetas de regalo, llama directamente a la empresa — el número está en el reverso.\n"
+                    "NO envíes más dinero, aunque prometan 'desbloquear' tu cuenta o devolver el primer pago."
+                ),
+            }
+            logger.warning(f"🛡️ Guardian ESCALATION gate fired — severity 4")
+
+        # ── Gate 2: DIRECTIVE MODE (hardcoded steps by phase) ────────────
+        elif _sig_dir:
+            if _guardian_phase == "CONTAINMENT":
+                _guardian_directive_override = {
+                    "en": (
+                        "Got it — no questions. Here's what to do right now:\n"
+                        "1. Change your password immediately from a DIFFERENT device if possible.\n"
+                        "2. Turn on two-factor authentication (2FA) on that account.\n"
+                        "3. Go to account settings → Active Sessions → sign out of all other devices.\n"
+                        "4. Check your email for any password reset requests you didn't make — forward them to yourself for records.\n"
+                        "Which of these have you done already?"
+                    ),
+                    "es": (
+                        "Entendido — sin preguntas. Esto es lo que debes hacer ahora:\n"
+                        "1. Cambia tu contraseña de inmediato desde un dispositivo DIFERENTE si es posible.\n"
+                        "2. Activa la verificación en dos pasos (2FA) en esa cuenta.\n"
+                        "3. Ve a configuración → Sesiones activas → cierra sesión en todos los demás dispositivos.\n"
+                        "4. Revisa tu correo por solicitudes de restablecimiento de contraseña que no hiciste.\n"
+                        "¿Cuál de estos pasos ya completaste?"
+                    ),
+                }
+            else:
+                _guardian_directive_override = {
+                    "en": (
+                        "Got it — here's what to do right now:\n"
+                        "1. Don't click any more links or download anything from that source.\n"
+                        "2. Change the password on any account that used the same email/password combo.\n"
+                        "3. Run a scan on your device — use Malwarebytes (free) if you don't have antivirus.\n"
+                        "Tell me: did you enter any passwords or personal info on that site?"
+                    ),
+                    "es": (
+                        "Entendido — esto es lo que debes hacer ahora:\n"
+                        "1. No hagas clic en más enlaces ni descargues nada de esa fuente.\n"
+                        "2. Cambia la contraseña de cualquier cuenta que use el mismo correo/contraseña.\n"
+                        "3. Ejecuta un escaneo en tu dispositivo — usa Malwarebytes (gratis) si no tienes antivirus.\n"
+                        "Dime: ¿ingresaste alguna contraseña o información personal en ese sitio?"
+                    ),
+                }
+            logger.info("🛡️ Guardian DIRECTIVE gate fired")
+
+        # ── Gate 3: AMBIGUOUS REFERENCE — prepend last turn context ───────
+        if _sig_amb and _recent_turns:
+            _last_turn   = _recent_turns[-1]
+            _last_user   = _last_turn.get("msg", "")
+            _last_resp   = _last_turn.get("response", "")
+            if _last_user or _last_resp:
+                _amb_context = (
+                    "\n\n📎 CONTEXT FROM LAST TURN (user is referring to this):\n"
+                    f"  User said: {_last_user[:200]}\n"
+                    f"  You responded: {_last_resp[:300]}\n"
+                    "Answer the current message in reference to this context. Do NOT ask 'what do you mean?'\n"
+                )
+                system_prompt += _amb_context
+                logger.info("🛡️ Guardian ambiguous reference context injected")
+
+        # ── Gate 4: INCIDENT CONTEXT — inject what's already known ───────
         if _incident_signals:
             _incident_block = (
                 "\n\n⚠️ CURRENT INCIDENT CONTEXT (do NOT ask for this again — act on it):\n"
                 + "\n".join(f"  - {s}" for s in _incident_signals)
-                + "\n\nGive the next concrete step immediately. Do not re-ask what happened. Do not reset to intake. Escalate based on what is already known."
+                + f"\n  - Current phase: {_guardian_phase} (severity {_guardian_severity}/4)"
+                + "\n\nContinue from this context. Give the next concrete step immediately. "
+                "Do not re-ask what happened. Do not reset to intake."
             )
             system_prompt += _incident_block
-            logger.info(f"🛡️ Guardian incident context injected: {_incident_signals}")
-    # ── End Guardian Incident Injection ──────────────────────────────────
+            logger.info(f"🛡️ Guardian incident context injected: {_incident_signals} | phase={_guardian_phase}")
+
+        # ── Build full conversation history for LLM ───────────────────────
+        # Pass last 8 turns as alternating user/assistant messages
+        _guardian_history = []
+        for _t in _recent_turns:
+            _guardian_history.append({"role": "user",      "content": _t.get("msg", "")})
+            if _t.get("response"):
+                _guardian_history.append({"role": "assistant", "content": _t["response"]})
+
+    # ── End Guardian Fortress ─────────────────────────────────────────────
+
+    # ══════════════════════════════════════════════════════════════════════
+    # DOCTOR FORTRESS — Full state machine injection + runtime gates
+    # ══════════════════════════════════════════════════════════════════════
+    _doctor_directive_override  = None
+    _doctor_emergency_override  = None
+
+    if persona == "doctor":
+        _recent_turns  = CONVO_CONTEXT.get(email_lower, [])[-8:]
+        _all_user_text = " ".join(t.get("msg", "").lower() for t in _recent_turns)
+        _all_text      = _all_user_text + " " + msg.lower()
+
+        # ── Signal detection ──────────────────────────────────────────────
+        _emergency_signals  = ["can't breathe", "cannot breathe", "chest pain", "heart attack", "stroke",
+                               "unconscious", "not breathing", "collapsed", "seizure", "overdose",
+                               "bleeding heavily", "call 911", "no pulse", "unresponsive"]
+        _urgent_signals     = ["fever", "throwing up", "vomiting", "severe pain", "bad pain",
+                               "getting worse", "spreading", "can't move", "can't walk", "swollen",
+                               "allergic reaction", "rash spreading", "trouble breathing", "dizziness"]
+        _directive_signals  = ["just tell me what to do", "i don't want questions", "what do i do right now",
+                               "help now", "just help me", "skip the questions", "tell me the steps"]
+        _ambiguous_signals  = ["is it safe", "should i worry", "what now", "like this", "like that",
+                               "is this normal", "what does that mean", "is this serious"]
+
+        _sig_emergency = any(s in _all_text for s in _emergency_signals)
+        _sig_urgent    = any(s in _all_text for s in _urgent_signals)
+        _sig_dir       = any(s in msg.lower() for s in _directive_signals)
+        _sig_amb       = any(s in msg.lower() for s in _ambiguous_signals) and len(msg.strip().split()) < 10
+
+        # ── Determine phase + risk ────────────────────────────────────────
+        if _sig_emergency:
+            _doctor_phase = "PROTOCOL"
+            _doctor_risk  = 4
+        elif _sig_urgent:
+            _doctor_phase = "PROTOCOL"
+            _doctor_risk  = 3
+        else:
+            _doctor_phase = "ASSESS"
+            _doctor_risk  = 1
+
+        # ── Gate 1: EMERGENCY — risk 4 hardcoded response ────────────────
+        if _sig_emergency and not _recent_turns:
+            # Only override on first contact — if mid-conversation let context carry
+            _doctor_emergency_override = {
+                "en": (
+                    "This sounds like a medical emergency. Call 911 right now — do not wait.\n"
+                    "While waiting for help:\n"
+                    "1. Stay with them and keep them calm and still.\n"
+                    "2. Do NOT give food, water, or medication unless 911 tells you to.\n"
+                    "3. If they stop breathing and you know CPR — start it now.\n"
+                    "4. Unlock the front door so paramedics can get in.\n"
+                    "Stay on the line with 911. They will guide you."
+                ),
+                "es": (
+                    "Esto suena como una emergencia médica. Llama al 911 ahora mismo — no esperes.\n"
+                    "Mientras esperas ayuda:\n"
+                    "1. Quédate con ellos, mantén la calma y evita que se muevan.\n"
+                    "2. NO des comida, agua ni medicamentos a menos que el 911 te lo indique.\n"
+                    "3. Si dejaron de respirar y sabes RCP — comienza ahora.\n"
+                    "4. Desbloquea la puerta de entrada para que los paramédicos puedan entrar.\n"
+                    "Mantente en línea con el 911. Te guiarán."
+                ),
+            }
+            logger.warning("🩺 Doctor EMERGENCY gate fired — risk 4")
+
+        # ── Gate 2: DIRECTIVE MODE ────────────────────────────────────────
+        elif _sig_dir:
+            if _sig_urgent or _sig_emergency:
+                _doctor_directive_override = {
+                    "en": (
+                        "Got it — no questions. Here's what to do right now:\n"
+                        "1. Take note of when symptoms started and if they're getting worse.\n"
+                        "2. If any of these apply — go to urgent care or ER today: "
+                        "fever over 103°F, pain that's a 7+/10, symptoms spreading, trouble breathing.\n"
+                        "3. Don't take new medications until you know what this is.\n"
+                        "4. If it gets worse in the next hour — call 911, don't drive yourself.\n"
+                        "What's the main symptom right now?"
+                    ),
+                    "es": (
+                        "Entendido — sin preguntas. Esto es lo que debes hacer ahora:\n"
+                        "1. Anota cuándo comenzaron los síntomas y si están empeorando.\n"
+                        "2. Si alguno de estos aplica — ve a urgencias hoy: "
+                        "fiebre superior a 39.4°C, dolor de 7+/10, síntomas que se extienden, dificultad para respirar.\n"
+                        "3. No tomes medicamentos nuevos hasta saber qué es esto.\n"
+                        "4. Si empeora en la próxima hora — llama al 911, no manejes solo.\n"
+                        "¿Cuál es el síntoma principal ahora?"
+                    ),
+                }
+            else:
+                _doctor_directive_override = {
+                    "en": (
+                        "Got it — here's what I need you to do:\n"
+                        "1. Track the symptom — when it started, how often, what makes it better or worse.\n"
+                        "2. Stay hydrated and rest.\n"
+                        "3. Avoid self-medicating until we figure out what this is.\n"
+                        "Tell me: where exactly do you feel it, and how long has it been going on?"
+                    ),
+                    "es": (
+                        "Entendido — esto es lo que necesito que hagas:\n"
+                        "1. Registra el síntoma — cuándo empezó, con qué frecuencia, qué lo mejora o empeora.\n"
+                        "2. Mantente hidratado y descansa.\n"
+                        "3. Evita automedicarte hasta entender qué es esto.\n"
+                        "Dime: ¿dónde exactamente lo sientes y cuánto tiempo lleva?"
+                    ),
+                }
+            logger.info("🩺 Doctor DIRECTIVE gate fired")
+
+        # ── Gate 3: AMBIGUOUS REFERENCE — prepend last turn context ──────
+        if _sig_amb and _recent_turns:
+            _last = _recent_turns[-1]
+            _lu   = _last.get("msg", "")
+            _lr   = _last.get("response", "")
+            if _lu or _lr:
+                system_prompt += (
+                    "\n\n📎 CONTEXT FROM LAST TURN (user is referring to this — do NOT ask 'what do you mean?'):\n"
+                    f"  User said: {_lu[:200]}\n"
+                    f"  You responded: {_lr[:300]}\n"
+                    "Answer the current message in the context of the symptom already being discussed.\n"
+                )
+                logger.info("🩺 Doctor ambiguous reference context injected")
+
+        # ── Inject phase + risk into system prompt ────────────────────────
+        if _doctor_risk >= 2:
+            system_prompt += (
+                f"\n\n⚕️ CURRENT CLINICAL CONTEXT: Phase={_doctor_phase}, Risk={_doctor_risk}/4. "
+                "Do not re-ask for symptoms already established. Continue assessment from this point."
+            )
+
+        # ── Build full conversation history for LLM ───────────────────────
+        _doctor_history = []
+        for _t in _recent_turns:
+            _doctor_history.append({"role": "user",      "content": _t.get("msg", "")})
+            if _t.get("response"):
+                _doctor_history.append({"role": "assistant", "content": _t["response"]})
+
+    # ── End Doctor Fortress ───────────────────────────────────────────────
 
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
@@ -2263,15 +2576,23 @@ MEMORY INTEGRITY RULE:
                             "One takeaway is that your exhaustion makes complete sense. "
                             "Want to end here for today, or do a quick grounding tool before we stop?"
                         )
-            # ─────────────────────────────────────────────────────────────────
-            # Strip leakage from global answer BEFORE splitting or packing into meta
-            answer = _strip_leakage(answer)
-
-            # ── Guardian: strip cross-domain medical disclaimers ────────────
-            # LLM sometimes appends healthcare disclaimers on security topics.
-            # Guardian is cybersecurity — medical disclaimers never belong here.
+            # ── Guardian: Apply pre-computed overrides ────────────────────────
             if persona == "guardian":
                 import re as _re_guard
+                # Strip hidden state block from answer
+                answer = _re_guard.sub(r'\[GUARDIAN_STATE:.*?\]', '', answer, flags=_re_guard.DOTALL).strip()
+
+                # Gate 1: Escalation override (money sent) — replaces LLM answer
+                if _guardian_escalation_override:
+                    answer = _guardian_escalation_override["es" if lang == "es" else "en"]
+                    logger.warning("🛡️ Guardian escalation override applied to answer")
+
+                # Gate 2: Directive override — replaces LLM answer
+                elif _guardian_directive_override:
+                    answer = _guardian_directive_override["es" if lang == "es" else "en"]
+                    logger.info("🛡️ Guardian directive override applied to answer")
+
+                # Gate 3: Strip medical disclaimer bleed
                 _medical_bleed_patterns = [
                     r"IMPORTANT\s*:\s*Please consult a healthcare professional[^.]*\.",
                     r"Please consult a (healthcare|medical) professional[^.]*\.",
@@ -2283,10 +2604,54 @@ MEMORY INTEGRITY RULE:
                 ]
                 for _pat in _medical_bleed_patterns:
                     _before = answer
-                    answer = _re_guard.sub("", answer, flags=_re_guard.IGNORECASE).strip()
+                    answer = _re_guard.sub(_pat, "", answer, flags=_re_guard.IGNORECASE).strip()
                     if answer != _before:
                         logger.warning("🛡️ Guardian: medical disclaimer bleed stripped.")
-            # ── End Guardian disclaimer strip ────────────────────────────────
+            # ── End Guardian gates ─────────────────────────────────────────────
+
+            # ── Doctor: Apply runtime gates ───────────────────────────────────
+            if persona == "doctor":
+                import re as _re_doc
+                # Strip hidden state block
+                answer = _re_doc.sub(r'\[DOCTOR_STATE:.*?\]', '', answer, flags=_re_doc.DOTALL).strip()
+
+                # Apply directive override if set
+                if _doctor_directive_override:
+                    answer = _doctor_directive_override["es" if lang == "es" else "en"]
+                    logger.info("🩺 Doctor directive override applied")
+
+                # Apply RED (emergency) override if set
+                elif _doctor_emergency_override:
+                    answer = _doctor_emergency_override["es" if lang == "es" else "en"]
+                    logger.warning("🩺 Doctor EMERGENCY override applied")
+
+                # Strip citation fabrication phrases
+                _doc_citation_patterns = [
+                    r"I (just )?checked WebMD[^.]*\.",
+                    r"According to WebMD[^.]*\.",
+                    r"WebMD (says|states|reports)[^.]*\.",
+                    r"Studies show[^.]*\.",
+                    r"Research shows[^.]*\.",
+                    r"I checked the facts[^.]*\.",
+                    r"I just looked (this|it) up[^.]*\.",
+                ]
+                for _pat in _doc_citation_patterns:
+                    answer = _re_doc.sub(_pat, "", answer, flags=_re_doc.IGNORECASE).strip()
+
+                # Strip cross-domain cybersecurity bleed
+                _doc_security_patterns = [
+                    r"secure (your|the) (account|device|password)[^.]*\.",
+                    r"change your password[^.]*\.",
+                    r"enable two-factor[^.]*\.",
+                ]
+                for _pat in _doc_security_patterns:
+                    answer = _re_doc.sub(_pat, "", answer, flags=_re_doc.IGNORECASE).strip()
+            # ── End Doctor gates ──────────────────────────────────────────────
+
+            # ─────────────────────────────────────────────────────────────────
+            # Strip leakage from global answer BEFORE splitting or packing into meta
+            answer = _strip_leakage(answer)
+
             sentences = _split_sentences_safe(answer) if _is_voice_mode else split_into_sentences(answer)
 
             # Voice mode: warm prompt guidance only — no hard cap
@@ -2480,7 +2845,7 @@ RULES:
                     except Exception as _e:
                         logger.warning(f"Reaction detect error: {_e}")
 
-                CONVO_CONTEXT[email_lower].append({"persona": persona, "msg": msg[:120]})
+                CONVO_CONTEXT[email_lower].append({"persona": persona, "msg": msg[:200], "response": answer[:300]})
                 if len(CONVO_CONTEXT[email_lower]) > MAX_CONVO_CONTEXT:
                     CONVO_CONTEXT[email_lower] = CONVO_CONTEXT[email_lower][-MAX_CONVO_CONTEXT:]
                 if action_trigger == "email_dispatch":
