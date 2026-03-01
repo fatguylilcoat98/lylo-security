@@ -554,19 +554,19 @@ function ChatInterface({
       if (!rec) { isRecordingRef.current = false; setIsRecording(false); return; }
       recognitionRef.current = rec;
       rec.start();
-      if (fromUserTap) {
-        // Direct tap — safe to call getUserMedia (mobile requires user gesture context)
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-          if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
-          mediaStreamRef.current = s;
-          startVocalAnalysis(s);
-        }).catch(() => {});
-      } else if (mediaStreamRef.current) {
-        // Auto-reopen after TTS — reuse existing stream, no new getUserMedia
-        // Mobile (iOS/Android) blocks getUserMedia inside setTimeout — not a user gesture
-        startVocalAnalysis(mediaStreamRef.current);
+      if (!_isMobile) {
+        // Desktop only — vocal analysis via getUserMedia
+        if (fromUserTap) {
+          navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+            if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
+            mediaStreamRef.current = s;
+            startVocalAnalysis(s);
+          }).catch(() => {});
+        } else if (mediaStreamRef.current) {
+          startVocalAnalysis(mediaStreamRef.current);
+        }
       }
-      // No stream on auto-reopen = recognition still works, just no vocal energy
+      // Mobile: skip getUserMedia + vocal analysis — prevents AudioContext conflict with SpeechRecognition
     } catch { isRecordingRef.current = false; setIsRecording(false); }
   }, [loading]);
 
@@ -848,8 +848,13 @@ function ChatInterface({
 
 
   // ── Vocal Energy Extraction — Web Audio API (client-side, zero latency) ──
+  // Detect mobile — AudioContext conflicts with SpeechRecognition on Android Chrome
+  const _isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
   // ONE getUserMedia call total — stream stored in mediaStreamRef, stopped on send
   const startVocalAnalysis = (existingStream?: MediaStream) => {
+    // Skip vocal analysis on mobile — AudioContext blocks SpeechRecognition on Android
+    if (_isMobile) return;
     try {
       const stream = existingStream || mediaStreamRef.current;
       if (!stream) return; // no stream — energy stays medium
