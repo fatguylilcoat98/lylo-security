@@ -499,6 +499,14 @@ function ChatInterface({
   const silenceWarningRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSilenceCheck, setShowSilenceCheck]         = useState(false);
   const [emergencyShieldAuto, setEmergencyShieldAuto]   = useState(false);
+  // ── Presence-First: Vocal Energy Extraction (client-side edge) ──────────
+  const audioContextRef   = useRef<AudioContext | null>(null);
+  const analyserRef       = useRef<AnalyserNode | null>(null);
+  const mediaStreamRef    = useRef<MediaStream | null>(null);
+  const vocalEnergyRef    = useRef<'low' | 'medium' | 'high'>('medium');
+  const speechRateRef     = useRef<'slow' | 'normal' | 'fast'>('normal');
+  const wordTimestamps    = useRef<number[]>([]); // for speech rate
+  const autoReopenRef     = useRef(false); // mic auto-reopen after TTS
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -516,7 +524,25 @@ function ChatInterface({
   const rafScrollRef     = useRef<number | null>(null);
   const msgCountRef      = useRef(0);
 
-  const handleSpeakingChange = useCallback((v: boolean) => setIsSpeaking(v), []);
+  const handleSpeakingChange = useCallback((v: boolean) => {
+    setIsSpeaking(v);
+    // ── Mic auto-reopen after TTS finishes (continuous presence loop) ──
+    if (!v && autoReopenRef.current && isRecordingRef.current === false && !loading) {
+      setTimeout(() => {
+        if (!isRecordingRef.current && autoReopenRef.current) {
+          isRecordingRef.current = true;
+          setIsRecording(true);
+          lastInputModeRef.current = 'voice';
+          recognitionRef.current = null; // will rebuild on next use
+          startVocalAnalysis();
+          try {
+            const rec = buildRecognition();
+            if (rec) { recognitionRef.current = rec; rec.start(); }
+          } catch { isRecordingRef.current = false; setIsRecording(false); }
+        }
+      }, 750); // 750ms pause after TTS — GPT council spec: 98% safe on older devices
+    }
+  }, [loading]);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
   const sentinel = useSentinel({ userEmail, deviceId });
 
@@ -681,9 +707,66 @@ function ChatInterface({
     return rec;
   };
 
+
+  // ── Vocal Energy Extraction — Web Audio API (client-side, zero latency) ──
+  // Reuses the existing mic stream — NO second getUserMedia call (GPT council fix)
+  const startVocalAnalysis = (existingStream?: MediaStream) => {
+    try {
+      const stream = existingStream || mediaStreamRef.current;
+      if (!stream) return; // no stream available — energy stays medium
+      const ctx = new AudioContext();
+      audioContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const samples: number[] = [];
+      const measure = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        samples.push(avg);
+        if (samples.length > 20) samples.shift();
+        const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+        vocalEnergyRef.current = mean > 60 ? 'high' : mean > 25 ? 'medium' : 'low';
+        requestAnimationFrame(measure);
+      };
+      measure();
+    } catch { /* audio context failed — energy stays medium */ }
+  };
+
+  const stopVocalAnalysis = () => {
+    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
+    if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
+    analyserRef.current = null;
+  };
+
+  // ── Micro Chime — the LYLO "I heard you" signal ──────────────────────────
+  const playPresenceChime = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(528, ctx.currentTime);       // warm tone
+      osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);          // very soft
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+      osc.onended = () => ctx.close();
+    } catch { /* audio not available */ }
+  };
+
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
+      autoReopenRef.current = false; // user manually stopped — disable auto-reopen
+      stopVocalAnalysis(); // stop energy extraction
+      playPresenceChime(); // micro chime — "I heard you"
       // ── Phase 1: user spoke — clear silence timers ──
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
@@ -695,6 +778,8 @@ function ChatInterface({
       setIsRecording(true); isRecordingRef.current = true;
       lastInputModeRef.current = 'voice'; // capture voice mode before send fires
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
+      autoReopenRef.current = true; // enable continuous loop
+      // vocal analysis starts after stream is available via recognition onstart
       recognitionRef.current = buildRecognition();
       if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
       try { recognitionRef.current.start(); } catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
@@ -764,6 +849,8 @@ function ChatInterface({
       fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
       fd.append('lang', lang);
       fd.append('input_mode', lastInputModeRef.current); // Phase 1 — captured before mic stops
+      fd.append('vocal_energy', vocalEnergyRef.current);     // edge-extracted, zero latency
+      fd.append('speech_rate', speechRateRef.current);       // edge-extracted, zero latency
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
