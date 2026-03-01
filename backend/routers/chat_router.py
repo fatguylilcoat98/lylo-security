@@ -121,7 +121,11 @@ router = APIRouter()
 # ── Prompt Leakage Filter — strips instruction labels LLM accidentally speaks ─
 _LEAKAGE_PATTERN = re.compile(
     r"(SYSTEM\s+PRIORITY\s*:?\s*|SYSTEM\s+NOTE\s*:?\s*|ACTION\s+REQUIRED\s*:?\s*|"
-    r"NEXT\s+STEP\s*:?\s*|YOUR\s+TASK\s*:?\s*)",
+    r"NEXT\s+STEP\s*:?\s*|YOUR\s+TASK\s*:?\s*|"
+    r"SECURE\s+THE\s+PERIMETER\s*:?\s*|DIGITAL\s+PERIMETER\s*:?\s*|"
+    r"THREAT\s+DETECTED\s*:?\s*|GUARDIAN\s+ALERT\s*:?\s*|"
+    r"CLINICAL\s+NOTE\s*:?\s*|LEGAL\s+NOTE\s*:?\s*|"
+    r"FINANCIAL\s+NOTE\s*:?\s*|SAFETY\s+NOTE\s*:?\s*)",
     re.IGNORECASE
 )
 def _strip_leakage(text: str) -> str:
@@ -921,6 +925,10 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         # Single-word or short phrases that are clearly not domain questions
         "ok", "okay", "sure", "yeah", "yes", "no", "nope", "yep",
         "cool", "nice", "great", "awesome", "interesting", "wow",
+        # Positive reactions — never route, persona stays and acknowledges
+        "i like that", "i love that", "that's good", "that's great", "that's nice",
+        "i like it", "love it", "that's perfect", "that works", "that's amazing",
+        "play", "i like", "love",
     ]
     _msg_lower = msg.lower()
     _is_universal = any(intent in _msg_lower for intent in _UNIVERSAL_INTENTS)
