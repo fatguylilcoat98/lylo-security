@@ -509,6 +509,8 @@ function ChatInterface({
   const autoReopenRef     = useRef(false); // mic auto-reopen after TTS
   const speechPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // silence auto-send
   const silenceFiringRef = useRef(false); // true when silence timer has fired — blocks onend restart
+  const ttsStartTimeRef   = useRef<number>(0);  // when TTS started playing
+  const ttsEndTimeRef     = useRef<number>(0);   // when TTS finished
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -526,25 +528,58 @@ function ChatInterface({
   const rafScrollRef     = useRef<number | null>(null);
   const msgCountRef      = useRef(0);
 
+  // ── WALKIE-TALKIE MODEL ─────────────────────────────────────────────────────
+  // LYLO talks  → mic is OFF (hard blocked)
+  // LYLO done   → mic turns ON automatically after brief settle
+  // User talks  → 1.5s silence → sends → LYLO talks → repeat
+  // ─────────────────────────────────────────────────────────────────────────
+  const openMicForUser = useCallback(() => {
+    if (isRecordingRef.current || loading) return;
+    // Full clean state before opening
+    silenceFiringRef.current  = false;
+    speechPauseTimeoutRef.current = null;
+    isRecordingRef.current    = true;
+    setIsRecording(true);
+    lastInputModeRef.current  = 'voice';
+    try {
+      const rec = buildRecognition();
+      if (!rec) { isRecordingRef.current = false; setIsRecording(false); return; }
+      recognitionRef.current = rec;
+      rec.start();
+      // Open audio stream for vocal energy (separate from recognition)
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+        if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
+        mediaStreamRef.current = s;
+        startVocalAnalysis(s);
+      }).catch(() => {});
+    } catch { isRecordingRef.current = false; setIsRecording(false); }
+  }, [loading]);
+
+  const closeMicHard = useCallback(() => {
+    // Hard stop — kills recognition + audio stream completely
+    isRecordingRef.current = false;
+    setIsRecording(false);
+    silenceFiringRef.current = false;
+    if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
+    try { recognitionRef.current?.stop(); } catch {}
+    recognitionRef.current = null;
+    stopVocalAnalysis();
+  }, []);
+
   const handleSpeakingChange = useCallback((v: boolean) => {
     setIsSpeaking(v);
-    // ── Mic auto-reopen after TTS finishes (continuous presence loop) ──
-    if (!v && autoReopenRef.current && isRecordingRef.current === false && !loading) {
-      setTimeout(() => {
-        if (!isRecordingRef.current && autoReopenRef.current) {
-          isRecordingRef.current = true;
-          setIsRecording(true);
-          lastInputModeRef.current = 'voice';
-          recognitionRef.current = null; // will rebuild on next use
-          startVocalAnalysis();
-          try {
-            const rec = buildRecognition();
-            if (rec) { recognitionRef.current = rec; rec.start(); }
-          } catch { isRecordingRef.current = false; setIsRecording(false); }
-        }
-      }, 750); // 750ms pause after TTS — GPT council spec: 98% safe on older devices
+    if (v) {
+      // LYLO started talking — kill mic immediately, no bleed
+      closeMicHard();
+    } else {
+      // LYLO finished talking — reopen mic after 600ms settle
+      if (autoReopenRef.current) {
+        setTimeout(() => {
+          if (!loading) openMicForUser();
+        }, 600);
+      }
     }
-  }, [loading]);
+  }, [loading, openMicForUser, closeMicHard]);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
   const sentinel = useSentinel({ userEmail, deviceId });
 
@@ -810,10 +845,8 @@ function ChatInterface({
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
-      autoReopenRef.current = false; // user manually stopped — disable auto-reopen
-      silenceFiringRef.current = false; // reset silence gate
-      if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
-      stopVocalAnalysis(); // stop energy extraction
+      autoReopenRef.current = false; // user manually stopped — disable walkie-talkie loop
+      closeMicHard();
       playPresenceChime(); // micro chime — "I heard you"
       // ── Phase 1: user spoke — clear silence timers ──
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
@@ -823,17 +856,11 @@ function ChatInterface({
       setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
     } else {
       if (isSpeaking) return;
-      setIsRecording(true); isRecordingRef.current = true;
-      lastInputModeRef.current = 'voice'; // capture voice mode before send fires
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
-      autoReopenRef.current = true; // enable continuous loop
-      // Open ONE audio stream here — used for both vocal analysis and released on send
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-        // Stop any previous stream first
-        if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
-        mediaStreamRef.current = s;
-        startVocalAnalysis(s);
-      }).catch(() => { /* mic denied — energy stays medium */ });
+      lastInputModeRef.current = 'voice';
+      openMicForUser();
+      autoReopenRef.current = true; // enable walkie-talkie loop
+      // Stream opened inside openMicForUser — don't duplicate here
       recognitionRef.current = buildRecognition();
       if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
       try { recognitionRef.current.start(); } catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
