@@ -892,6 +892,11 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         "blinker fluid", "headlight fluid", "exhaust steam", "muffler bearings",
         "left-handed screwdriver", "sky hook", "elbow grease", "prank", "they were joking",
         "they were playing", "someone told me", "is that real",
+        # Fact challenges — persona owns its mistakes, never routes away
+        "you lied", "you just lied", "that's not real", "that's not true", "you made that up",
+        "i made that up", "you're wrong", "that's wrong", "that doesn't exist",
+        "you hallucinated", "that's false", "are you sure", "fact check",
+        "i don't think that's real", "i don't think that exists", "that's not a thing",
     ]
     _msg_lower = msg.lower()
     _is_universal = any(intent in _msg_lower for intent in _UNIVERSAL_INTENTS)
@@ -1197,7 +1202,12 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         system_prompt = (
             "━━━ WHO YOU ARE (READ THIS FIRST) ━━━\n"
             + _relational_layer
-            + "\n━━━ END WHO YOU ARE ━━━\n\n"
+            + "\n\n"
+            + "CRITICAL — IF YOU MADE A MISTAKE OR MADE SOMETHING UP:\n"
+            + "Own it immediately. Say something like 'Yeah, I have to be honest — I'm not sure that's real' "
+            + "or 'You're right, I shouldn't have said that with confidence.' "
+            + "Never deflect, never blame the user, never route them away. Just be straight with them.\n"
+            + "━━━ END WHO YOU ARE ━━━\n\n"
             + system_prompt
         )
 
