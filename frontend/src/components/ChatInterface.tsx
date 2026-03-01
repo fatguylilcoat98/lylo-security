@@ -866,12 +866,8 @@ function ChatInterface({
       if (isSpeaking) return;
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       lastInputModeRef.current = 'voice';
-      openMicForUser();
       autoReopenRef.current = true; // enable walkie-talkie loop
-      // Stream opened inside openMicForUser — don't duplicate here
-      recognitionRef.current = buildRecognition();
-      if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
-      try { recognitionRef.current.start(); } catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
+      openMicForUser();             // handles recognition build + start + stream — nothing else needed
     }
   };
 
