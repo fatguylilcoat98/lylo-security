@@ -466,6 +466,7 @@ function ChatInterface({
   const [tempGender, setTempGender]                     = useState<'male' | 'female'>('female');
   const [isRecording, setIsRecording]                   = useState(false);
   const [isSpeaking, setIsSpeaking]                     = useState(false);
+  const isSpeakingRef = useRef(false); // sync ref for onresult echo gate
   const [showDropdown, setShowDropdown]                 = useState(false);
   const [showCameraMenu, setShowCameraMenu]             = useState(false);
   const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>((userTierProp as any) ?? 'max');
@@ -576,6 +577,8 @@ function ChatInterface({
     setIsRecording(false);
     silenceFiringRef.current = false;
     if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
+    // Abort recognition completely on mobile — stop() alone doesn't prevent echo on Android
+    try { recognitionRef.current?.abort(); } catch {}
     try { recognitionRef.current?.stop(); } catch {}
     recognitionRef.current = null;
     stopVocalAnalysis();
@@ -583,6 +586,7 @@ function ChatInterface({
 
   const handleSpeakingChange = useCallback((v: boolean) => {
     setIsSpeaking(v);
+    isSpeakingRef.current = v; // keep ref in sync for synchronous echo gate
     if (v) {
       // LYLO started talking — kill mic immediately, no bleed
       closeMicHard();
@@ -779,7 +783,8 @@ function ChatInterface({
       console.log('[LYLO Voice] Audio ended');
     };
     rec.onresult = (e: any) => {
-      if (isSpeaking) return;
+      // Hard gate — if LYLO is speaking, discard ALL results (prevents echo feedback)
+      if (isSpeaking || isSpeakingRef.current) return;
       let interim = '', final = '';
       // Must iterate from e.resultIndex on Android Chrome (continuous=true)
       // Iterating from 0 reprocesses old results every event — causes duplicate/broken text
