@@ -248,6 +248,9 @@ const UI_STRINGS: Record<string, Record<string, string>> = {
     login_prompt:     'Enter your email to access your council',
     login_button:     'Access My Council',
     lang_toggle:      'Español',
+    hold_to_speak:    'Tap to Speak',
+    tap_to_send:      'Tap to Send',
+    type_to:          'Type to',
     end_session:      'End Session',
     send_report:      'Send Session Report',
     report_prompt:    'Would you like this session sent to your email?',
@@ -272,6 +275,9 @@ const UI_STRINGS: Record<string, Record<string, string>> = {
     login_prompt:     'Ingresa tu correo para acceder a tu consejo',
     login_button:     'Acceder a Mi Consejo',
     lang_toggle:      'English',
+    hold_to_speak:    'Toca para Hablar',
+    tap_to_send:      'Toca para Enviar',
+    type_to:          'Escríbele a',
     end_session:      'Terminar Sesión',
     send_report:      'Enviar Reporte de Sesión',
     report_prompt:    '¿Quieres que te enviemos el reporte de esta sesión?',
@@ -290,6 +296,30 @@ const UI_STRINGS: Record<string, Record<string, string>> = {
     skip:             'Omitir',
     back:             'Atrás',
   },
+};
+
+// Spanish persona name map — shown in UI when lang === 'es'
+const PERSONA_NAMES_ES: Record<string, string> = {
+  mechanic:  'Mecánico',
+  doctor:    'Doctor',
+  lawyer:    'Abogado',
+  wealth:    'Asesor Financiero',
+  therapist: 'Terapeuta',
+  career:    'Coach de Carrera',
+  tutor:     'Tutor',
+  vitality:  'Vitalidad',
+  hype:      'Motivador',
+  bestie:    'Mejor Amigo/a',
+  pastor:    'Pastor',
+  guardian:  'Guardián',
+};
+
+// Auto-detect browser language on first load (before user manually toggles)
+const detectBrowserLang = (): 'en' | 'es' => {
+  const stored = localStorage.getItem('lylo_lang');
+  if (stored === 'en' || stored === 'es') return stored;
+  const nav = navigator.language || navigator.languages?.[0] || 'en';
+  return nav.toLowerCase().startsWith('es') ? 'es' : 'en';
 };
 
 const getDeviceId = () => {
@@ -445,9 +475,7 @@ function ChatInterface({
     if (desired.id !== activePersona.id) setActivePersona(desired);
   }, [initialPersona?.id]);
 
-  const [lang, setLang] = useState<'en' | 'es'>(() =>
-    (localStorage.getItem('lylo_lang') as 'en' | 'es') || 'en'
-  );
+  const [lang, setLang] = useState<'en' | 'es'>(() => detectBrowserLang());
   const t = (key: string): string => UI_STRINGS[lang]?.[key] ?? UI_STRINGS.en[key] ?? key;
   const toggleLang = () => {
     const next: 'en' | 'es' = lang === 'en' ? 'es' : 'en';
@@ -1537,7 +1565,7 @@ function ChatInterface({
             {PERSONAS.map(p => (
               <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
                 <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
-                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{p.name}</span>
+                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{lang === 'es' ? (PERSONA_NAMES_ES[p.value] ?? p.name) : p.name}</span>
               </button>
             ))}
           </div>
@@ -1623,8 +1651,16 @@ function ChatInterface({
 
         <div className="max-w-md mx-auto space-y-3">
           <div className="flex gap-2">
-            <button onClick={handleWalkieTalkieMic} disabled={loading} className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'} ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}>
-              {isRecording ? <><MicOff className="w-5 h-5" /> Tap to Send</> : <><Mic className="w-5 h-5" /> Hold to Speak</>}
+            <button
+              onClick={handleWalkieTalkieMic}
+              onTouchStart={(e) => { e.preventDefault(); if (!loading) handleWalkieTalkieMic(); }}
+              disabled={loading}
+              className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'} ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}
+              style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}
+            >
+              {isRecording
+                ? <><MicOff className="w-5 h-5" /> {lang === 'es' ? 'Toca para Enviar' : 'Tap to Send'}</>
+                : <><Mic className="w-5 h-5" /> {lang === 'es' ? 'Toca para Hablar' : 'Tap to Speak'}</>}
             </button>
             <button
               onClick={async () => {
@@ -1669,7 +1705,7 @@ function ChatInterface({
             <input
               value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }}
               disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={`Type to ${activePersona.name}…`}
+              placeholder={lang === 'es' ? `Escríbele a ${activePersona.nameEs ?? activePersona.name}…` : `Type to ${activePersona.name}…`}
               className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
             />
             <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50"><ArrowRight className="w-6 h-6" /></button>
