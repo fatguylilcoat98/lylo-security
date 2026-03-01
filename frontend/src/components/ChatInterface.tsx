@@ -817,9 +817,24 @@ function ChatInterface({
     };
     rec.onerror = (e: any) => {
       if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
-      if (e.error === 'not-allowed') { alert('Microphone blocked.'); isRecordingRef.current = false; setIsRecording(false); }
-      else if (e.error === 'network') { isRecordingRef.current = false; setIsRecording(false); }
-      else if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
+      console.log('[LYLO Voice] Recognition error:', e.error);
+      // Show error on screen so mobile users can see it without dev tools
+      if (e.error === 'not-allowed') {
+        alert('Microphone blocked. Please allow mic access in Chrome Settings → Site Settings → Microphone.');
+        isRecordingRef.current = false; setIsRecording(false);
+      } else if (e.error === 'network') {
+        alert('Speech recognition network error — Chrome needs internet access to Google speech servers. Error: network');
+        isRecordingRef.current = false; setIsRecording(false);
+      } else if (e.error === 'service-not-allowed') {
+        alert('Speech service blocked — try opening in Chrome browser instead of PWA. Error: service-not-allowed');
+        isRecordingRef.current = false; setIsRecording(false);
+      } else if (e.error === 'audio-capture') {
+        alert('Mic hardware error — Chrome cannot access microphone. Error: audio-capture');
+        isRecordingRef.current = false; setIsRecording(false);
+      } else {
+        console.log('[LYLO Voice] Unknown error:', e.error);
+        if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
+      }
     };
     rec.onend = () => {
       // Only restart if: still recording mode AND silence timer hasn't taken over AND not speaking
