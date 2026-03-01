@@ -758,7 +758,11 @@ function ChatInterface({
   const buildRecognition = (): any => {
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
-    const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
+    const rec = new SR();
+    rec.continuous      = true;   // Android Chrome drops results in non-continuous mode
+    rec.interimResults  = true;
+    rec.maxAlternatives = 1;
+    rec.lang            = lang === 'es' ? 'es-US' : 'en-US';
     rec.onstart = () => {
       // Vocal analysis starts from mic tap handler — stream already in mediaStreamRef
       // No getUserMedia here — prevents stuck mic indicator
