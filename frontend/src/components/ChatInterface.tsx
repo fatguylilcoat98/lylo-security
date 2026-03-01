@@ -580,10 +580,26 @@ function ChatInterface({
       // LYLO started talking — kill mic immediately, no bleed
       closeMicHard();
     } else {
-      // LYLO finished talking — reopen mic after 600ms settle
+      // LYLO finished talking — reopen mic after 600ms settle, then start silence timer
       if (autoReopenRef.current) {
         setTimeout(() => {
-          if (!loading) openMicForUser();
+          if (!loading) {
+            openMicForUser();
+            // Start silence timer NOW — user has 15s to respond before check-in
+            if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+            if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+            setShowSilenceCheck(false);
+            silenceTimerRef.current = setTimeout(() => {
+              if (isRecordingRef.current || autoReopenRef.current) {
+                setShowSilenceCheck(true);
+                silenceWarningRef.current = setTimeout(() => {
+                  setShowSilenceCheck(false);
+                  autoReopenRef.current = false;
+                  closeMicHard();
+                }, 15000); // 15s after check-in = 30s total from TTS end
+              }
+            }, 15000);
+          }
         }, 600);
       }
     }
@@ -972,33 +988,7 @@ function ChatInterface({
       const finalText = fullAnswer.trim();
       appendSessionContent(finalText, 'bot');
       // ── Silence Detection — fires in ALL voice mode conversations ─────────────
-      const _isVoiceMode = isRecording || isRecordingRef.current || autoReopenRef.current;
-      if (_isVoiceMode) {
-        // Clear any existing timers first
-        if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-        if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
-
-        // 15 seconds no speech → "Hey, still there?"
-        silenceTimerRef.current = setTimeout(() => {
-          if (isRecordingRef.current || autoReopenRef.current) {
-            setShowSilenceCheck(true);
-            // 15 more seconds still nothing → auto shut off mic
-            silenceWarningRef.current = setTimeout(() => {
-              setShowSilenceCheck(false);
-              // Graceful mic shutoff — user walked away
-              autoReopenRef.current = false;
-              closeMicHard();
-              // Emergency personas also get the shield
-              const _isEmergencyPersona = ['guardian','doctor','lawyer','wealth','mechanic'].includes(activePersona.id);
-              const _isHighStakes = metaData?.threat_level === 'high' || metaData?.emergency;
-              if (_isEmergencyPersona && _isHighStakes) {
-                setEmergencyShieldAuto(true);
-                setShowCrisisShield(true);
-              }
-            }, 15000); // 15s after warning = 30s total
-          }
-        }, 15000);
-      }
+      // Silence timer starts after TTS finishes — handled in handleSpeakingChange
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
       setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
 
