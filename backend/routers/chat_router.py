@@ -1305,20 +1305,24 @@ MEMORY INTEGRITY RULE:
     _msg_lower = msg.lower()
     _is_image_request = any(kw in _msg_lower for kw in _image_request_keywords)
 
-    if _is_image_request and not file:
-        # Graceful image refusal with helpful redirect
+    # Detect "can I send a photo" vs "generate/show me an image"
+    _is_send_photo_offer = any(kw in _msg_lower for kw in [
+        "if i took a picture", "if i send", "if i take a photo", "would you be able to tell",
+        "can i send you", "can i take a picture", "should i take a photo", "i could take a picture",
+    ])
+
+    if _is_image_request and not file and not _is_send_photo_offer:
+        # User asked us to generate/display an image — we can't do that
         if lang == "es":
             _img_msg = (
-                "No puedo mostrar imágenes directamente, pero puedo describírtelo con todo detalle. "
-                "Para ver imágenes, te recomiendo buscar en Google Imágenes o en Bible Gateway si es algo bíblico. "
-                "¿Quieres que te describa lo que estás buscando en detalle?"
+                "No puedo generar ni mostrar imágenes, pero puedo describirte lo que buscas con todo detalle. "
+                "¿Quieres que lo describa?"
             )
         else:
             _img_msg = (
-                "I can't display images directly, but I can describe it in vivid detail for you. "
-                "To see pictures, I'd recommend a quick Google Images search — or if it's something biblical, "
-                "Bible Gateway has great visual resources at biblegateway.com. "
-                "Would you like me to describe it in detail instead?"
+                "I can't generate or display images — but if you snap a photo and upload it, "
+                "I can take a look and tell you what I see. "
+                "Or just describe what's going on and I'll do my best from there."
             )
         _img_audio = await generate_audio_inline(_img_msg, voice)
 
