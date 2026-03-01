@@ -537,84 +537,50 @@ function ChatInterface({
   const rafScrollRef     = useRef<number | null>(null);
   const msgCountRef      = useRef(0);
 
-  // ── WALKIE-TALKIE MODEL ─────────────────────────────────────────────────────
-  // LYLO talks  → mic is OFF (hard blocked)
-  // LYLO done   → mic turns ON automatically after brief settle
-  // User talks  → 1.5s silence → sends → LYLO talks → repeat
-  // ─────────────────────────────────────────────────────────────────────────
-  const openMicForUser = useCallback((fromUserTap = false) => {
-    if (isRecordingRef.current || loading) return;
-    // Full clean state before opening
-    silenceFiringRef.current  = false;
-    speechPauseTimeoutRef.current = null;
-    isRecordingRef.current    = true;
-    setIsRecording(true);
-    lastInputModeRef.current  = 'voice';
-    try {
-      const rec = buildRecognition();
-      if (!rec) { isRecordingRef.current = false; setIsRecording(false); return; }
-      recognitionRef.current = rec;
-      rec.start();
-      if (!_isMobile) {
-        // Desktop only — vocal analysis via getUserMedia
-        if (fromUserTap) {
-          navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-            if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
-            mediaStreamRef.current = s;
-            startVocalAnalysis(s);
-          }).catch(() => {});
-        } else if (mediaStreamRef.current) {
-          startVocalAnalysis(mediaStreamRef.current);
-        }
-      }
-      // Mobile: skip getUserMedia + vocal analysis — prevents AudioContext conflict with SpeechRecognition
-    } catch { isRecordingRef.current = false; setIsRecording(false); }
-  }, [loading]);
-
-  const closeMicHard = useCallback(() => {
-    // Hard stop — kills recognition + audio stream completely
-    isRecordingRef.current = false;
-    setIsRecording(false);
-    silenceFiringRef.current = false;
-    if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
-    // Abort recognition completely on mobile — stop() alone doesn't prevent echo on Android
-    try { recognitionRef.current?.abort(); } catch {}
-    try { recognitionRef.current?.stop(); } catch {}
-    recognitionRef.current = null;
-    stopVocalAnalysis();
-  }, []);
-
   const handleSpeakingChange = useCallback((v: boolean) => {
     setIsSpeaking(v);
-    isSpeakingRef.current = v; // keep ref in sync for synchronous echo gate
+    isSpeakingRef.current = v;
     if (v) {
-      // LYLO started talking — kill mic immediately, no bleed
-      closeMicHard();
+      // LYLO talking — kill mic hard, prevent echo
+      try { recognitionRef.current?.abort(); } catch {}
+      try { recognitionRef.current?.stop(); } catch {}
+      recognitionRef.current = null;
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      silenceFiringRef.current = false;
+      if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
     } else {
-      // LYLO finished talking — reopen mic after 600ms settle, then start silence timer
+      // LYLO done — reopen mic after short settle
       if (autoReopenRef.current) {
         setTimeout(() => {
-          if (!loading) {
-            openMicForUser();
-            // Start silence timer NOW — user has 15s to respond before check-in
-            if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-            if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
-            setShowSilenceCheck(false);
+          if (!loading && !isRecordingRef.current) {
+            silenceFiringRef.current = false;
+            isRecordingRef.current = true;
+            setIsRecording(true);
+            lastInputModeRef.current = 'voice';
+            try {
+              const rec = buildRecognition();
+              if (rec) { recognitionRef.current = rec; rec.start(); }
+            } catch { isRecordingRef.current = false; setIsRecording(false); }
+            // Start silence check timer after mic reopens
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             silenceTimerRef.current = setTimeout(() => {
               if (isRecordingRef.current || autoReopenRef.current) {
                 setShowSilenceCheck(true);
                 silenceWarningRef.current = setTimeout(() => {
                   setShowSilenceCheck(false);
                   autoReopenRef.current = false;
-                  closeMicHard();
-                }, 15000); // 15s after check-in = 30s total from TTS end
+                  isRecordingRef.current = false;
+                  setIsRecording(false);
+                  try { recognitionRef.current?.stop(); } catch {}
+                }, 15000);
               }
             }, 15000);
           }
-        }, 600);
+        }, 750);
       }
     }
-  }, [loading, openMicForUser, closeMicHard]);
+  }, [loading]);
   const aqm = useAudioQueueManager(isVoiceEnabled, handleSpeakingChange);
   const sentinel = useSentinel({ userEmail, deviceId });
 
@@ -763,31 +729,14 @@ function ChatInterface({
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
     const rec = new SR();
-    rec.continuous      = true;   // Android Chrome drops results in non-continuous mode
-    rec.interimResults  = true;
-    rec.maxAlternatives = 1;
-    rec.lang            = lang === 'es' ? 'es-US' : 'en-US';
-    rec.onstart = () => {
-      console.log('[LYLO Voice] Recognition started');
-    };
-    rec.onaudiostart = () => {
-      console.log('[LYLO Voice] Audio input started — mic is receiving sound');
-    };
-    rec.onspeechstart = () => {
-      console.log('[LYLO Voice] Speech detected');
-    };
-    rec.onspeechend = () => {
-      console.log('[LYLO Voice] Speech ended');
-    };
-    rec.onaudioend = () => {
-      console.log('[LYLO Voice] Audio ended');
-    };
+    rec.continuous     = false;  // v31.7.2 — works on Android Chrome
+    rec.interimResults = true;
+    rec.lang           = lang === 'es' ? 'es-US' : 'en-US';
+
     rec.onresult = (e: any) => {
-      // Hard gate — if LYLO is speaking, discard ALL results (prevents echo feedback)
+      // Hard gate — discard everything while LYLO is speaking (echo prevention)
       if (isSpeaking || isSpeakingRef.current) return;
       let interim = '', final = '';
-      // Must iterate from e.resultIndex on Android Chrome (continuous=true)
-      // Iterating from 0 reprocesses old results every event — causes duplicate/broken text
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) final += e.results[i][0].transcript;
         else interim += e.results[i][0].transcript;
@@ -796,58 +745,54 @@ function ChatInterface({
       const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
       setInput(full); inputTextRef.current = full;
 
-      // ── Reset silence timers when user speaks ───────────────────────────────
-      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-      if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
-      setShowSilenceCheck(false);
-      // ── Silence Auto-Send — 1.5s pause triggers send (Gemini council spec) ──
+      // ── Silence Auto-Send — 1.5s pause triggers send ──
+      if (silenceFiringRef.current) return;
       if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
       if (full.trim().length > 0) {
         speechPauseTimeoutRef.current = setTimeout(() => {
           if (isRecordingRef.current) {
-            silenceFiringRef.current = true;  // block onend from restarting
+            silenceFiringRef.current = true;
             isRecordingRef.current = false;
             setIsRecording(false);
-            autoReopenRef.current = true; // reopen after AI responds
+            autoReopenRef.current = true;
             stopVocalAnalysis();
             playPresenceChime();
             try { recognitionRef.current?.stop(); } catch {}
             setTimeout(() => {
-              silenceFiringRef.current = false; // reset after send
+              silenceFiringRef.current = false;
               if (inputTextRef.current.trim()) handleSend();
             }, 100);
           }
-        }, 1500); // 1.5 seconds of silence = done talking
+        }, 1500);
       }
     };
+
     rec.onerror = (e: any) => {
       if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
-      console.log('[LYLO Voice] Recognition error:', e.error);
-      // Show error on screen so mobile users can see it without dev tools
+      console.log('[LYLO Voice] error:', e.error);
       if (e.error === 'not-allowed') {
-        alert('Microphone blocked. Please allow mic access in Chrome Settings → Site Settings → Microphone.');
+        alert('Microphone blocked — allow mic access in Chrome Settings → Site Settings → Microphone.');
         isRecordingRef.current = false; setIsRecording(false);
-      } else if (e.error === 'network') {
-        alert('Speech recognition network error — Chrome needs internet access to Google speech servers. Error: network');
+      } else if (e.error === 'network' || e.error === 'service-not-allowed') {
         isRecordingRef.current = false; setIsRecording(false);
-      } else if (e.error === 'service-not-allowed') {
-        alert('Speech service blocked — try opening in Chrome browser instead of PWA. Error: service-not-allowed');
-        isRecordingRef.current = false; setIsRecording(false);
-      } else if (e.error === 'audio-capture') {
-        alert('Mic hardware error — Chrome cannot access microphone. Error: audio-capture');
-        isRecordingRef.current = false; setIsRecording(false);
-      } else {
-        console.log('[LYLO Voice] Unknown error:', e.error);
-        if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
+      } else if (isRecordingRef.current && !silenceFiringRef.current) {
+        setTimeout(() => {
+          if (isRecordingRef.current) {
+            recognitionRef.current = buildRecognition();
+            recognitionRef.current?.start();
+          }
+        }, 150);
       }
     };
+
     rec.onend = () => {
-      // Only restart if: still recording mode AND silence timer hasn't taken over AND not speaking
-      if (isRecordingRef.current && !isSpeaking && !silenceFiringRef.current) {
+      // Restart only if still recording AND silence timer hasn't fired AND not speaking
+      if (isRecordingRef.current && !isSpeakingRef.current && !silenceFiringRef.current) {
         recognitionRef.current = buildRecognition();
         recognitionRef.current?.start();
       }
     };
+
     return rec;
   };
 
@@ -921,22 +866,31 @@ function ChatInterface({
 
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
-      isRecordingRef.current = false; setIsRecording(false);
-      autoReopenRef.current = false; // user manually stopped — disable walkie-talkie loop
-      closeMicHard();
-      playPresenceChime(); // micro chime — "I heard you"
-      // ── Phase 1: user spoke — clear silence timers ──
+      // User manually stopping
+      autoReopenRef.current = false;
+      silenceFiringRef.current = false;
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
-      setShowSilenceCheck(false); setEmergencyShieldAuto(false);
-      try { recognitionRef.current?.stop(); } catch {} recognitionRef.current = null;
+      setShowSilenceCheck(false);
+      try { recognitionRef.current?.stop(); } catch {}
+      recognitionRef.current = null;
+      stopVocalAnalysis();
+      playPresenceChime();
       setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 400);
     } else {
       if (isSpeaking) return;
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       lastInputModeRef.current = 'voice';
-      autoReopenRef.current = true; // enable walkie-talkie loop
-      openMicForUser(true);         // true = direct user tap, safe to call getUserMedia
+      autoReopenRef.current = true;
+      silenceFiringRef.current = false;
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      recognitionRef.current = buildRecognition();
+      if (!recognitionRef.current) { isRecordingRef.current = false; setIsRecording(false); return; }
+      try { recognitionRef.current.start(); } catch { isRecordingRef.current = false; setIsRecording(false); recognitionRef.current = null; }
     }
   };
 
