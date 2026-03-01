@@ -908,6 +908,10 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
         "i made that up", "you're wrong", "that's wrong", "that doesn't exist",
         "you hallucinated", "that's false", "are you sure", "fact check",
         "i don't think that's real", "i don't think that exists", "that's not a thing",
+        # Casual transitions — stay, respond naturally
+        "going to the bathroom", "be right back", "brb", "one sec", "hold on",
+        "give me a second", "i'll be back", "thank you", "thanks", "ok thanks",
+        "got it", "that's helpful", "appreciate it", "makes sense", "alright",
     ]
     _msg_lower = msg.lower()
     _is_universal = any(intent in _msg_lower for intent in _UNIVERSAL_INTENTS)
@@ -1155,7 +1159,7 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
 
     # ══════════════════════════════════════════════════════════════════════
     # PHASE 1 VOICE ARCHITECTURE — inputMode Style Injection
-    # Council spec: voice=3 sentence cap | emergency=2 action paced cap
+    # Council spec: presence-first voice — no hard caps, natural pacing
     # Tier A (Directive): guardian, doctor, lawyer, wealth, mechanic
     # Tier B (Relational): bestie, pastor, therapist, hype, vitality
     # Tutor: ignore tone anomaly, no cap change
