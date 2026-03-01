@@ -369,6 +369,7 @@ ADMIN_USERS = {
     "bearjcameron@icloud.com":   {"tier": "max", "name": "Bear",   "beta": True},
     "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey", "beta": True},
     "tiffani.hughes@yahoo.com": {"tier": "max", "name": "Tiffani", "beta": True},
+    "racisneros831@gmail.com": {"tier": "max", "name": "Ramon", "beta": True},
     "jcdabearman@gmail.com":      {"tier": "max", "name": "Jeff",     "beta": True},
 }
 
