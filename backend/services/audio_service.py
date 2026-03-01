@@ -44,18 +44,20 @@ _ROBOTIC_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-# ── Vocal energy → TTS speed mapping (Gemini council spec) ───────────────────
-# Subtle adjustments only — presence, not performance
+# ── Vocal energy → TTS speed mapping ─────────────────────────────────────────
+# Tone: slightly playful and human — alive, not flat
+# Baseline is 1.05 (a touch quicker than neutral — feels present and engaged)
 _ENERGY_SPEED_MAP = {
-    "low":    0.92,   # warm, unhurried — user sounds tired or stressed
-    "medium": 1.0,    # natural baseline
-    "high":   1.08,   # slightly more engaged — user is energized
+    "low":    0.95,   # gentle, warm — user sounds tired or down
+    "medium": 1.05,   # slightly playful baseline — alive and present
+    "high":   1.12,   # energized — matches the user's energy
 }
 
-# ── Pause durations in seconds (injected as silence between chunks) ───────────
-_PAUSE_SHORT     = 0.25   # after short declarative sentence
-_PAUSE_EMOTIONAL = 0.45   # after empathy / reflection
-_PAUSE_BEFORE_ACTION = 0.30  # before giving a step or instruction
+# ── Pause durations in seconds ───────────────────────────────────────────────
+# Slightly playful tone — pauses are real but not heavy
+_PAUSE_SHORT         = 0.20   # after short sentence — quick, natural
+_PAUSE_EMOTIONAL     = 0.35   # after empathy — present but not dramatic
+_PAUSE_BEFORE_ACTION = 0.25   # before instruction — just enough to land
 
 # Emotional reflection markers — warrant a longer pause after
 _EMOTIONAL_MARKERS = re.compile(
