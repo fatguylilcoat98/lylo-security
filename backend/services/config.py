@@ -368,6 +368,7 @@ ADMIN_USERS = {
     # ── Real beta testers (hardcoded so they always have access) ───────────
     "bearjcameron@icloud.com":   {"tier": "max", "name": "Bear",   "beta": True},
     "paintonmynails80@gmail.com": {"tier": "max", "name": "Aubrey", "beta": True},
+    "tiffani.hughes@yahoo.com": {"tier": "max", "name": "Tiffani", "beta": True},
     "jcdabearman@gmail.com":      {"tier": "max", "name": "Jeff",     "beta": True},
 }
 
