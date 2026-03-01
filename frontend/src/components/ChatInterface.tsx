@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 31.6.0 — PHASE 1 VOICE ARCHITECTURE: inputMode + 3-sentence cap + silence detection + emergency auto-shield
+// Version: 31.8.4 — Walkie-talkie voice loop, silence detection, natural pauses + emergency auto-shield
 // ─────────────────────────────────────────────────────────────────────────────
 // V31.2 Changes:
 //  [V31.2-1] FONT SIZE BUTTON — Aa button in bottom bar cycles 4 sizes
@@ -541,7 +541,7 @@ function ChatInterface({
   // LYLO done   → mic turns ON automatically after brief settle
   // User talks  → 1.5s silence → sends → LYLO talks → repeat
   // ─────────────────────────────────────────────────────────────────────────
-  const openMicForUser = useCallback(() => {
+  const openMicForUser = useCallback((fromUserTap = false) => {
     if (isRecordingRef.current || loading) return;
     // Full clean state before opening
     silenceFiringRef.current  = false;
@@ -554,12 +554,19 @@ function ChatInterface({
       if (!rec) { isRecordingRef.current = false; setIsRecording(false); return; }
       recognitionRef.current = rec;
       rec.start();
-      // Open audio stream for vocal energy (separate from recognition)
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-        if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
-        mediaStreamRef.current = s;
-        startVocalAnalysis(s);
-      }).catch(() => {});
+      if (fromUserTap) {
+        // Direct tap — safe to call getUserMedia (mobile requires user gesture context)
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+          if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
+          mediaStreamRef.current = s;
+          startVocalAnalysis(s);
+        }).catch(() => {});
+      } else if (mediaStreamRef.current) {
+        // Auto-reopen after TTS — reuse existing stream, no new getUserMedia
+        // Mobile (iOS/Android) blocks getUserMedia inside setTimeout — not a user gesture
+        startVocalAnalysis(mediaStreamRef.current);
+      }
+      // No stream on auto-reopen = recognition still works, just no vocal energy
     } catch { isRecordingRef.current = false; setIsRecording(false); }
   }, [loading]);
 
@@ -887,7 +894,7 @@ function ChatInterface({
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       lastInputModeRef.current = 'voice';
       autoReopenRef.current = true; // enable walkie-talkie loop
-      openMicForUser();             // handles recognition build + start + stream — nothing else needed
+      openMicForUser(true);         // true = direct user tap, safe to call getUserMedia
     }
   };
 
