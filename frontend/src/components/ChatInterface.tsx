@@ -1030,7 +1030,18 @@ function ChatInterface({
             fullAnswer += (fullAnswer ? ' ' : '') + parsed.content;
             if (readingMode === 'sync') setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
-            if (isVoiceEnabled) aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined, parsed.pause_before_ms ?? 0, parsed.pause_after_ms ?? 250);
+            if (isVoiceEnabled) {
+              // Kill mic BEFORE first audio chunk plays — closes echo gap on Android
+              if (!isSpeakingRef.current) {
+                isSpeakingRef.current = true;
+                try { recognitionRef.current?.abort(); } catch {}
+                try { recognitionRef.current?.stop(); } catch {}
+                recognitionRef.current = null;
+                isRecordingRef.current = false;
+                setIsRecording(false);
+              }
+              aqm.push(parsed.content, voiceToUse, parsed.audio_b64 ?? undefined, parsed.pause_before_ms ?? 0, parsed.pause_after_ms ?? 250);
+            }
           } else if (parsed.type === 'meta') { metaData = parsed; if (parsed.full_answer) fullAnswer = parsed.full_answer; break outer; }
         }
       }
