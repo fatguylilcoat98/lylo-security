@@ -872,7 +872,16 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
 
             return None
 
-    domain_reroute = await intelligent_semantic_router(persona, msg)
+    # ── Universal LYLO features — never route away, every persona handles these ──
+    _UNIVERSAL_INTENTS = [
+        "pdf", "save this", "save that", "save the conversation", "send this to my email",
+        "email this", "send me a report", "generate a report", "can you save",
+        "save as pdf", "send this", "send that to my", "export this",
+    ]
+    _msg_lower = msg.lower()
+    _is_universal = any(intent in _msg_lower for intent in _UNIVERSAL_INTENTS)
+
+    domain_reroute = None if _is_universal else await intelligent_semantic_router(persona, msg)
 
     if domain_reroute:
         correct_persona = domain_reroute["correct_persona"]
@@ -1585,6 +1594,9 @@ RULES:
                             "source": "training", "audit": None}
 
             for sentence in sentences:
+                sentence = _strip_leakage(sentence)  # strip prompt leakage before display/TTS
+                if not sentence.strip():
+                    continue
                 is_risky, claim_type = _is_high_stakes(sentence)
 
                 if is_risky:
