@@ -693,13 +693,8 @@ function ChatInterface({
     if (!SR) return null;
     const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
     rec.onstart = () => {
-      // Start vocal analysis using the recognition's audio stream (no second getUserMedia)
-      try {
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-          mediaStreamRef.current = s;
-          startVocalAnalysis(s);
-        }).catch(() => {});
-      } catch {}
+      // Vocal analysis starts from mic tap handler — stream already in mediaStreamRef
+      // No getUserMedia here — prevents stuck mic indicator
     };
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
@@ -746,11 +741,11 @@ function ChatInterface({
 
 
   // ── Vocal Energy Extraction — Web Audio API (client-side, zero latency) ──
-  // Reuses the existing mic stream — NO second getUserMedia call (GPT council fix)
+  // ONE getUserMedia call total — stream stored in mediaStreamRef, stopped on send
   const startVocalAnalysis = (existingStream?: MediaStream) => {
     try {
       const stream = existingStream || mediaStreamRef.current;
-      if (!stream) return; // no stream available — energy stays medium
+      if (!stream) return; // no stream — energy stays medium
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
       const analyser = ctx.createAnalyser();
@@ -775,9 +770,18 @@ function ChatInterface({
   };
 
   const stopVocalAnalysis = () => {
-    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
-    if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
-    analyserRef.current = null;
+    if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+    if (analyserRef.current) { analyserRef.current = null; }
+    if (mediaStreamRef.current) {
+      try { mediaStreamRef.current.getTracks().forEach(t => { t.stop(); t.enabled = false; }); } catch {}
+      mediaStreamRef.current = null;
+    }
+    // Belt-and-suspenders: kill any lingering tracks via navigator
+    try {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+        s.getTracks().forEach(t => t.stop());
+      }).catch(() => {});
+    } catch {}
   };
 
   // ── Micro Chime — the LYLO "I heard you" signal ──────────────────────────
@@ -817,7 +821,13 @@ function ChatInterface({
       lastInputModeRef.current = 'voice'; // capture voice mode before send fires
       setInput(''); accumulatedRef.current = ''; inputTextRef.current = '';
       autoReopenRef.current = true; // enable continuous loop
-      // vocal analysis starts after stream is available via recognition onstart
+      // Open ONE audio stream here — used for both vocal analysis and released on send
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+        // Stop any previous stream first
+        if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); }
+        mediaStreamRef.current = s;
+        startVocalAnalysis(s);
+      }).catch(() => { /* mic denied — energy stays medium */ });
       recognitionRef.current = buildRecognition();
       if (!recognitionRef.current) { setIsRecording(false); isRecordingRef.current = false; return; }
       try { recognitionRef.current.start(); } catch { setIsRecording(false); isRecordingRef.current = false; recognitionRef.current = null; }
