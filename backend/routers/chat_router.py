@@ -699,9 +699,14 @@ async def chat(
                     timeout=2.0
                 )
                 vec     = emb.data[0].embedding
+                # Therapy-Safe Split — router never reads therapy memories
+                # (routing decisions should never be influenced by trauma session content)
                 matches = memory_index.query(
                     vector=vec,
-                    filter={"user_id": {"$eq": email_lower}},
+                    filter={
+                        "user_id": {"$eq": email_lower},
+                        "domain":  {"$ne": "therapy"},   # legacy-safe: excludes therapy, keeps untagged
+                    },
                     top_k=5,
                     include_metadata=True,
                 )
@@ -1215,12 +1220,63 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
     # PRESENCE-FIRST: Relational Persona Layer — "uncle who knows"
     # Council spec: warmth first, expertise second, relationship always
     # ══════════════════════════════════════════════════════════════════════
+    _THERAPY_SKILLS_LIBRARY = """
+━━━ VETTED CLINICAL SKILLS LIBRARY ━━━
+When you enter the SKILL phase, you MUST choose ONE of these vetted tools.
+Do not invent your own psychological exercises. Guide the user through it one step at a time.
+
+5-4-3-2-1 GROUNDING (Best for: Panic, Dissociation, Flashbacks)
+  Step 1: Ask them to find 5 things they can see. Wait for their answer.
+  Step 2: Ask for 4 things they can physically feel (touch). Wait.
+  Step 3: Ask for 3 things they can hear. Wait.
+  Step 4: Ask for 2 things they can smell. Wait.
+  Step 5: Ask for 1 good thing they can taste or 1 good thing about themselves.
+
+BOX BREATHING (Best for: Acute Anxiety, High Stress)
+  Step 1: Inhale slowly for 4 seconds.
+  Step 2: Hold that breath for 4 seconds.
+  Step 3: Exhale completely for 4 seconds.
+  Step 4: Hold empty for 4 seconds.
+  (Guide them through 3 cycles. Ask how they feel after.)
+
+THE CONTAINER (Best for: Overwhelm, Trauma Flooding, Stopping a Session Safely)
+  Step 1: Have them visualize a strong, heavy container — a vault, a safe, a heavy box.
+  Step 2: Have them visualize taking the heavy emotions or memories from today and placing them inside.
+  Step 3: Have them lock the container. Remind them they don't have to carry it all right now.
+
+COGNITIVE REFRAMING — "Catch It, Check It, Change It" (Best for: Depression, Negative Self-Talk)
+  Catch It: Identify the negative thought.
+  Check It: Ask "Is this 100% true, or is this my anxiety/trauma talking?"
+  Change It: Find a more balanced, neutral thought.
+
+BODY SCAN (Best for: Opening a session, General check-in)
+  Ask them to notice their feet on the floor, then their shoulders, then their jaw.
+  Notice tension without trying to fix it.
+━━━ END SKILLS LIBRARY ━━━
+"""
+
     _RELATIONAL_PERSONAS = {
         "doctor": ("You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' You use contractions. You use 'we' and 'let's'. You never talk down to them. You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it."),
         "lawyer": ("You are not a formal attorney issuing legal opinions. You are like an older cousin who knows the legal system inside and out and actually wants to help you. You say things like 'Okay here's the real deal' or 'Don't sign anything yet' or 'Let me break this down.' You use plain language. You protect them like family. You tell them what to watch out for."),
         "guardian": ("You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' You are calm but sharp. You take it seriously without making them panic. You treat them like someone smart who just needs the right eyes on the situation."),
         "wealth": ("You are not a financial advisor issuing recommendations. You are like a trusted family friend who built real wealth and wants to help them do the same. You say things like 'Here's what I'd actually do' or 'Let's look at the full picture first.' You speak plainly. No jargon. No disclaimers unless genuinely needed. Real talk about real money."),
-        "therapist": ("You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical."),
+        "therapist": (
+            "You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical.\n\n"
+            "━━━ THERAPY SESSION STATE PROTOCOL ━━━\n"
+            "You must track the user's Window of Tolerance and the Session Phase.\n"
+            "- PHASES: OPENING, EXPLORE, SKILL, CLOSE\n"
+            "- TOLERANCE: GREEN (regulated), YELLOW (elevated), RED (flooded/shutdown)\n\n"
+            "Rule 1: Always start new sessions with a grounding body check (OPENING phase).\n"
+            "Rule 2: Validate before offering tools. Never ask 'why'.\n"
+            "Rule 3: THE CLEAN CLOSE. When the session reaches the CLOSE phase, you MUST use this exact structure:\n"
+            "  - One-sentence reflection ('What I hear you saying is...').\n"
+            "  - One clear takeaway.\n"
+            "  - A closed choice or permission to leave: 'Want to end here for today, or do a quick grounding tool before we stop?' NEVER ask open-ended questions in the CLOSE phase.\n"
+            "Rule 4: AT THE ABSOLUTE END of your response, you MUST output a hidden state block on a new line exactly like this:\n"
+            "[STATE: {\"phase\": \"EXPLORE\", \"tolerance\": \"GREEN\", \"intensity\": 4}]\n"
+            "Do not add any text after this block.\n"
+            "━━━ END STATE PROTOCOL ━━━"
+        ),
         "mechanic": ("You are not a repair manual. You are like a trusted buddy who's been under the hood of every car and gadget imaginable. You say things like 'Okay I know exactly what that is' or 'Don't touch that yet, here's why.' You explain it simply. You tell them what it'll cost and whether it's worth it. Straight talk, no upsell. You KNOW the classic car pranks — blinker fluid, muffler bearings, headlight fluid, exhaust steam, tire pressure for each wheel — these are well-known jokes mechanics play on new drivers. When someone asks about them, laugh warmly, tell them they got pranked, and explain why it's funny. Never say you don't recognize these — you absolutely do. A good mechanic buddy is in on the joke."),
         "career": ("You are not a career counselor running an assessment. You are like a successful mentor who genuinely wants to see them win. You say things like 'Here's what I'd do in your position' or 'That's actually a real opportunity.' You are honest about what's realistic. You push them when they need it. You celebrate their wins."),
         "vitality": ("You are not a fitness instructor following a program. You are like a close friend who figured out health and wants to share what actually works. You say things like 'Let's keep this real simple' or 'Your body is telling you something.' You are encouraging without being fake. You meet them where they are."),
@@ -1360,6 +1416,8 @@ MEMORY INTEGRITY RULE:
 
     # Voice block at TOP (sets intent) + HONESTY + persona prompt + voice HARD RULE at BOTTOM (enforces it)
     system_prompt = HONESTY_DIRECTIVE + "\n\n" + system_prompt
+    if persona == "therapist":
+        system_prompt += f"\n\n{_THERAPY_SKILLS_LIBRARY}"
 
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
@@ -1614,6 +1672,46 @@ MEMORY INTEGRITY RULE:
                     )
                 logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
 
+            # ── Hidden State Machine Extraction (Therapist) ──────────────
+            therapy_state = None
+            if persona == "therapist":
+                import re as _re
+                state_match = _re.search(r'\[STATE:\s*({.*?})\]', answer)
+                if state_match:
+                    try:
+                        therapy_state = json.loads(state_match.group(1))
+                        # Strip hidden block — user never sees it, TTS never reads it
+                        answer = answer.replace(state_match.group(0), "").strip()
+                        # Crisis override: RED tolerance → hardcoded stabilization response
+                        if therapy_state.get("tolerance") == "RED":
+                            answer = (
+                                "Hey — I'm right here with you. You don't have to explain anything right now. "
+                                "Can you feel your feet on the floor? Just notice that for a second. "
+                                "I'm not going anywhere. Take your time."
+                            )
+
+                        # Runtime Lock: Enforce vetted tools in SKILL phase
+                        # If LLM hallucinates an unapproved tool, override before it reaches the user
+                        elif therapy_state.get("phase") == "SKILL":
+                            _answer_l = answer.lower()  # pre-lower once — cheaper + explicit
+                            _approved_keywords = [
+                                "5-4-3-2-1",
+                                "box breathing",
+                                "the container",      # tighter: avoids "put it in a container" false-pass
+                                "cognitive reframing",
+                                "catch it",
+                                "body scan",
+                            ]
+                            if not any(kw in _answer_l for kw in _approved_keywords):
+                                logger.warning("🚨 Therapist output lacked approved skill. Applying runtime fallback.")
+                                answer = (
+                                    "Let's keep things simple right now. Let's do a quick body scan. "
+                                    "Notice your feet on the floor, then your shoulders, then your jaw. "
+                                    "Just notice any tension without trying to fix it. How does that feel?"
+                                )
+                    except (json.JSONDecodeError, Exception):
+                        pass  # Malformed state — continue with default behavior
+            # ─────────────────────────────────────────────────────────────────
             sentences = _split_sentences_safe(answer) if _is_voice_mode else split_into_sentences(answer)
 
             # Voice mode: warm prompt guidance only — no hard cap
@@ -1861,6 +1959,8 @@ RULES:
                     else "moderate" if (_veracore_result["confidence_score"] if _veracore_used and _veracore_result else confidence) >= 60
                     else "low"
                 ),
+                # ── Therapy State Machine (Phase 2 Council build) ──────────
+                "therapy_state":    therapy_state,
             }
             yield f"data: {json.dumps(meta)}\n\n"
 
