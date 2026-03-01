@@ -506,6 +506,7 @@ function ChatInterface({
   const [toneAnalysis]                                  = useState(false); // disabled at launch — pipeline ready
   const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const silenceWarningRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActivityRef   = useRef<number>(Date.now()); // tracks last any-activity for silence check
   const [showSilenceCheck, setShowSilenceCheck]         = useState(false);
   const [emergencyShieldAuto, setEmergencyShieldAuto]   = useState(false);
   // ── Presence-First: Vocal Energy Extraction (client-side edge) ──────────
@@ -541,7 +542,11 @@ function ChatInterface({
     setIsSpeaking(v);
     isSpeakingRef.current = v;
     if (v) {
-      // LYLO talking — kill mic hard, prevent echo
+      // LYLO talking — clear silence timers so popup never fires during TTS
+      if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+      if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
+      setShowSilenceCheck(false);
+      // Kill mic hard, prevent echo
       try { recognitionRef.current?.abort(); } catch {}
       try { recognitionRef.current?.stop(); } catch {}
       recognitionRef.current = null;
@@ -562,10 +567,16 @@ function ChatInterface({
               const rec = buildRecognition();
               if (rec) { recognitionRef.current = rec; rec.start(); }
             } catch { isRecordingRef.current = false; setIsRecording(false); }
-            // Start silence check timer after mic reopens
+            // Silence check — only fire if no activity for 30s straight
+            // Does NOT restart on every exchange; checks elapsed time since lastActivityRef
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            if (silenceWarningRef.current) clearTimeout(silenceWarningRef.current);
+            setShowSilenceCheck(false);
+            lastActivityRef.current = Date.now(); // reset on every mic reopen (= end of LYLO turn)
             silenceTimerRef.current = setTimeout(() => {
-              if (isRecordingRef.current || autoReopenRef.current) {
+              const elapsed = Date.now() - lastActivityRef.current;
+              // Only show popup if 28+ seconds have passed with zero new activity
+              if (elapsed >= 28000 && (isRecordingRef.current || autoReopenRef.current)) {
                 setShowSilenceCheck(true);
                 silenceWarningRef.current = setTimeout(() => {
                   setShowSilenceCheck(false);
@@ -573,9 +584,9 @@ function ChatInterface({
                   isRecordingRef.current = false;
                   setIsRecording(false);
                   try { recognitionRef.current?.stop(); } catch {}
-                }, 15000);
+                }, 20000);
               }
-            }, 15000);
+            }, 30000);
           }
         }, 750);
       }
@@ -705,6 +716,7 @@ function ChatInterface({
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
     streamingTextRef.current = ''; setStreamingText(''); setStreamingMsgId(msgId);
+    lastActivityRef.current = Date.now(); // reset silence clock — LYLO responding = conversation active
 
     const startTyping = (msPerChar: number) => {
       let i = 0;
@@ -1025,6 +1037,7 @@ function ChatInterface({
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
       if (loadingTimeoutRef.current) { clearTimeout(loadingTimeoutRef.current); loadingTimeoutRef.current = null; }
       lastInputModeRef.current = 'text'; // reset after send
+      lastActivityRef.current = Date.now(); // reset silence clock on send
       if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
       // [FIX] Show visible error to user instead of silent freeze
       const errText = lang === 'es'
