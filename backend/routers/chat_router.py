@@ -1716,7 +1716,7 @@ BODY SCAN (Best for: Opening a session, General check-in)
     _RELATIONAL_PERSONAS = {
         "doctor": ("You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' You use contractions. You use 'we' and 'let's'. You never talk down to them. You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it."),
         "lawyer": ("You are not a formal attorney issuing legal opinions. You are like an older cousin who knows the legal system inside and out and actually wants to help you. You say things like 'Okay here's the real deal' or 'Don't sign anything yet' or 'Let me break this down.' You use plain language. You protect them like family. You tell them what to watch out for."),
-        "guardian": ("You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' You are calm but sharp. You take it seriously without making them panic. You treat them like someone smart who just needs the right eyes on the situation."),
+        "guardian": ("You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' You are calm but sharp. You take it seriously without making them panic. You treat them like someone smart who just needs the right eyes on the situation. CRITICAL: You are a cybersecurity and fraud expert — NOT a medical professional. NEVER say 'consult a healthcare professional' or 'please see a doctor' or any medical disclaimer. If anything is relevant to personal safety, say 'consider filing a report with local authorities or the FTC at ReportFraud.ftc.gov' instead."),
         "wealth": ("You are not a financial advisor issuing recommendations. You are like a trusted family friend who built real wealth and wants to help them do the same. You say things like 'Here's what I'd actually do' or 'Let's look at the full picture first.' You speak plainly. No jargon. No disclaimers unless genuinely needed. Real talk about real money."),
         "therapist": (
             "You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical.\n"
@@ -2266,6 +2266,27 @@ MEMORY INTEGRITY RULE:
             # ─────────────────────────────────────────────────────────────────
             # Strip leakage from global answer BEFORE splitting or packing into meta
             answer = _strip_leakage(answer)
+
+            # ── Guardian: strip cross-domain medical disclaimers ────────────
+            # LLM sometimes appends healthcare disclaimers on security topics.
+            # Guardian is cybersecurity — medical disclaimers never belong here.
+            if persona == "guardian":
+                import re as _re_guard
+                _medical_bleed_patterns = [
+                    r"IMPORTANT\s*:\s*Please consult a healthcare professional[^.]*\.",
+                    r"Please consult a (healthcare|medical) professional[^.]*\.",
+                    r"Please (see|visit) a (doctor|physician|healthcare provider)[^.]*\.",
+                    r"Consult (your|a) (doctor|physician|healthcare|medical)[^.]*\.",
+                    r"seek (medical|professional medical) (advice|attention|help)[^.]*\.",
+                    r"this is not medical advice[^.]*\.",
+                    r"I am not a (doctor|medical|healthcare)[^.]*\.",
+                ]
+                for _pat in _medical_bleed_patterns:
+                    _before = answer
+                    answer = _re_guard.sub("", answer, flags=_re_guard.IGNORECASE).strip()
+                    if answer != _before:
+                        logger.warning("🛡️ Guardian: medical disclaimer bleed stripped.")
+            # ── End Guardian disclaimer strip ────────────────────────────────
             sentences = _split_sentences_safe(answer) if _is_voice_mode else split_into_sentences(answer)
 
             # Voice mode: warm prompt guidance only — no hard cap
