@@ -257,7 +257,7 @@ async def persona_hook(
                 "doctor":    f"{user_name}, estoy aquí. Cuéntame qué está pasando.",
                 "lawyer":    f"{user_name}, Escudo Legal activo. ¿Qué situación estamos manejando?",
                 "wealth":    f"{user_name}, Arquitecto de Riqueza en línea. Hablemos de estrategia.",
-                "therapist": f"Aquí estoy, {user_name}. Tómate tu tiempo — ¿qué tienes en mente?",
+                "therapist": f"Aquí estoy, {user_name}. Antes de hablar de lo que pasó, ¿cómo se siente tu cuerpo en este momento? ¿Sientes alguna tensión o pesadez?",
                 "career":    f"{user_name}, Coach de Carrera listo. ¿Cuál es tu próximo movimiento?",
                 "tutor":     f"¿Listo para aprender, {user_name}? ¿Qué estamos trabajando hoy?",
                 "vitality":  f"{user_name}, Coach de Vitalidad aquí. ¿Cómo se siente tu cuerpo?",
@@ -273,7 +273,7 @@ async def persona_hook(
                 "doctor":    f"{user_name}, I'm here. Tell me what's going on with you.",
                 "lawyer":    f"{user_name}, Legal Shield active. What situation are we handling?",
                 "wealth":    f"{user_name}, Wealth Architect online. Let's talk strategy.",
-                "therapist": f"I'm here, {user_name}. Take your time — what's on your mind?",
+                "therapist": f"I'm here, {user_name}. Before we get into it, how is your body feeling right now? Any tension or heaviness?",
                 "career":    f"{user_name}, Career Coach locked in. What's your next move?",
                 "tutor":     f"Ready to learn, {user_name}? What are we tackling today?",
                 "vitality":  f"{user_name}, Vitality Coach here. How's your body feeling?",
@@ -1266,7 +1266,7 @@ BODY SCAN (Best for: Opening a session, General check-in)
             "You must track the user's Window of Tolerance and the Session Phase.\n"
             "- PHASES: OPENING, EXPLORE, SKILL, CLOSE\n"
             "- TOLERANCE: GREEN (regulated), YELLOW (elevated), RED (flooded/shutdown)\n\n"
-            "Rule 1: Always start new sessions with a grounding body check (OPENING phase).\n"
+            "Rule 1: THE OPENING. Your VERY FIRST response to a new session MUST focus on a grounding body check (OPENING phase). DO NOT ask them to explain their situation, and DO NOT ask 'what's going on' until you have checked on their physical body.\n"
             "Rule 2: Validate before offering tools. Never ask 'why'.\n"
             "Rule 3: THE CLEAN CLOSE. When the session reaches the CLOSE phase, you MUST use this exact structure:\n"
             "  - One-sentence reflection ('What I hear you saying is...').\n"
