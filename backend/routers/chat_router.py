@@ -1880,6 +1880,39 @@ MEMORY INTEGRITY RULE:
     if persona == "therapist":
         system_prompt += f"\n\n{_THERAPY_SKILLS_LIBRARY}"
 
+    # ── Guardian: Incident State Injection ───────────────────────────────
+    # Scans recent CONVO_CONTEXT for breach signals and injects them into
+    # the system prompt so Guardian never loses incident context mid-session.
+    if persona == "guardian":
+        _recent_turns = CONVO_CONTEXT.get(email_lower, [])[-8:]
+        _all_recent_text = " ".join(t.get("msg", "").lower() for t in _recent_turns)
+
+        # Detect what has already happened in this incident
+        _incident_signals = []
+        _link_signals     = ["clicked", "opened", "visited", "tapped", "link", "url", "site", "website"]
+        _cred_signals     = ["password", "entered", "typed", "submitted", "gave", "filled", "login", "credential", "ssn", "social security", "bank account", "credit card", "card number"]
+        _access_signals   = ["hacked", "account taken", "locked out", "can't log in", "strange login", "unauthorized", "breach", "compromised"]
+        _money_signals    = ["sent money", "wired", "venmo", "zelle", "cash app", "transfer", "bought gift card", "gift card"]
+
+        if any(s in _all_recent_text for s in _link_signals):
+            _incident_signals.append("User clicked or opened a suspicious link.")
+        if any(s in _all_recent_text for s in _cred_signals):
+            _incident_signals.append("User entered credentials, personal data, or financial info.")
+        if any(s in _all_recent_text for s in _access_signals):
+            _incident_signals.append("Account may already be compromised or locked.")
+        if any(s in _all_recent_text for s in _money_signals):
+            _incident_signals.append("User may have sent money or purchased gift cards.")
+
+        if _incident_signals:
+            _incident_block = (
+                "\n\n⚠️ CURRENT INCIDENT CONTEXT (do NOT ask for this again — act on it):\n"
+                + "\n".join(f"  - {s}" for s in _incident_signals)
+                + "\n\nGive the next concrete step immediately. Do not re-ask what happened. Do not reset to intake. Escalate based on what is already known."
+            )
+            system_prompt += _incident_block
+            logger.info(f"🛡️ Guardian incident context injected: {_incident_signals}")
+    # ── End Guardian Incident Injection ──────────────────────────────────
+
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
         # Warm voice guidance — human feel first, brevity second
