@@ -764,13 +764,26 @@ function ChatInterface({
     rec.maxAlternatives = 1;
     rec.lang            = lang === 'es' ? 'es-US' : 'en-US';
     rec.onstart = () => {
-      // Vocal analysis starts from mic tap handler — stream already in mediaStreamRef
-      // No getUserMedia here — prevents stuck mic indicator
+      console.log('[LYLO Voice] Recognition started');
+    };
+    rec.onaudiostart = () => {
+      console.log('[LYLO Voice] Audio input started — mic is receiving sound');
+    };
+    rec.onspeechstart = () => {
+      console.log('[LYLO Voice] Speech detected');
+    };
+    rec.onspeechend = () => {
+      console.log('[LYLO Voice] Speech ended');
+    };
+    rec.onaudioend = () => {
+      console.log('[LYLO Voice] Audio ended');
     };
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
       let interim = '', final = '';
-      for (let i = 0; i < e.results.length; i++) {
+      // Must iterate from e.resultIndex on Android Chrome (continuous=true)
+      // Iterating from 0 reprocesses old results every event — causes duplicate/broken text
+      for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) final += e.results[i][0].transcript;
         else interim += e.results[i][0].transcript;
       }
