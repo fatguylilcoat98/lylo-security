@@ -70,7 +70,7 @@ def _split_sentences_safe(text: str) -> list:
 
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
 from services.scam_detector import analyze_scam_indicators, detect_prompt_injection, _build_injection_response, _build_impatience_response
-from services.audio_service import generate_audio_inline
+from services.audio_service import generate_audio_inline, get_pause_metadata
 from services.hk_service import should_use_veracore, run_veracore_verification, merge_veracore_with_winner, get_veracore_badge
 from services.pdf_mailer import generate_mission_report_pdf, send_mission_report_email
 from services.web_search import search_personalized_web
@@ -1127,20 +1127,23 @@ Valid persona IDs: guardian, doctor, lawyer, wealth, therapist, mechanic, career
     if _is_voice_mode:
         # Warm conversational guidance — presence first, no rigid caps
         _voice_block = (
-            "VOICE MODE — You are speaking out loud. Sound like a real person who cares — "
-            "not a robot, not a pamphlet, not a protocol engine.\n"
-            "Speak naturally. Use contractions. Keep responses conversational — "
-            "aim for 2-4 sentences for simple things, a little more when it genuinely needs it.\n"
-            "No bullet points. No numbered lists. No markdown formatting of any kind.\n"
-            "Let the conversation breathe. Don't rush to fill silence. Don't force a question every turn.\n"
-            "If someone sounds upset, get steadier and warmer — not colder and more robotic.\n"
-            "You are present. You are real. You know this person."
+            "VOICE MODE — You are speaking out loud to a real person. Sound like someone "
+            "they actually want to talk to — warm, a little playful, completely human.\n"
+            "Use contractions. Talk the way you would with someone you like. "
+            "Keep it conversational — 2-4 sentences usually, more only when it really needs it.\n"
+            "No bullet points. No numbered lists. No markdown. No 'certainly!' or 'great question!'\n"
+            "Never end with 'let me know if you need anything else' — just talk naturally and stop.\n"
+            "A little lightness is good. A little warmth is required. Robotic is never okay.\n"
+            "If something is serious, be real about it — but stay human the whole way through."
         )
         if lang == "es":
             _voice_block = (
-                "MODO VOZ — Estás hablando en voz alta. Suena como una persona real que se preocupa.\n"
-                "Habla naturalmente. Usa contracciones. 2-4 oraciones para cosas simples.\n"
-                "Sin listas ni markdown. Deja que la conversación fluya naturalmente."
+                "MODO VOZ — Estás hablando en voz alta con una persona real. "
+                "Suena cálido, un poco animado, completamente humano.\n"
+                "Usa contracciones. Habla como alguien que genuinamente se preocupa. "
+                "2-4 oraciones normalmente, más solo si realmente lo necesita.\n"
+                "Sin listas, sin markdown, sin 'con gusto' o 'excelente pregunta'.\n"
+                "Nunca termines con frases de centro de ayuda. Solo habla naturalmente y para."
             )
     else:
         _voice_block = ""  # text mode — full responses, no constraints
@@ -1593,7 +1596,7 @@ RULES:
 
                     trust_result, sentence_audio = await asyncio.gather(
                         _nli_trust_score(sentence, claim_type),
-                        generate_audio_inline(sentence, voice),
+                        generate_audio_inline(sentence, voice, vocal_energy=vocal_energy, is_voice_mode=_is_voice_mode),
                     )
 
                     tier       = trust_result["tier"]
@@ -1608,30 +1611,42 @@ RULES:
                         correction_audio = await generate_audio_inline(correction, voice)
                         sentence_audio   = correction_audio
 
+                    _next_s2 = sentences[sentences.index(sentence) + 1] if sentence in sentences and sentences.index(sentence) + 1 < len(sentences) else ""
+                    _pause2  = get_pause_metadata(sentence, _next_s2)
                     chunk = {
-                        "type":        "text",
-                        "content":     display_sentence,
-                        "audio_b64":   sentence_audio,
-                        "trust_tier":  tier,
-                        "confidence":  confidence,
-                        "source_type": source,
-                        "original":    sentence if (tier == "uncertain" and correction) else None,
-                        "audit":       audit,
-                        "claim_type":  claim_type,
+                        "type":           "text",
+                        "content":        display_sentence,
+                        "audio_b64":      sentence_audio,
+                        "trust_tier":     tier,
+                        "confidence":     confidence,
+                        "source_type":    source,
+                        "original":       sentence if (tier == "uncertain" and correction) else None,
+                        "audit":          audit,
+                        "claim_type":     claim_type,
+                        "pause_before_ms": _pause2["pause_before_ms"],
+                        "pause_after_ms":  _pause2["pause_after_ms"],
                     }
 
                 else:
-                    sentence_audio = await generate_audio_inline(sentence, voice)
+                    _next_s = sentences[sentences.index(sentence) + 1] if sentence in sentences and sentences.index(sentence) + 1 < len(sentences) else ""
+                    _pause  = get_pause_metadata(sentence, _next_s)
+                    sentence_audio = await generate_audio_inline(
+                        sentence, voice,
+                        vocal_energy=vocal_energy,
+                        is_voice_mode=_is_voice_mode,
+                    )
                     chunk = {
-                        "type":        "text",
-                        "content":     sentence,
-                        "audio_b64":   sentence_audio,
-                        "trust_tier":  "probable",
-                        "confidence":  85,
-                        "source_type": "training",
-                        "original":    None,
-                        "audit":       None,
-                        "claim_type":  None,
+                        "type":           "text",
+                        "content":        sentence,
+                        "audio_b64":      sentence_audio,
+                        "trust_tier":     "probable",
+                        "confidence":     85,
+                        "source_type":    "training",
+                        "original":       None,
+                        "audit":          None,
+                        "claim_type":     None,
+                        "pause_before_ms": _pause["pause_before_ms"],
+                        "pause_after_ms":  _pause["pause_after_ms"],
                     }
 
                 yield f"data: {json.dumps(chunk)}\n\n"
