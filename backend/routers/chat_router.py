@@ -36,6 +36,47 @@ from services.prompt_builder import (
     build_hard_boundary_block, get_seat9_theology,
 )
 from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
+
+# ── Robust sentence splitter — respects abbreviations (Dr. Mr. St. etc.) ──────
+import re as _re
+
+def _split_sentences_safe(text: str) -> list:
+    """
+    Splits text into sentences without breaking on abbreviations like Dr., Mr., St.
+    Uses placeholder substitution to protect known abbreviations before splitting.
+    """
+    ABBREVS = [
+        'Dr','Mr','Mrs','Ms','Prof','Sr','Jr','St','Ave','Blvd',
+        'Inc','Ltd','Corp','Co','Vs','Etc','Approx','No','Vol',
+        'Fig','Jan','Feb','Mar','Apr','Jun','Jul','Aug','Sep',
+        'Oct','Nov','Dec','Dept','Est','Govt','Max','Min','Req',
+        'dr','mr','mrs','ms','prof','sr','jr','st','ave','blvd',
+        'inc','ltd','corp','co','vs','etc','approx','no','vol',
+        'fig','jan','feb','mar','apr','jun','jul','aug','sep',
+        'oct','nov','dec','dept','est','govt','max','min','req',
+        'e.g','i.e','a.m','p.m','u.s','u.k','E.g','I.e',
+    ]
+    protected = text
+    replacements = {}
+    for i, abbrev in enumerate(ABBREVS):
+        placeholder = f'<<A{i}>>'
+        pattern = r'(?<!\w)' + _re.escape(abbrev) + r'\.'
+        if _re.search(pattern, protected):
+            replacements[placeholder] = abbrev + '.'
+            protected = _re.sub(pattern, placeholder, protected)
+    protected = _re.sub(r'(\d+)\.(\d+)', r'\1<<DEC>>\2', protected)
+    parts = _re.split(r'(?<=[.!?])\s+(?=[A-Z"'\(])', protected)
+    sentences = []
+    for part in parts:
+        restored = part
+        for ph, orig in replacements.items():
+            restored = restored.replace(ph, orig)
+        restored = restored.replace('<<DEC>>', '.').strip()
+        if restored:
+            sentences.append(restored)
+    return sentences if sentences else [text]
+
+
 from services.emergency_engine import detect_emergency_and_route, build_emergency_response
 from services.scam_detector import analyze_scam_indicators, detect_prompt_injection, _build_injection_response, _build_impatience_response
 from services.audio_service import generate_audio_inline
@@ -1484,7 +1525,7 @@ MEMORY INTEGRITY RULE:
                     )
                 logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
 
-            sentences = split_into_sentences(answer)
+            sentences = _split_sentences_safe(answer) if _is_voice_mode else split_into_sentences(answer)
 
             # ── VOICE CAP ENFORCEMENT — hard cut in code, never trust LLM to self-cap ──
             if _is_voice_mode:
