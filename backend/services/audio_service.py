@@ -79,11 +79,21 @@ def _strip_robotic_closings(text: str) -> str:
     return _ROBOTIC_PATTERN.sub("", text).strip().rstrip(",").strip()
 
 
+# Prompt leakage patterns — LLM sometimes reads its own instructions aloud
+_PROMPT_LEAKAGE = re.compile(
+    r"(SYSTEM PRIORITY\s*:?\s*|SYSTEM NOTE\s*:?\s*|IMPORTANT\s*:?\s*(?=\w)|"
+    r"NOTE\s*:?\s*(?=\w)|PRIORITY\s*:?\s*(?=\w)|ACTION REQUIRED\s*:?\s*|"
+    r"NEXT STEP\s*:?\s*|YOUR TASK\s*:?\s*)",
+    re.IGNORECASE
+)
+
 def _clean_for_tts(text: str) -> str:
-    """Strip markdown and formatting that shouldn't be spoken."""
+    """Strip markdown, formatting, and prompt leakage that shouldn't be spoken."""
     clean = text.replace("**", "").replace("##", "").replace("#", "")
     clean = clean.replace("[", "").replace("]", "")
     clean = clean.replace("•", "").replace("—", ",")
+    # Strip prompt leakage — LLM reading its own instructions
+    clean = _PROMPT_LEAKAGE.sub("", clean)
     clean = _strip_robotic_closings(clean)
     return clean.strip()
 
