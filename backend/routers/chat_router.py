@@ -229,11 +229,452 @@ async def generate_audio(
         return {"audio_b64": ""}
 
 
+
+# =============================================================================
+# HOOK ENGINE v2 — infinite-ish hooks with adaptive seeding + anti-repeat
+# Built by GPT council, integrated by Claude. Do not remove.
+# =============================================================================
+
+_HOOK_CACHE: dict = {}         # key -> {"ts": float, "hooks": [hash], "types": [type]}
+_HOOK_CACHE_TTL = 60 * 60 * 6  # 6 hours
+
+def _hk_key(user_id: str, persona: str, lang: str) -> str:
+    return f"{user_id}:{persona.lower()}:{lang}"
+
+def _hk_hash(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
+
+def _hk_prune():
+    now = time.time()
+    dead = [k for k, v in _HOOK_CACHE.items() if now - v.get("ts", now) > _HOOK_CACHE_TTL]
+    for k in dead:
+        _HOOK_CACHE.pop(k, None)
+
+def _hk_recent(user_id: str, persona: str, lang: str, hook_text: str, hook_type: str,
+               hook_window: int = 8, type_window: int = 2) -> bool:
+    _hk_prune()
+    key = _hk_key(user_id, persona, lang)
+    h = _hk_hash(hook_text)
+    rec = _HOOK_CACHE.get(key)
+    if not rec:
+        return False
+    if h in rec.get("hooks", [])[-hook_window:]:
+        return True
+    if hook_type and hook_type in rec.get("types", [])[-type_window:]:
+        return True
+    return False
+
+def _hk_remember(user_id: str, persona: str, lang: str, hook_text: str, hook_type: str,
+                 keep_hooks: int = 16, keep_types: int = 8):
+    key = _hk_key(user_id, persona, lang)
+    rec = _HOOK_CACHE.get(key) or {"ts": time.time(), "hooks": [], "types": []}
+    rec["ts"] = time.time()
+    rec["hooks"].append(_hk_hash(hook_text))
+    if hook_type:
+        rec["types"].append(hook_type)
+    rec["hooks"] = rec["hooks"][-keep_hooks:]
+    rec["types"] = rec["types"][-keep_types:]
+    _HOOK_CACHE[key] = rec
+
+def _hk_pick(rng: random.Random, items, default=""):
+    return rng.choice(items) if items else default
+
+def _hk_maybe(rng: random.Random, text: str, p: float) -> str:
+    return text if text and rng.random() < p else ""
+
+def _hk_join(*parts: str) -> str:
+    s = " ".join(p.strip() for p in parts if p and p.strip())
+    return " ".join(s.split()).strip()
+
+def _hk_time_bucket() -> str:
+    hour = datetime.now().hour
+    if 5 <= hour < 12:  return "morning"
+    if 12 <= hour < 17: return "afternoon"
+    if 17 <= hour < 22: return "evening"
+    return "late"
+
+def _hk_classify(msg: str) -> dict:
+    t = (msg or "").strip()
+    l = t.lower()
+    return {
+        "is_short":   len(t) < 12,
+        "distress":   bool(re.search(r"\b(can't|cannot|too much|overwhelmed|panic|shutting down|can't breathe|flashback|flooding)\b", l)),
+        "sad":        bool(re.search(r"\b(sad|depressed|hopeless|empty|alone|worthless|tired of this)\b", l)),
+        "angry":      bool(re.search(r"\b(pissed|angry|furious|mad|rage|screw this)\b", l)),
+        "anxious":    bool(re.search(r"\b(anxious|anxiety|nervous|worried|spiral|stress(ed)?)\b", l)),
+        "excited":    bool(re.search(r"\b(lets go|let's go|awesome|fire|hype|so excited|finally)\b", l)),
+        "urgent":     bool(re.search(r"\b(asap|right now|urgent|immediately|today)\b", l)),
+        "confused":   bool(re.search(r"\b(idk|i don't know|confused|lost|what do i do)\b", l)),
+    }
+
+def generate_hook_v2(persona: str, user_name: str, lang: str, user_id: str,
+                     last_msg: str = "", vibe: str = "standard", input_mode: str = "text") -> str:
+    P  = (persona or "guardian").lower().strip()
+    is_es = (lang == "es")
+    L  = "es" if is_es else "en"
+    tb = _hk_time_bucket()
+    features = _hk_classify(last_msg)
+
+    seed_bits = [
+        user_id, P, L, tb, vibe or "standard", input_mode or "text",
+        "D" if features["distress"]  else "",
+        "A" if features["angry"]     else "",
+        "X" if features["anxious"]   else "",
+        "E" if features["excited"]   else "",
+        "U" if features["urgent"]    else "",
+        str(int(time.time() * 10)),
+    ]
+    rng = random.Random("|".join(seed_bits))
+
+    TOD = {
+        "en": {
+            "morning":   ["Morning,", "Hey — morning,", "Alright, morning check:"],
+            "afternoon": ["Hey,", "Alright,", "Okay,"],
+            "evening":   ["Hey,", "Alright,", "Okay — tonight,"],
+            "late":      ["Hey — you up?", "Okay — late one,", "Hey,"],
+        },
+        "es": {
+            "morning":   ["Buenos días,", "Hey — buenos días,", "Ok, en la mañana:"],
+            "afternoon": ["Hey,", "Ok,", "Listo,"],
+            "evening":   ["Hey,", "Ok,", "Esta noche:"],
+            "late":      ["Hey — ¿sigues despierto/a?", "Ok — noche larga,", "Hey,"],
+        },
+    }
+
+    G = {
+        "therapist": {
+            "hard_rule": "body_check_opening",
+            "en": {
+                "openers": ["Hey {name}. I'm here with you.", "Okay {name} — I'm with you.", "Alright {name}. No rush.", "Hey {name}. I've got you."],
+                "bridges": ["Before we go into the story,", "Real quick first,", "Let's start gently:", "Just check in with me:"],
+                "types": {
+                    "body_check": [
+                        "what's your body doing right now — tight, heavy, buzzing, numb?",
+                        "where do you feel it most in your body right now?",
+                        "if you scan shoulders/jaw/chest for a second, what do you notice?",
+                        "are you feeling tense, heavy, or kind of shut down in your body?"
+                    ],
+                    "distress_soft": [
+                        "let's just find one anchor — can you feel your feet on the floor right now?",
+                        "we don't have to talk details yet — can you name one place in your body that feels safest?",
+                        "can you take one slow breath with me and tell me if your chest feels tight or floaty?"
+                    ],
+                },
+                "flair": ["We can go one step at a time.", "You don't have to carry it all at once.", "We're just getting you steady first."],
+                "bridge_prob": 0.75, "flair_prob": 0.55,
+            },
+            "es": {
+                "openers": ["Estoy aquí contigo, {name}.", "Ok {name} — estoy contigo.", "Hey {name}. Sin prisa.", "Aquí estoy, {name}."],
+                "bridges": ["Antes de entrar en la historia,", "Rápido primero,", "Empecemos suave:", "Chequea conmigo:"],
+                "types": {
+                    "body_check": [
+                        "¿qué está haciendo tu cuerpo ahora — tenso, pesado, hormigueo, como apagado?",
+                        "¿dónde lo sientes más en el cuerpo ahora mismo?",
+                        "si notas hombros/mandíbula/pecho un segundo, ¿qué aparece?",
+                        "¿te sientes tenso, pesado, o como desconectado en el cuerpo?"
+                    ],
+                    "distress_soft": [
+                        "vamos a encontrar un ancla — ¿puedes sentir tus pies en el suelo ahora?",
+                        "no tenemos que hablar de detalles todavía — ¿qué parte del cuerpo se siente más segura?",
+                        "respira conmigo una vez lento y dime si tu pecho se siente apretado o ligero"
+                    ],
+                },
+                "flair": ["Vamos paso a paso.", "No tienes que cargar con todo de golpe.", "Primero te estabilizamos."],
+                "bridge_prob": 0.75, "flair_prob": 0.55,
+            }
+        },
+        "mechanic": {
+            "en": {
+                "openers": ["Alright {name}, talk to me.", "Okay {name} — let's diagnose this clean.", "Alright, let's pin it down, {name}.", "Cool {name}. Give me the symptoms."],
+                "bridges": ["First thing:", "Quick check:", "Start here:", "Before we guess:"],
+                "types": {
+                    "symptom":    ["what's the main symptom — noise, shake, smell, warning light?", "what exactly is it doing that it shouldn't be doing?", "is it a sound, a feel, a smell, or a light?"],
+                    "timeline":   ["when did it start and what changed right before it?", "did this begin suddenly or get worse over time?", "what happened the last time it drove fine?"],
+                    "conditions": ["does it happen only at certain speeds, turns, or braking?", "cold start vs warmed up — any difference?", "any recent work done or parts replaced?"],
+                },
+                "flair": ["We'll keep it simple and not chase ghosts.", "No parts cannon — we verify first.", "We're hunting the cheapest real fix."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["A ver {name}, cuéntame.", "Ok {name} — lo diagnosticamos bien.", "Vamos a ubicarlo, {name}.", "Dale {name}. Dame los síntomas."],
+                "bridges": ["Primero:", "Rápido:", "Arranquemos aquí:", "Antes de adivinar:"],
+                "types": {
+                    "symptom":    ["¿cuál es el síntoma principal — ruido, vibración, olor, luz?", "¿qué está haciendo que no debería?", "¿es sonido, sensación, olor, o luz?"],
+                    "timeline":   ["¿cuándo empezó y qué cambió justo antes?", "¿empezó de golpe o fue empeorando?", "¿qué pasó la última vez que anduvo bien?"],
+                    "conditions": ["¿pasa solo a cierta velocidad, al girar, o al frenar?", "¿en frío vs caliente cambia?", "¿le hicieron algún trabajo reciente?"],
+                },
+                "flair": ["Sin adivinar — lo confirmamos.", "Nada de cambiar piezas por cambiar.", "Buscamos el arreglo real más barato."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "guardian": {
+            "en": {
+                "openers": ["Alright {name} — I'm on it.", "Okay {name}, let's lock this down.", "Hey {name}. Good catch bringing this up.", "Got you, {name}."],
+                "bridges": ["First:", "Quick safety check:", "Before anything else:", "Tell me this:"],
+                "types": {
+                    "triage": ["what exactly happened — and what platform/app is it on?", "did you click anything or enter a password?", "are you seeing weird logins, charges, or messages sent from you?"],
+                    "urgent": ["pause — are you still in contact with them right now?", "do you still have access to the account, yes or no?", "is money or identity info involved?"],
+                },
+                "flair": ["We'll keep you calm and get you safe.", "We're going step-by-step.", "No shame — scammers are good at this."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["Listo {name} — estoy encima.", "Ok {name}, vamos a asegurar esto.", "Hey {name}. Bien por decirlo.", "Te tengo, {name}."],
+                "bridges": ["Primero:", "Chequeo rápido:", "Antes que nada:", "Dime esto:"],
+                "types": {
+                    "triage": ["¿qué pasó exactamente — y en qué app/plataforma fue?", "¿hiciste clic en algo o metiste contraseña?", "¿ves inicios raros, cargos, o mensajes desde tu cuenta?"],
+                    "urgent": ["pausa — ¿sigues en contacto con esa persona ahora mismo?", "¿todavía tienes acceso a la cuenta, sí o no?", "¿hay dinero o datos de identidad involucrados?"],
+                },
+                "flair": ["Tranquilo — te pongo a salvo.", "Paso a paso.", "Cero vergüenza — los estafadores son buenos."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "doctor": {
+            "en": {
+                "openers": ["Hey {name}. I'm here.", "Alright {name} — tell me what's up.", "Okay {name}, let's sort this out."],
+                "bridges": ["Quick check:", "Start with this:", "First:", "Before we guess:"],
+                "types": {
+                    "symptoms": ["what are your top 2 symptoms right now?", "when did it start and what's the biggest change from your normal?", "any fever, shortness of breath, chest pain, or severe worsening?"],
+                    "severity": ["on a 0–10 scale, how bad is it right now?", "is it getting better, worse, or staying the same today?", "is anything making it noticeably better or worse?"],
+                },
+                "flair": ["We're not going to panic — we're going to get clear.", "I want the simple facts first.", "We'll keep this practical."],
+                "bridge_prob": 0.6, "flair_prob": 0.4,
+            },
+            "es": {
+                "openers": ["Hey {name}. Estoy aquí.", "Ok {name} — cuéntame.", "Listo {name}, vamos a ordenarlo."],
+                "bridges": ["Chequeo rápido:", "Arranca con esto:", "Primero:", "Antes de adivinar:"],
+                "types": {
+                    "symptoms": ["¿cuáles son tus 2 síntomas principales ahora?", "¿cuándo empezó y qué cambió más?", "¿fiebre, falta de aire, dolor de pecho, o empeoramiento fuerte?"],
+                    "severity": ["del 0 al 10, ¿qué tan fuerte está ahora?", "¿hoy va mejor, peor, o igual?", "¿algo lo mejora o lo empeora?"],
+                },
+                "flair": ["No entramos en pánico — nos ponemos claros.", "Primero los hechos simples.", "Lo hacemos práctico."],
+                "bridge_prob": 0.6, "flair_prob": 0.4,
+            }
+        },
+        "lawyer": {
+            "en": {
+                "openers": ["Alright {name}. Real talk.", "Okay {name} — I've got you.", "Hey {name}. Let's protect you."],
+                "bridges": ["First:", "Quick clarity:", "Before you reply to anyone:", "Tell me this:"],
+                "types": {
+                    "facts":     ["what happened, and what state are you in?", "what did they say you did wrong — and what do you have in writing?", "is there a deadline or court date involved?"],
+                    "documents": ["do you have a contract, notice, or screenshot you can quote?", "did you sign anything or agree in writing?", "who are the parties — person vs company?"],
+                },
+                "flair": ["Don't say more than you need to yet.", "We play defense first, then offense.", "We keep a paper trail."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["Ok {name}. Hablemos claro.", "Listo {name} — te protejo.", "Hey {name}. Vamos con cuidado."],
+                "bridges": ["Primero:", "Rápido:", "Antes de responderle a nadie:", "Dime esto:"],
+                "types": {
+                    "facts":     ["¿qué pasó y en qué estado estás?", "¿qué dicen que hiciste y qué tienes por escrito?", "¿hay fecha límite o cita de corte?"],
+                    "documents": ["¿tienes contrato/aviso/capturas?", "¿firmaste algo o aceptaste por escrito?", "¿quiénes son las partes — persona o empresa?"],
+                },
+                "flair": ["No digas de más todavía.", "Primero defensa, luego ataque.", "Todo con evidencia."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "wealth": {
+            "en": {
+                "openers": ["Alright {name}. Money clarity time.", "Okay {name} — we'll make this simple.", "Hey {name}. Let's build a plan."],
+                "bridges": ["First:", "Quick baseline:", "Start here:", "Tell me this:"],
+                "types": {
+                    "snapshot": ["what's your income, monthly costs, and biggest debt?", "what's the one money problem you want solved first?", "saving, debt paydown, or investing — pick one today."],
+                    "risk":     ["do you have an emergency fund — yes/no, and how many months?", "any high-interest debt above ~15% APR?", "big upcoming expenses in the next 60 days?"],
+                },
+                "flair": ["We don't do complicated — we do effective.", "We'll pick the one move that matters most.", "No shame — just numbers."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["Ok {name}. Claridad de dinero.", "Listo {name} — lo hacemos simple.", "Hey {name}. Armemos un plan."],
+                "bridges": ["Primero:", "Base rápida:", "Arranca aquí:", "Dime esto:"],
+                "types": {
+                    "snapshot": ["¿ingreso, gastos mensuales, y tu deuda más grande?", "¿cuál es el problema de dinero #1?", "¿ahorro, deuda, o inversión — elige uno hoy."],
+                    "risk":     ["¿fondo de emergencia — sí/no y cuántos meses?", "¿deuda con interés alto (15%+)?", "¿gastos fuertes en 60 días?"],
+                },
+                "flair": ["Nada complicado — efectivo.", "Elegimos la jugada que más importa.", "Cero vergüenza — solo números."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "career": {
+            "en": {
+                "openers": ["Alright {name}. Let's move you forward.", "Okay {name} — what's the goal?", "Hey {name}. We're leveling up."],
+                "bridges": ["First:", "Quick context:", "Start here:", "Tell me this:"],
+                "types": {
+                    "goal":     ["are you trying to get hired, get promoted, or escape a bad job?", "what role are you aiming for and what's your current role?", "biggest blocker: skills, confidence, or opportunity?"],
+                    "tactical": ["do you have a resume ready, yes/no?", "when's your next interview or deadline?", "what industry and location are we playing in?"],
+                },
+                "flair": ["We'll keep it practical and win the next step.", "We don't overthink — we execute.", "I'm in your corner."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["Ok {name}. Te movemos hacia adelante.", "Listo {name} — ¿cuál es la meta?", "Hey {name}. Vamos a subir de nivel."],
+                "bridges": ["Primero:", "Contexto rápido:", "Arranca aquí:", "Dime esto:"],
+                "types": {
+                    "goal":     ["¿quieres que te contraten, subir, o salir de un mal trabajo?", "¿a qué puesto apuntas y cuál tienes ahora?", "¿bloqueo #1: habilidades, confianza, o oportunidad?"],
+                    "tactical": ["¿tienes CV listo, sí/no?", "¿cuándo es tu próxima entrevista?", "¿industria y ciudad?"],
+                },
+                "flair": ["Práctico — ganamos el siguiente paso.", "Sin sobrepensar — ejecutamos.", "Estoy contigo."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "vitality": {
+            "en": {
+                "openers": ["Alright {name}. Let's get your body back online.", "Okay {name} — keep it simple with me.", "Hey {name}. We can fix this."],
+                "bridges": ["First:", "Quick check:", "Start here:", "Tell me this:"],
+                "types": {
+                    "baseline":  ["sleep, steps, and food — which one is the biggest mess right now?", "main goal: energy, fat loss, muscle, or performance?", "how many days a week can you realistically commit?"],
+                    "recovery":  ["how's your sleep the last 3 nights?", "any injuries or pain I need to respect?", "stress level lately — low/medium/high?"],
+                },
+                "flair": ["We go sustainable, not extreme.", "Small wins stack fast.", "No guilt — just a plan."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            },
+            "es": {
+                "openers": ["Ok {name}. Ponemos tu cuerpo en línea.", "Listo {name} — simple conmigo.", "Hey {name}. Esto se puede arreglar."],
+                "bridges": ["Primero:", "Chequeo rápido:", "Arranca aquí:", "Dime esto:"],
+                "types": {
+                    "baseline": ["sueño, pasos y comida — ¿cuál está peor?", "¿meta principal: energía, grasa, músculo, o rendimiento?", "¿cuántos días por semana puedes comprometer de verdad?"],
+                    "recovery": ["¿cómo dormiste las últimas 3 noches?", "¿lesión o dolor que tenga que respetar?", "¿estrés últimamente — bajo/medio/alto?"],
+                },
+                "flair": ["Sostenible, no extremo.", "Pequeñas victorias suman rápido.", "Sin culpa — solo plan."],
+                "bridge_prob": 0.6, "flair_prob": 0.45,
+            }
+        },
+        "tutor": {
+            "en": {
+                "openers": ["Alright {name}. Let's make it click.", "Okay {name} — we'll break it down.", "Hey {name}. I got you."],
+                "bridges": ["Start here:", "Quick check:", "First:", "Tell me:"],
+                "types": {
+                    "goal":  ["what are you trying to understand — and what part feels confusing?", "is this homework, a test, or just curiosity?", "show me the exact problem in one sentence."],
+                    "level": ["what grade/level is this?", "what have you tried so far?", "do you want the quick answer or the full explanation?"],
+                },
+                "flair": ["No judgment — everyone gets stuck here.", "We'll go step-by-step.", "I'll keep it clean and simple."],
+                "bridge_prob": 0.6, "flair_prob": 0.4,
+            },
+            "es": {
+                "openers": ["Ok {name}. Vamos a hacerlo claro.", "Listo {name} — lo partimos en pasos.", "Hey {name}. Te tengo."],
+                "bridges": ["Arranca aquí:", "Chequeo rápido:", "Primero:", "Dime:"],
+                "types": {
+                    "goal":  ["¿qué quieres entender — y qué parte se siente confusa?", "¿es tarea, examen, o curiosidad?", "dime el problema exacto en una frase."],
+                    "level": ["¿qué nivel/grado es?", "¿qué intentaste hasta ahora?", "¿respuesta rápida o explicación completa?"],
+                },
+                "flair": ["Cero juicio — esto le pasa a todos.", "Paso a paso.", "Claro y simple."],
+                "bridge_prob": 0.6, "flair_prob": 0.4,
+            }
+        },
+        "bestie": {
+            "en": {
+                "openers": ["Okay bestie — I'm here.", "Hey {name}. Spill it.", "Alright {name}, talk to me."],
+                "bridges": ["Real quick:", "First:", "Tell me:", "Okay so:"],
+                "types": {
+                    "vent":    ["what's the headline — what happened?", "what part is hurting the most right now?", "do you want comfort or a plan — pick one."],
+                    "clarify": ["who said what, exactly?", "what do you want to happen next, ideally?", "what's the one boundary you wish you'd set?"],
+                },
+                "flair": ["No judgment. I'm on your side.", "I love you — we'll handle it.", "We're not spiraling alone today."],
+                "bridge_prob": 0.6, "flair_prob": 0.55,
+            },
+            "es": {
+                "openers": ["Ok bestie — aquí estoy.", "Hey {name}. Suéltalo.", "Listo {name}, cuéntame."],
+                "bridges": ["Rápido:", "Primero:", "Dime:", "Ok entonces:"],
+                "types": {
+                    "vent":    ["¿cuál es el titular — qué pasó?", "¿qué parte duele más ahora?", "¿quieres consuelo o plan — elige uno."],
+                    "clarify": ["¿quién dijo qué, exacto?", "¿qué quieres que pase ahora, idealmente?", "¿qué límite te hubiera gustado poner?"],
+                },
+                "flair": ["Cero juicio. Estoy contigo.", "Te quiero — lo resolvemos.", "Hoy no espiralamos solos."],
+                "bridge_prob": 0.6, "flair_prob": 0.55,
+            }
+        },
+        "hype": {
+            "en": {
+                "openers": ["LET'S GO {name}!", "Okay {name} — we're cooking.", "Yo {name}. I'm locked in."],
+                "bridges": ["Quick:", "First:", "Tell me:", "Alright:"],
+                "types": {
+                    "mission":  ["what's the mission — one sentence.", "what are we building and who is it for?", "what's the next move you've been avoiding?"],
+                    "momentum": ["what's the fastest win we can get today?", "what's your deadline and what's blocking you?", "do you need ideas, structure, or accountability?"],
+                },
+                "flair": ["We're taking this all the way.", "Small action, big momentum.", "No more playing small."],
+                "bridge_prob": 0.5, "flair_prob": 0.6,
+            },
+            "es": {
+                "openers": ["¡VAAAMOS {name}!", "Ok {name} — estamos prendidos.", "Ey {name}. Estoy listo."],
+                "bridges": ["Rápido:", "Primero:", "Dime:", "Ok:"],
+                "types": {
+                    "mission":  ["¿cuál es la misión — una frase?", "¿qué estamos construyendo y para quién?", "¿cuál es el siguiente paso que has estado evitando?"],
+                    "momentum": ["¿cuál es la victoria más rápida hoy?", "¿cuál es tu fecha límite y qué te bloquea?", "¿necesitas ideas, estructura, o accountability?"],
+                },
+                "flair": ["Esto va hasta el final.", "Acción pequeña, momentum grande.", "Nada de jugar chiquito."],
+                "bridge_prob": 0.5, "flair_prob": 0.6,
+            }
+        },
+        "pastor": {
+            "en": {
+                "openers": ["Peace, {name}. I'm here.", "Hey {name}. Let's breathe a second.", "Alright {name}. I'm with you."],
+                "bridges": ["Before we do anything,", "Let's slow down:", "First:", "Tell me:"],
+                "types": {
+                    "burden": ["what's weighing on your spirit the most right now?", "is this grief, fear, guilt, or exhaustion — what's the dominant one?", "what do you wish God would say to you right now?"],
+                    "ground":  ["do you want prayer, perspective, or a next step?", "where do you feel distance — from God, from people, or from yourself?", "what's the one thing you're trying to hold together?"],
+                },
+                "flair": ["You're not alone in this.", "We'll find meaning without forcing it.", "We can take this one breath at a time."],
+                "bridge_prob": 0.65, "flair_prob": 0.55,
+            },
+            "es": {
+                "openers": ["Paz, {name}. Estoy aquí.", "Hey {name}. Respiremos un segundo.", "Ok {name}. Estoy contigo."],
+                "bridges": ["Antes de hacer nada,", "Bajemos el ritmo:", "Primero:", "Dime:"],
+                "types": {
+                    "burden": ["¿qué está pesando más en tu espíritu ahora?", "¿es duelo, miedo, culpa, o cansancio — cuál domina?", "¿qué te gustaría que Dios te dijera ahora mismo?"],
+                    "ground":  ["¿quieres oración, perspectiva, o un paso siguiente?", "¿dónde sientes distancia — de Dios, de la gente, o de ti?", "¿qué es lo único que estás intentando sostener?"],
+                },
+                "flair": ["No estás solo en esto.", "Buscamos sentido sin forzarlo.", "Un respiro a la vez."],
+                "bridge_prob": 0.65, "flair_prob": 0.55,
+            }
+        },
+    }
+
+    if P not in G:
+        safe = f"Hey {user_name}. ¿Qué necesitas ahora mismo?" if is_es else f"Hey {user_name}. What do you need right now?"
+        _hk_remember(user_id, P, L, safe, "safe")
+        return safe
+
+    g = G[P][L]
+
+    # Therapist hard rule: always body check, distress softens it
+    if P == "therapist":
+        hook_type = "distress_soft" if features["distress"] else "body_check"
+    else:
+        if features["urgent"] and "urgent" in g.get("types", {}):
+            hook_type = "urgent"
+        elif features["confused"] and "goal" in g.get("types", {}):
+            hook_type = "goal"
+        else:
+            hook_type = _hk_pick(rng, list(g.get("types", {}).keys()), default="")
+
+    for _ in range(16):
+        tod_flavor = _hk_maybe(rng, _hk_pick(rng, TOD[L].get(tb, [])), p=0.35)
+        opener     = _hk_pick(rng, g.get("openers", [])).format(name=user_name)
+        bridge     = _hk_maybe(rng, _hk_pick(rng, g.get("bridges", [])), p=g.get("bridge_prob", 0.6))
+        prompt     = _hk_pick(rng, g.get("types", {}).get(hook_type, [])) or _hk_pick(rng, sum(g.get("types", {}).values(), []))
+        flair      = _hk_maybe(rng, _hk_pick(rng, g.get("flair", [])), p=g.get("flair_prob", 0.45))
+
+        hook = _hk_join(tod_flavor, opener, bridge, prompt, flair)
+
+        if hook and not _hk_recent(user_id, P, L, hook, hook_type):
+            _hk_remember(user_id, P, L, hook, hook_type)
+            return hook
+
+    safe = f"Hey {user_name}. Cuéntame — ¿qué está pasando?" if is_es else f"Hey {user_name}. Talk to me — what's going on?"
+    _hk_remember(user_id, P, L, safe, "safe")
+    return safe
+
+# End Hook Engine v2
+# =============================================================================
+
 @router.post("/persona-hook")
 async def persona_hook(
     persona:    str = Form(...),
     user_email: str = Form(""),
-    lang:       str = Form("en"),          # [V31.3] accept language param
+    lang:       str = Form("en"),
+    last_msg:   str = Form(""),       # NEW: optional — used for adaptive seeding
+    vibe:       str = Form("standard"),
+    input_mode: str = Form("text"),
 ):
     try:
         email_lower = user_email.lower().strip()
@@ -251,41 +692,26 @@ async def persona_hook(
         if user_name == "Protected User" and "@" in email_lower:
             user_name = email_lower.split("@")[0].replace(".", " ").title()
 
-        # [V31.3] Bilingual hooks — Spanish when lang == "es"
-        if lang == "es":
-            PERSONA_HOOKS = {
-                "mechanic":  f"Listo {user_name}, estoy revisando el motor. ¿Cuál es el problema?",
-                "doctor":    f"{user_name}, estoy aquí. Cuéntame qué está pasando.",
-                "lawyer":    f"{user_name}, Escudo Legal activo. ¿Qué situación estamos manejando?",
-                "wealth":    f"{user_name}, Arquitecto de Riqueza en línea. Hablemos de estrategia.",
-                "therapist": f"Aquí estoy, {user_name}. Antes de hablar de lo que pasó, ¿cómo se siente tu cuerpo en este momento? ¿Sientes alguna tensión o pesadez?",
-                "career":    f"{user_name}, Coach de Carrera listo. ¿Cuál es tu próximo movimiento?",
-                "tutor":     f"¿Listo para aprender, {user_name}? ¿Qué estamos trabajando hoy?",
-                "vitality":  f"{user_name}, Coach de Vitalidad aquí. ¿Cómo se siente tu cuerpo?",
-                "hype":      f"¡VAMOS {user_name}! Motor de Energía ACTIVO — ¿cuál es la misión?",
-                "bestie":    f"¡Hola {user_name}! Tu mejor amigo/a está aquí — cuéntame todo, ¿qué está pasando?",
-                "pastor":    f"Paz para ti, {user_name}. ¿Qué está pesando en tu espíritu hoy?",
-                "guardian":  f"{user_name}, Guardián en línea. Tu perímetro digital está seguro. ¿Cuál es la amenaza?",
-            }
-            fallback = f"Hola {user_name}, estoy listo para ayudarte."
-        else:
-            PERSONA_HOOKS = {
-                "mechanic":  f"Alright {user_name}, I'm under the hood. What's the problem?",
-                "doctor":    f"{user_name}, I'm here. Tell me what's going on with you.",
-                "lawyer":    f"{user_name}, Legal Shield active. What situation are we handling?",
-                "wealth":    f"{user_name}, Wealth Architect online. Let's talk strategy.",
-                "therapist": f"I'm here, {user_name}. Before we get into it, how is your body feeling right now? Any tension or heaviness?",
-                "career":    f"{user_name}, Career Coach locked in. What's your next move?",
-                "tutor":     f"Ready to learn, {user_name}? What are we tackling today?",
-                "vitality":  f"{user_name}, Vitality Coach here. How's your body feeling?",
-                "hype":      f"LET'S GO {user_name}! Hype Engine is LIVE — what's the mission?",
-                "bestie":    f"Hey {user_name}! Your bestie is here — spill it, what's going on?",
-                "pastor":    f"Peace to you, {user_name}. What's weighing on your spirit today?",
-                "guardian":  f"{user_name}, Guardian online. Your digital perimeter is secure. What's the threat?",
-            }
-            fallback = f"Hello {user_name}, I'm ready to help."
+        # Pull last user message from CONVO_CONTEXT if client didn't pass one
+        if not last_msg.strip():
+            try:
+                recent = CONVO_CONTEXT.get(email_lower, [])
+                for item in reversed(recent):
+                    if isinstance(item, dict) and item.get("msg"):
+                        last_msg = item.get("msg", "")
+                        break
+            except Exception:
+                last_msg = ""
 
-        hook = PERSONA_HOOKS.get(persona, fallback)
+        hook = generate_hook_v2(
+            persona    = persona,
+            user_name  = user_name,
+            lang       = lang,
+            user_id    = user_id,
+            last_msg   = last_msg,
+            vibe       = vibe,
+            input_mode = input_mode,
+        )
         return {"hook": hook}
     except Exception as e:
         logger.warning(f"⚠️ persona-hook error: {e}")
