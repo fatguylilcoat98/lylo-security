@@ -1732,7 +1732,8 @@ BODY SCAN (Best for: Opening a session, General check-in)
             "  - One clear takeaway.\n"
             "  - A closed choice or permission to leave: 'Want to end here for today, or do a quick grounding tool before we stop?' NEVER ask open-ended questions in the CLOSE phase.\n"
             "Rule 4: THE RED THRESHOLD. If the user says they are flooded, shutting down, can't breathe, or cannot do an exercise, you MUST set tolerance to 'RED'.\n"
-            "Rule 5: AT THE ABSOLUTE END of your response, you MUST output a hidden state block on a new line exactly like this:\n"
+            "Rule 5: DIRECTIVE MODE. If the user says they don't want questions, don't want to talk, or says 'just tell me what to do', you MUST switch to Directive Mode immediately: give 2-3 concrete steps and a closed-choice menu (A/B/C). Do not demand explanations. Do not defend your structure. Just act.\n"
+            "Rule 6: AT THE ABSOLUTE END of your response, you MUST output a hidden state block on a new line exactly like this:\n"
             "[STATE: {\"phase\": \"EXPLORE\", \"tolerance\": \"GREEN\", \"intensity\": 4}]\n"
             "Do not add any text after this block.\n"
             "━━━ END STATE PROTOCOL ━━━"
@@ -2153,17 +2154,44 @@ MEMORY INTEGRITY RULE:
                         logger.warning("🚨 Therapist state block malformed — using safe default.")
 
                 # ── BILINGUAL RUNTIME GATES ───────────────────────────────────
-                # Gate 1: RED tolerance → hardcoded crisis stabilization
+                # Gate 1: RED tolerance → hardcoded crisis stabilization (randomized variants)
                 if therapy_state.get("tolerance") == "RED":
+                    _red_bank_en = [
+                        "Hey — I'm right here with you. You don't have to explain anything right now. Can you feel your feet on the floor? Just notice that for a second. I'm not going anywhere. Take your time.",
+                        "Okay — pause. I'm with you. No story needed. Just feel your feet, or the chair under you, for one breath. You're safe in this moment. I'm here.",
+                        "Hey. Slow it down with me. You don't have to fight the wave. Find one steady thing — your feet, your hands, the wall — and just notice it. I'm staying with you.",
+                        "I'm right here. Nothing has to happen right now. Can you find one solid thing your body is touching — floor, chair, anything? Just rest there for a second with me.",
+                        "Hey — you don't have to say a word. Just breathe. Feel where your body meets the seat. I'm not going anywhere. We're just here together for a moment.",
+                    ]
+                    _red_bank_es = [
+                        "Oye — estoy aquí contigo. No tienes que explicar nada ahora mismo. ¿Puedes sentir tus pies en el suelo? Solo nota eso un segundo. No me voy a ir. Tómate tu tiempo.",
+                        "Ok — pausa. Estoy contigo. No necesitas contar nada. Solo siente tus pies, o la silla bajo ti, por un respiro. Estás seguro/a en este momento. Aquí estoy.",
+                        "Hey. Bájale conmigo. No tienes que pelear la ola. Encuentra una cosa estable — tus pies, tus manos, la pared — y solo nótala. Me quedo contigo.",
+                        "Estoy aquí. No tiene que pasar nada ahora. ¿Puedes encontrar algo sólido que tu cuerpo esté tocando — el suelo, la silla? Solo descansa ahí un segundo conmigo.",
+                        "Oye — no tienes que decir nada. Solo respira. Siente dónde tu cuerpo toca el asiento. No me voy a ningún lado. Estamos aquí juntos un momento.",
+                    ]
+                    answer = random.choice(_red_bank_es if _is_es else _red_bank_en)
+
+                # ── Directive Mode: user refuses questions / wants action ──────────
+                _msg_l = (msg or "").lower()
+                _no_questions = any(p in _msg_l for p in [
+                    "don't ask", "dont ask", "no questions", "stop asking",
+                    "i don't want to answer", "i dont want to answer",
+                    "just tell me what to do", "tell me what to do",
+                    "i don't want to talk", "i dont want to talk",
+                ])
+                if _no_questions and therapy_state.get("tolerance") != "RED":
+                    logger.warning("🧭 Therapist: directive mode triggered (user refused questions).")
                     answer = (
-                        "Oye — estoy aquí contigo. No tienes que explicar nada ahora mismo. "
-                        "¿Puedes sentir tus pies en el suelo? Solo nota eso un segundo. "
-                        "No me voy a ir. Tómate tu tiempo."
+                        "Ok — sin preguntas. Vamos directo a la acción. "
+                        "Pon ambos pies en el suelo y haz dos exhalaciones lentas (inhalas 4, exhalas 6). "
+                        "Elige una: A) 60 segundos de respiración en caja, B) un escaneo corporal de 30 segundos, o C) terminamos aquí y descansas."
                         if _is_es else
-                        "Hey — I'm right here with you. You don't have to explain anything right now. "
-                        "Can you feel your feet on the floor? Just notice that for a second. "
-                        "I'm not going anywhere. Take your time."
+                        "Got you — no questions. Put both feet on the floor and do two slow exhales (in 4, out 6). "
+                        "Pick one: A) 60 seconds of box breathing, B) a 30-second body scan, or C) we end here and you rest."
                     )
+                    if therapy_state.get("phase") not in ("CLOSE",):
+                        therapy_state["phase"] = "SKILL"
 
                 # Gate 2: SKILL phase → enforce vetted tool library
                 elif therapy_state.get("phase") == "SKILL":
