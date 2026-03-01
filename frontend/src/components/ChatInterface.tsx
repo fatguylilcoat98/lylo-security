@@ -507,6 +507,7 @@ function ChatInterface({
   const speechRateRef     = useRef<'slow' | 'normal' | 'fast'>('normal');
   const wordTimestamps    = useRef<number[]>([]); // for speech rate
   const autoReopenRef     = useRef(false); // mic auto-reopen after TTS
+  const speechPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // silence auto-send
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
@@ -691,19 +692,55 @@ function ChatInterface({
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
     const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = lang === 'es' ? 'es-US' : 'en-US';
+    rec.onstart = () => {
+      // Start vocal analysis using the recognition's audio stream (no second getUserMedia)
+      try {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+          mediaStreamRef.current = s;
+          startVocalAnalysis(s);
+        }).catch(() => {});
+      } catch {}
+    };
     rec.onresult = (e: any) => {
       if (isSpeaking) return;
       let interim = '', final = '';
-      for (let i = 0; i < e.results.length; i++) { if (e.results[i].isFinal) final += e.results[i][0].transcript; else interim += e.results[i][0].transcript; }
+      for (let i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
       if (final) accumulatedRef.current += final + ' ';
-      const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim(); setInput(full); inputTextRef.current = full;
+      const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
+      setInput(full); inputTextRef.current = full;
+
+      // ── Silence Auto-Send — 1.5s pause triggers send (Gemini council spec) ──
+      if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
+      if (full.trim().length > 0) {
+        speechPauseTimeoutRef.current = setTimeout(() => {
+          if (isRecordingRef.current) {
+            isRecordingRef.current = false;
+            setIsRecording(false);
+            autoReopenRef.current = true; // reopen after AI responds
+            stopVocalAnalysis();
+            playPresenceChime();
+            try { recognitionRef.current?.stop(); } catch {}
+            setTimeout(() => { if (inputTextRef.current.trim()) handleSend(); }, 100);
+          }
+        }, 1500); // 1.5 seconds of silence = done talking
+      }
     };
     rec.onerror = (e: any) => {
+      if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
       if (e.error === 'not-allowed') { alert('Microphone blocked.'); isRecordingRef.current = false; setIsRecording(false); }
       else if (e.error === 'network') { isRecordingRef.current = false; setIsRecording(false); }
       else if (isRecordingRef.current) { setTimeout(() => { if (isRecordingRef.current) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } }, 150); }
     };
-    rec.onend = () => { if (isRecordingRef.current && !isSpeaking) { recognitionRef.current = buildRecognition(); recognitionRef.current?.start(); } };
+    rec.onend = () => {
+      // Only auto-restart if we're still in recording mode AND pause timer hasn't fired
+      if (isRecordingRef.current && !isSpeaking) {
+        recognitionRef.current = buildRecognition();
+        recognitionRef.current?.start();
+      }
+    };
     return rec;
   };
 
@@ -765,6 +802,7 @@ function ChatInterface({
     if (isRecording) {
       isRecordingRef.current = false; setIsRecording(false);
       autoReopenRef.current = false; // user manually stopped — disable auto-reopen
+      if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
       stopVocalAnalysis(); // stop energy extraction
       playPresenceChime(); // micro chime — "I heard you"
       // ── Phase 1: user spoke — clear silence timers ──
@@ -920,6 +958,7 @@ function ChatInterface({
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
       if (loadingTimeoutRef.current) { clearTimeout(loadingTimeoutRef.current); loadingTimeoutRef.current = null; }
       lastInputModeRef.current = 'text'; // reset after send
+      if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
       // [FIX] Show visible error to user instead of silent freeze
       const errText = lang === 'es'
         ? '⚠️ Algo salió mal. Por favor intenta de nuevo.'
