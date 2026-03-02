@@ -150,9 +150,39 @@ _ACCESS_SIGNALS = ["hacked","account taken","locked out","cant log in","can't lo
 _MONEY_SIGNALS  = ["sent money","wired","venmo","zelle","cash app","cashapp","transfer",
                     "bought gift card","gift card","crypto","bitcoin","wire transfer","moneygram",
                     "western union","prepaid card"]
-_REMOTE_SIGNALS = ["remote access","remote desktop","anydesk","teamviewer","ultraviewer",
-                    "screenshare","screen share","let them in","gave access","they're on my computer",
-                    "they were on my computer","someone took over my screen"]
+_REMOTE_SIGNALS = [
+    # Tool names
+    "remote access", "remote desktop", "anydesk", "teamviewer", "ultraviewer",
+    "logmein", "splashtop", "remotepc", "chrome remote desktop", "quick assist",
+    "zoho assist", "gotoassist", "atera", "ultraviewer",
+    # Screen share / takeover phrases
+    "screenshare", "screen share", "screen sharing", "screensharing",
+    "let them in", "gave access", "gave them access",
+    "they're on my computer", "they were on my computer",
+    "someone took over my screen",
+    # "connect" variants — THE MISSED PHRASES
+    "connect to my screen", "connected to my screen",
+    "connect to my computer", "connected to my computer",
+    "connecting to my screen", "connecting to my computer",
+    "connected to my device", "connect to my device",
+    # "control" / "see" variants
+    "remote control", "took control", "they took control",
+    "they can see my screen", "they can see my computer",
+    "they moved my mouse", "moved my mouse",
+    "they were controlling", "controlling my computer",
+    # Tech-support scam entry phrases
+    "let them connect", "allowed them to connect",
+    "let them access", "allowed them access",
+    "they had access to my", "gave them remote",
+    # "installed" variants
+    "installed anydesk", "installed teamviewer", "installed ultraviewer",
+    "installed the program", "installed the software", "installed the app",
+    "they made me install", "told me to install", "asked me to install",
+    # Event viewer / cmd / run — classic tech-support scam steps
+    "they asked me to open run", "open event viewer", "opened event viewer",
+    "open cmd", "opened cmd", "open powershell", "opened powershell",
+    "they showed me errors",
+]
 _OTP_SIGNALS    = ["otp","one-time password","one time password","verification code","6 digit code",
                     "gave the code","read the code","told them the code","text code","auth code",
                     "google authenticator code","whatsapp code","facebook code"]
@@ -466,11 +496,22 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
 
     # ── Incident context inject ────────────────────────────────────────────────
     incident_lines = []
-    if sig_remote: incident_lines.append("⚠️ Remote access software may have been installed.")
+    if sig_remote:
+        incident_lines.append(
+            "🚨 SCENARIO = REMOTE_ACCESS_TAKEOVER. "
+            "An attacker had or may still have live control of the user's device. "
+            "Follow the REMOTE_ACCESS_TAKEOVER template EXACTLY. "
+            "Step 1 MUST be disconnect internet. "
+            "DO NOT tell the user to download or run anything on the affected device. "
+            "DO NOT tell the user to change passwords on the affected device."
+        )
     if sig_otp:    incident_lines.append("⚠️ A one-time verification code was given to an attacker.")
     if sig_cred:   incident_lines.append("⚠️ Credentials or financial info may have been entered on a phishing site.")
     if sig_access: incident_lines.append("⚠️ Account may already be compromised or locked out.")
-    if sig_link:   incident_lines.append("⚠️ A suspicious link or site was visited.")
+    if sig_link and not sig_remote:
+        # Only inject link warning when NOT also a remote-access incident
+        # (prevents the LLM from treating it as a simple phishing click)
+        incident_lines.append("⚠️ A suspicious link or site was visited.")
 
     if incident_lines:
         system_prompt += (
@@ -480,6 +521,11 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
             "Give the next concrete action immediately."
         )
         logger.info(f"🛡️ Guardian incident injected: phase={phase}, sev={severity}")
+        if sig_remote:
+            logger.warning(
+                f"🛡️ Guardian REMOTE_ACCESS_TAKEOVER context injected — "
+                f"sig_link={sig_link} (suppressed), phase={phase}"
+            )
 
     return system_prompt, overrides
 
