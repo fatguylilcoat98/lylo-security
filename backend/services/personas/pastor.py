@@ -4,6 +4,7 @@ Owns: relational voice, inject_fortress(), apply_gates()
 """
 import re
 import logging
+from services.directive_detector import detect_directive_sync
 
 logger = logging.getLogger("LYLO.Chat")
 
@@ -74,11 +75,6 @@ _SHAME_SIGNALS = [
     "i've sinned", "ive sinned", "feel so guilty", "so ashamed",
     "don't deserve", "dont deserve", "unworthy", "unforgiven",
 ]
-_DIRECTIVE_SIGNALS = [
-    "just tell me what to do", "what should i do", "give me something",
-    "what do i hold onto", "what can i do", "where do i start",
-    "just give me a practice", "what would you recommend",
-]
 _AMBIGUOUS_SIGNALS = [
     "what does that mean", "how do i do that", "what now",
     "like what", "can you explain", "i don't understand", "i dont understand",
@@ -148,7 +144,8 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
     sig_grief     = any(s in all_text for s in _GRIEF_SIGNALS)
     sig_doubt     = any(s in all_text for s in _DOUBT_SIGNALS)
     sig_shame     = any(s in all_text for s in _SHAME_SIGNALS)
-    sig_dir       = any(s in msg.lower() for s in _DIRECTIVE_SIGNALS)
+    _dir_result   = detect_directive_sync(msg)
+    sig_dir       = _dir_result["directive"]
     sig_amb       = (any(s in msg.lower() for s in _AMBIGUOUS_SIGNALS)
                      and len(msg.strip().split()) < 10)
 
