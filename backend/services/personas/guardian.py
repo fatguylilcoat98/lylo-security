@@ -1,8 +1,8 @@
 """
-LYLO Guardian Persona Fortress — v2.1 (Gemini-audited)
+LYLO Guardian Persona Fortress — v2.2 (Council-audited: state hygiene + evidence gate)
 Owns: relational voice, inject_fortress(), apply_gates()
 
-Fixes in this version (per Gemini audit):
+Fixes in v2.1 (Gemini audit):
   - remote_access: password reset MUST be from different device BEFORE scanning
   - credentials_entered: secure THE COMPROMISED ACCOUNT first, not blindly email-first
   - directive fail-safe when no incident context (no hallucination)
@@ -13,13 +13,21 @@ Fixes in this version (per Gemini audit):
   - phishing_click: drive-by download check added
   - gift_card: bank-fraud nuance (bank can't help for cash gift cards)
   - directive_detector: shared 4-layer detector replaces old phrase list
+
+Fixes in v2.2 (Council audit: state hygiene + evidence-required remote access):
+  - is_continuation(): resets incident context unless explicit continuity markers present
+  - Signal scoping: without continuity markers, signals scan CURRENT MSG ONLY
+  - _HARD_REMOTE_EVIDENCE: remote access now requires tool names / physical takeover evidence
+  - Popup-only signals can NEVER trigger REMOTE_ACCESS_TAKEOVER classification
+  - POPUP_ONLY_LOW_RISK: new scenario with reassuring tone, prevention tips, ONE question
+  - _classify_incident(): split current-message vs. full-context paths
 """
 import re
 import logging
 from services.directive_detector import detect_directive_sync, has_incident_context
 
 logger = logging.getLogger("LYLO.Chat")
-logger.warning("🛡️ GUARDIAN v2.1 LOADED — directive_detector wired, Gemini audit applied")
+logger.warning("🛡️ GUARDIAN v2.2 LOADED — state hygiene + evidence-required remote access")
 
 # ── Relational Voice ───────────────────────────────────────────────────────────
 PERSONA_STRING = (
@@ -189,16 +197,84 @@ _OTP_SIGNALS    = ["otp","one-time password","one time password","verification c
 _AMBIGUOUS      = ["is it safe","what now","like this","like that","this thing",
                     "do i do this","what about this","is this okay","should i be worried"]
 
+# ── Hard remote-access evidence (MUST be present to classify REMOTE_ACCESS_TAKEOVER) ──────────
+# Popup keywords alone NEVER qualify. Physical takeover evidence required.
+_HARD_REMOTE_EVIDENCE = [
+    # Tool names — strongest signal
+    "anydesk", "teamviewer", "ultraviewer", "logmein", "splashtop", "remotepc",
+    "chrome remote desktop", "quick assist", "zoho assist", "gotoassist", "atera",
+    "remote desktop", "remote access",
+    # Screen / mouse control — physical takeover evidence
+    "moving my mouse", "moved my mouse", "they moved", "they're moving my mouse",
+    "connected to my screen", "connect to my screen", "connected to my computer",
+    "connect to my computer", "connected to my device", "connecting to my screen",
+    "they can see my screen", "they can see my computer",
+    "took control", "they took control", "someone took over my screen",
+    "they're on my computer", "they were on my computer",
+    "controlling my computer", "they were controlling",
+    "screenshare", "screen share", "screen sharing", "screensharing",
+    "gave access", "gave them access", "let them in", "let them connect",
+    "allowed them to connect", "allowed them access",
+    "they had access to my", "gave them remote",
+    # Installation at attacker's direction
+    "installed anydesk", "installed teamviewer", "installed ultraviewer",
+    "installed the program", "installed the software", "installed the app",
+    "they made me install", "told me to install", "asked me to install",
+    # CMD / event viewer — classic tech-support scam steps
+    "open event viewer", "opened event viewer",
+    "open cmd", "opened cmd", "open powershell", "opened powershell",
+    "they asked me to open run", "they showed me errors",
+]
+
+# ── Popup-only signals — suspicious but NOT sufficient for REMOTE_ACCESS_TAKEOVER ─────────────
+# These co-occur with remote access, but alone they are low-risk popup events.
+_POPUP_SIGNALS = [
+    "pop-up", "popup", "pop up",
+    "virus alert", "virus warning", "virus detected", "infected",
+    "microsoft support", "microsoft warning", "windows alert",
+    "your computer is blocked", "computer is blocked",
+    "call this number", "call the number",
+    "security alert", "security warning",
+    "tech support", "support scam",
+    "do not turn off your computer",
+    "your device is at risk",
+]
+
+# ── Continuation markers — if present, reuse prior incident context; else reset ───────────────
+_CONTINUATION_MARKERS = [
+    "still", "right now", "same thing", "same problem", "as i said",
+    "update:", "now they", "they're still", "they are still",
+    "continuing", "again", "also", "and then", "after that",
+    "it's still", "its still", "not yet", "haven't yet",
+]
+
+# ── Continuation detection ─────────────────────────────────────────────────────
+
+def _is_continuation(msg: str) -> bool:
+    """
+    Returns True if the current message indicates the user is continuing a
+    prior incident (e.g., 'they're still connected', 'update: now they...').
+    If False → reset incident context; scan current message only.
+    """
+    t = msg.lower()
+    return any(m in t for m in _CONTINUATION_MARKERS)
+
+
 # ── Incident type classifier ───────────────────────────────────────────────────
 
 def _classify_incident(msg_l: str, all_text: str):
     """
     Returns the most severe incident type string, or None if unknown.
     Used to select the right directive response bank.
+    Prefers current message (msg_l) for remote classification to prevent state bleed.
     """
     if any(s in all_text for s in _MONEY_SIGNALS):
         return "money"
-    if any(s in all_text for s in _REMOTE_SIGNALS):
+    # Remote access: HARD EVIDENCE required in current message (not just history)
+    if any(s in msg_l for s in _HARD_REMOTE_EVIDENCE):
+        return "remote_access"
+    # Fallback: check full context for remote (continuation case)
+    if any(s in all_text for s in _HARD_REMOTE_EVIDENCE):
         return "remote_access"
     if any(s in all_text for s in _OTP_SIGNALS):
         return "otp"
@@ -402,6 +478,33 @@ _FAILSAFE_ES = (
     "o diste un código a alguien? Una respuesta y te daré los pasos exactos para bloquearlo."
 )
 
+# --- Popup-only, low risk (no remote access evidence) ---
+# Tone: reassure, educate, ONE clarifying question. No banks, no reinstall, no panic.
+_POPUP_ONLY_EN = (
+    "Good news — closing that pop-up was exactly the right move. "
+    "These 'virus alert' or 'Microsoft warning' pop-ups are fake. "
+    "They're designed to scare you into calling a number or installing something. "
+    "Closing it means you didn't fall for it.\n\n"
+    "A couple of quick things to be safe:\n"
+    "• Don't call any phone number the pop-up showed you. Those go to scammers.\n"
+    "• Don't click any link that appeared in or around the pop-up.\n"
+    "• If the pop-up came back repeatedly or opened multiple tabs, clear your browser history "
+    "and close all the tabs — it was just an aggressive website, not a real infection.\n\n"
+    "Did you click anything on the pop-up before closing it, or did a phone number appear that you called?"
+)
+_POPUP_ONLY_ES = (
+    "Buenas noticias — cerrar esa ventana emergente fue exactamente lo correcto. "
+    "Esas alertas de 'virus detectado' o 'advertencia de Microsoft' son falsas. "
+    "Están diseñadas para asustarte y que llames a un número o instales algo. "
+    "Cerrarla significa que no caíste en la trampa.\n\n"
+    "Un par de cosas rápidas para estar seguros:\n"
+    "• No llames a ningún número de teléfono que haya aparecido en la ventana. Esos van a estafadores.\n"
+    "• No hagas clic en ningún enlace que haya aparecido dentro o alrededor de la ventana.\n"
+    "• Si la ventana seguía apareciendo o abrió varias pestañas, borra el historial del navegador "
+    "y cierra todas las pestañas — solo era un sitio web agresivo, no una infección real.\n\n"
+    "¿Hiciste clic en algo dentro de la ventana antes de cerrarla, o apareció un número de teléfono que llamaste?"
+)
+
 # --- Medical bleed patterns ---
 _MEDICAL_BLEED = [
     r"IMPORTANT\s*:\s*Please consult a healthcare professional[^.]*\.",
@@ -420,23 +523,54 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
     Pre-LLM: scans signals, classifies incident, determines overrides.
     Returns (updated_system_prompt, overrides_dict).
 
+    v2.2 STATE HYGIENE:
+      - If current message has no continuation markers → reset incident context.
+        Signal detection scopes to CURRENT MESSAGE ONLY (except money which always persists).
+      - Remote access requires _HARD_REMOTE_EVIDENCE. Popup keywords alone cannot trigger it.
+      - POPUP_ONLY_LOW_RISK: new scenario for popup-only events.
+
     overrides keys:
-      "escalation" : bilingual dict | None  — fires before directive
-      "directive"  : bilingual dict | None  — fires when directive mode + context known
-      "failsafe"   : bilingual dict | None  — fires when directive mode + no context
+      "escalation"   : bilingual dict | None  — fires before directive (money sent)
+      "directive"    : bilingual dict | None  — fires when directive mode + context known
+      "failsafe"     : bilingual dict | None  — fires when directive mode + no context
+      "popup_only"   : bilingual dict | None  — fires for popup-only low-risk events
     """
     recent_turns  = convo_context.get(email_lower, [])[-8:]
     all_user_text = " ".join(t.get("msg", "").lower() for t in recent_turns)
-    all_text      = all_user_text + " " + msg.lower()
+    msg_l         = msg.lower()
 
-    sig_money  = any(s in all_text for s in _MONEY_SIGNALS)
-    sig_remote = any(s in all_text for s in _REMOTE_SIGNALS)
-    sig_otp    = any(s in all_text for s in _OTP_SIGNALS)
-    sig_cred   = any(s in all_text for s in _CRED_SIGNALS)
-    sig_access = any(s in all_text for s in _ACCESS_SIGNALS)
-    sig_link   = any(s in all_text for s in _LINK_SIGNALS)
-    sig_amb    = (any(s in msg.lower() for s in _AMBIGUOUS)
-                  and len(msg.strip().split()) < 8)
+    # ── State Hygiene: continuation gate ────────────────────────────────────────
+    # If no continuity markers: treat this message as a fresh event.
+    # Scope signal detection to current message only (prevents state bleed).
+    # Money is the only exception — financial loss always persists across turns.
+    continuation = _is_continuation(msg_l)
+    scan_text    = (all_user_text + " " + msg_l) if continuation else msg_l
+
+    # ── Signal detection ────────────────────────────────────────────────────────
+    # Money: always scan full context (financial loss must never be forgotten)
+    sig_money = any(s in (all_user_text + " " + msg_l) for s in _MONEY_SIGNALS)
+
+    # Remote: HARD EVIDENCE required in scan_text (current msg only if no continuation)
+    sig_remote = any(s in scan_text for s in _HARD_REMOTE_EVIDENCE)
+
+    # Popup-only: popup signals present WITHOUT hard remote evidence
+    # Check scan_text (includes prior turn on continuation) so "still worried" after a popup turn is handled
+    sig_popup_only = (
+        any(s in scan_text for s in _POPUP_SIGNALS)
+        and not any(s in scan_text for s in _HARD_REMOTE_EVIDENCE)
+    )
+
+    sig_otp    = any(s in scan_text for s in _OTP_SIGNALS)
+    sig_cred   = any(s in scan_text for s in _CRED_SIGNALS)
+    sig_access = any(s in scan_text for s in _ACCESS_SIGNALS)
+    sig_link   = any(s in scan_text for s in _LINK_SIGNALS)
+    sig_amb    = (any(s in msg_l for s in _AMBIGUOUS) and len(msg.strip().split()) < 8)
+
+    logger.info(
+        f"🛡️ Guardian signals — continuation={continuation} remote={sig_remote} "
+        f"popup_only={sig_popup_only} money={sig_money} otp={sig_otp} "
+        f"cred={sig_cred} access={sig_access} link={sig_link}"
+    )
 
     # Phase / severity
     if sig_money:
@@ -447,29 +581,30 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
         phase, severity = "CONTAINMENT", 3
     elif sig_link:
         phase, severity = "TRIAGE", 2
+    elif sig_popup_only:
+        phase, severity = "INTAKE", 1
     else:
         phase, severity = "INTAKE", 1
 
-    overrides = {"escalation": None, "directive": None, "failsafe": None}
+    overrides = {"escalation": None, "directive": None, "failsafe": None, "popup_only": None}
 
     # ── Hard gate: money sent ──────────────────────────────────────────────────
     if sig_money:
         overrides["escalation"] = {"en": _MONEY_EN, "es": _MONEY_ES}
         logger.warning("🛡️ Guardian ESCALATION (money) fired — severity 4")
-        return system_prompt, overrides  # Return early — escalation wins
+        return system_prompt, overrides
 
     # ── Directive mode detection (shared 4-layer detector) ────────────────────
     dir_result = detect_directive_sync(msg)
     if dir_result["directive"]:
-        incident = _classify_incident(msg.lower(), all_text)
+        all_text_full = all_user_text + " " + msg_l
+        incident = _classify_incident(msg_l, all_text_full)
         context_present = has_incident_context(msg, recent_turns)
 
         if not context_present:
-            # Fail-safe: one step + one question, no hallucination
             overrides["failsafe"] = {"en": _FAILSAFE_EN, "es": _FAILSAFE_ES}
             logger.warning("🎯 GUARDIAN DIRECTIVE FIRED — no incident context → FAILSAFE bank set")
         else:
-            # Context known — pick specific bank
             if incident == "remote_access":
                 overrides["directive"] = {"en": _REMOTE_EN, "es": _REMOTE_ES}
             elif incident == "otp":
@@ -490,6 +625,14 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
             f"score={dir_result['score']} layer={dir_result['reason']} "
             f"override_key={'directive' if overrides.get('directive') else 'failsafe'}"
         )
+
+    # ── Popup-only low-risk gate ───────────────────────────────────────────────
+    # Fires when a popup was seen/closed but no hard remote-access evidence.
+    # Must NOT produce bank/freeze/reinstall language — reassure and ask one question.
+    if sig_popup_only and not sig_remote and not sig_otp and not sig_cred and not sig_access:
+        overrides["popup_only"] = {"en": _POPUP_ONLY_EN, "es": _POPUP_ONLY_ES}
+        logger.info("🛡️ Guardian POPUP_ONLY_LOW_RISK gate set — no hard remote evidence")
+        return system_prompt, overrides
 
     # ── Ambiguous reference inject ─────────────────────────────────────────────
     if sig_amb and recent_turns:
@@ -518,8 +661,6 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
     if sig_cred:   incident_lines.append("⚠️ Credentials or financial info may have been entered on a phishing site.")
     if sig_access: incident_lines.append("⚠️ Account may already be compromised or locked out.")
     if sig_link and not sig_remote:
-        # Only inject link warning when NOT also a remote-access incident
-        # (prevents the LLM from treating it as a simple phishing click)
         incident_lines.append("⚠️ A suspicious link or site was visited.")
 
     if incident_lines:
@@ -533,7 +674,7 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
         if sig_remote:
             logger.warning(
                 f"🛡️ Guardian REMOTE_ACCESS_TAKEOVER context injected — "
-                f"sig_link={sig_link} (suppressed), phase={phase}"
+                f"continuation={continuation} sig_link={sig_link} (suppressed), phase={phase}"
             )
 
     return system_prompt, overrides
@@ -563,7 +704,12 @@ def apply_gates(answer: str, overrides: dict, lang: str) -> str:
         logger.warning(f"🎯 GUARDIAN FAILSAFE GATE APPLIED — returning failsafe bank")
         return overrides["failsafe"]["es" if is_es else "en"]
 
-    # Gate 4: Strip medical disclaimer bleed
+    # Gate 4: Popup-only low-risk — reassure, no panic language
+    if overrides.get("popup_only"):
+        logger.info("🛡️ Guardian POPUP_ONLY gate applied — returning low-risk response")
+        return overrides["popup_only"]["es" if is_es else "en"]
+
+    # Gate 5: Strip medical disclaimer bleed
     for pat in _MEDICAL_BLEED:
         before = answer
         answer = re.sub(pat, "", answer, flags=re.IGNORECASE).strip()
