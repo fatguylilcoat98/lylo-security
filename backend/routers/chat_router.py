@@ -48,6 +48,7 @@ from services.prompt_builder import (
     build_hard_boundary_block, get_seat9_theology,
 )
 from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
+from services.response_composer import compose_response_shape
 
 # ── Robust sentence splitter — respects abbreviations (Dr. Mr. St. etc.) ──────
 import re as _re
@@ -2234,6 +2235,26 @@ MEMORY INTEGRITY RULE:
         system_prompt, _therapist_overrides = therapist_inject(
             system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
+    # ══════════════════════════════════════════════════════════════════════
+    # ── Response Composer — procedural variation (non-emergency only) ──────
+    # Hard gates declared above determine if composer stands down.
+    # Rule: "Hard gates are deterministic. Soft language is procedural."
+    # ══════════════════════════════════════════════════════════════════════
+    _composer_result = compose_response_shape(
+        persona             = persona,
+        msg                 = msg,
+        user_id             = user_id,
+        lang                = lang,
+        tavily_context      = tavily_context,
+        guardian_overrides  = _guardian_overrides,
+        therapist_overrides = _therapist_overrides,
+        mechanic_overrides  = _mechanic_overrides,
+        pastor_overrides    = _pastor_overrides,
+    )
+    if _composer_result["shape_instruction"]:
+        system_prompt += f"\n\n{_composer_result['shape_instruction']}"
+    # ── End Response Composer ───────────────────────────────────────────────
+
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
         # Warm voice guidance — human feel first, brevity second
@@ -2776,6 +2797,12 @@ RULES:
                 ),
                 # ── Therapy State Machine (Phase 2 Council build) ──────────
                 "therapy_state":    therapy_state,
+                # ── Response Composer debug ────────────────────────────────
+                "composer_shape":   _composer_result.get("used_shape_id"),
+                "composer_slots":   _composer_result.get("used_slots"),
+                "composer_sources": _composer_result.get("evidence_sources"),
+                "composer_gated":   _composer_result.get("gated_out"),
+                "composer_gate":    _composer_result.get("gate_reason"),
             }
             yield f"data: {json.dumps(meta)}\n\n"
 
