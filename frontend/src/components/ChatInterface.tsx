@@ -1,11 +1,14 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 31.8.4 — Walkie-talkie voice loop, silence detection, natural pauses + emergency auto-shield
+// Version: 31.8.5 — Veracore™ badge gated to real verification only
 // ─────────────────────────────────────────────────────────────────────────────
 // V31.2 Changes:
 //  [V31.2-1] FONT SIZE BUTTON — Aa button in bottom bar cycles 4 sizes
 //  [V31.2-2] BELL TOAST       — Visual feedback toast when bell is tapped
 //  [V31.2-3] SPANISH TOGGLE   — Gold highlight + flag emoji when ES active
+// V31.8.5 Changes:
+//  [V31.8.5-1] VERACORE GATE  — Badge only renders when show_veracore_badge=true
+//              Uses veracore_confidence (real score) not confidence_score (model fallback)
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -298,7 +301,6 @@ const UI_STRINGS: Record<string, Record<string, string>> = {
   },
 };
 
-// Spanish persona name map — shown in UI when lang === 'es'
 const PERSONA_NAMES_ES: Record<string, string> = {
   mechanic:  'Mecánico',
   doctor:    'Doctor',
@@ -314,7 +316,6 @@ const PERSONA_NAMES_ES: Record<string, string> = {
   guardian:  'Guardián',
 };
 
-// Auto-detect browser language on first load (before user manually toggles)
 const detectBrowserLang = (): 'en' | 'es' => {
   const stored = localStorage.getItem('lylo_lang');
   if (stored === 'en' || stored === 'es') return stored;
@@ -486,7 +487,7 @@ function ChatInterface({
   const [messages, setMessages]                         = useState<Message[]>([]);
   const [input, setInput]                               = useState('');
   const [loading, setLoading]                           = useState(false);
-  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // [FIX] auto-reset loading
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [userName, setUserName]                         = useState('User');
   const [bestieConfig, setBestieConfig]                 = useState<BestieConfig | null>(null);
   const [showBestieSetup, setShowBestieSetup]           = useState(false);
@@ -494,7 +495,7 @@ function ChatInterface({
   const [tempGender, setTempGender]                     = useState<'male' | 'female'>('female');
   const [isRecording, setIsRecording]                   = useState(false);
   const [isSpeaking, setIsSpeaking]                     = useState(false);
-  const isSpeakingRef = useRef(false); // sync ref for onresult echo gate
+  const isSpeakingRef = useRef(false);
   const [showDropdown, setShowDropdown]                 = useState(false);
   const [showCameraMenu, setShowCameraMenu]             = useState(false);
   const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>((userTierProp as any) ?? 'max');
@@ -503,7 +504,7 @@ function ChatInterface({
   const [isVoiceEnabled, setIsVoiceEnabled]             = useState(true);
   const [readingMode, setReadingMode]                   = useState<'sync' | 'fast'>('sync');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [bellToast, setBellToast]                       = useState('');          // [V31.2-2] Bell toast
+  const [bellToast, setBellToast]                       = useState('');
   const [selectedImage, setSelectedImage]               = useState<File | null>(null);
   const [previewUrl, setPreviewUrl]                     = useState<string | null>(null);
   const [showCrisisShield, setShowCrisisShield]         = useState(false);
@@ -530,32 +531,30 @@ function ChatInterface({
 
   const [showEndSessionModal, setShowEndSessionModal]   = useState(false);
   const [sessionContent, setSessionContent]             = useState('');
-  // ── Phase 1 Voice Architecture ─────────────────────────────────────────
-  const [toneAnalysis]                                  = useState(false); // disabled at launch — pipeline ready
+  const [toneAnalysis]                                  = useState(false);
   const silenceTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const silenceWarningRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastActivityRef   = useRef<number>(Date.now()); // tracks last any-activity for silence check
+  const lastActivityRef   = useRef<number>(Date.now());
   const [showSilenceCheck, setShowSilenceCheck]         = useState(false);
   const [emergencyShieldAuto, setEmergencyShieldAuto]   = useState(false);
-  // ── Presence-First: Vocal Energy Extraction (client-side edge) ──────────
   const audioContextRef   = useRef<AudioContext | null>(null);
   const analyserRef       = useRef<AnalyserNode | null>(null);
   const mediaStreamRef    = useRef<MediaStream | null>(null);
   const vocalEnergyRef    = useRef<'low' | 'medium' | 'high'>('medium');
   const speechRateRef     = useRef<'slow' | 'normal' | 'fast'>('normal');
-  const wordTimestamps    = useRef<number[]>([]); // for speech rate
-  const autoReopenRef     = useRef(false); // mic auto-reopen after TTS
-  const speechPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // silence auto-send
-  const silenceFiringRef = useRef(false); // true when silence timer has fired — blocks onend restart
-  const ttsStartTimeRef   = useRef<number>(0);  // when TTS started playing
-  const ttsEndTimeRef     = useRef<number>(0);   // when TTS finished
+  const wordTimestamps    = useRef<number[]>([]);
+  const autoReopenRef     = useRef(false);
+  const speechPauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceFiringRef = useRef(false);
+  const ttsStartTimeRef   = useRef<number>(0);
+  const ttsEndTimeRef     = useRef<number>(0);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef     = useRef<HTMLInputElement>(null);
   const photoInputRef    = useRef<HTMLInputElement>(null);
   const recognitionRef   = useRef<any>(null);
   const isRecordingRef   = useRef(false);
-  const lastInputModeRef = useRef<'voice' | 'text'>('text'); // captures mode before mic stops
+  const lastInputModeRef = useRef<'voice' | 'text'>('text');
   const accumulatedRef   = useRef('');
   const inputTextRef     = useRef('');
   const typewriterRef    = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -570,11 +569,9 @@ function ChatInterface({
     setIsSpeaking(v);
     isSpeakingRef.current = v;
     if (v) {
-      // LYLO talking — clear silence timers so popup never fires during TTS
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
       setShowSilenceCheck(false);
-      // Kill mic hard, prevent echo
       try { recognitionRef.current?.abort(); } catch {}
       try { recognitionRef.current?.stop(); } catch {}
       recognitionRef.current = null;
@@ -583,7 +580,6 @@ function ChatInterface({
       silenceFiringRef.current = false;
       if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
     } else {
-      // LYLO done — reopen mic after short settle
       if (autoReopenRef.current) {
         setTimeout(() => {
           if (!loading && !isRecordingRef.current) {
@@ -595,15 +591,12 @@ function ChatInterface({
               const rec = buildRecognition();
               if (rec) { recognitionRef.current = rec; rec.start(); }
             } catch { isRecordingRef.current = false; setIsRecording(false); }
-            // Silence check — only fire if no activity for 30s straight
-            // Does NOT restart on every exchange; checks elapsed time since lastActivityRef
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             if (silenceWarningRef.current) clearTimeout(silenceWarningRef.current);
             setShowSilenceCheck(false);
-            lastActivityRef.current = Date.now(); // reset on every mic reopen (= end of LYLO turn)
+            lastActivityRef.current = Date.now();
             silenceTimerRef.current = setTimeout(() => {
               const elapsed = Date.now() - lastActivityRef.current;
-              // Only show popup if 28+ seconds have passed with zero new activity
               if (elapsed >= 28000 && (isRecordingRef.current || autoReopenRef.current)) {
                 setShowSilenceCheck(true);
                 silenceWarningRef.current = setTimeout(() => {
@@ -744,7 +737,7 @@ function ChatInterface({
   const animateSynced = (text: string, msgId: string, audioEl: HTMLAudioElement | null) => {
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; }
     streamingTextRef.current = ''; setStreamingText(''); setStreamingMsgId(msgId);
-    lastActivityRef.current = Date.now(); // reset silence clock — LYLO responding = conversation active
+    lastActivityRef.current = Date.now();
 
     const startTyping = (msPerChar: number) => {
       let i = 0;
@@ -769,12 +762,11 @@ function ChatInterface({
     const SR = (window as any).webkitSpeechRecognition ?? (window as any).SpeechRecognition;
     if (!SR) return null;
     const rec = new SR();
-    rec.continuous     = false;  // v31.7.2 — works on Android Chrome
+    rec.continuous     = false;
     rec.interimResults = true;
     rec.lang           = lang === 'es' ? 'es-US' : 'en-US';
 
     rec.onresult = (e: any) => {
-      // Hard gate — discard everything while LYLO is speaking (echo prevention)
       if (isSpeaking || isSpeakingRef.current) return;
       let interim = '', final = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -785,7 +777,6 @@ function ChatInterface({
       const full = (accumulatedRef.current + interim).replace(/\s+/g, ' ').trim();
       setInput(full); inputTextRef.current = full;
 
-      // ── Silence Auto-Send — 1.5s pause triggers send ──
       if (silenceFiringRef.current) return;
       if (speechPauseTimeoutRef.current) clearTimeout(speechPauseTimeoutRef.current);
       if (full.trim().length > 0) {
@@ -826,7 +817,6 @@ function ChatInterface({
     };
 
     rec.onend = () => {
-      // Restart only if still recording AND silence timer hasn't fired AND not speaking
       if (isRecordingRef.current && !isSpeakingRef.current && !silenceFiringRef.current) {
         recognitionRef.current = buildRecognition();
         recognitionRef.current?.start();
@@ -836,18 +826,13 @@ function ChatInterface({
     return rec;
   };
 
-
-  // ── Vocal Energy Extraction — Web Audio API (client-side, zero latency) ──
-  // Detect mobile — AudioContext conflicts with SpeechRecognition on Android Chrome
   const _isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // ONE getUserMedia call total — stream stored in mediaStreamRef, stopped on send
   const startVocalAnalysis = (existingStream?: MediaStream) => {
-    // Skip vocal analysis on mobile — AudioContext blocks SpeechRecognition on Android
     if (_isMobile) return;
     try {
       const stream = existingStream || mediaStreamRef.current;
-      if (!stream) return; // no stream — energy stays medium
+      if (!stream) return;
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
       const analyser = ctx.createAnalyser();
@@ -868,7 +853,7 @@ function ChatInterface({
         requestAnimationFrame(measure);
       };
       measure();
-    } catch { /* audio context failed — energy stays medium */ }
+    } catch {}
   };
 
   const stopVocalAnalysis = () => {
@@ -878,7 +863,6 @@ function ChatInterface({
       try { mediaStreamRef.current.getTracks().forEach(t => { t.stop(); t.enabled = false; }); } catch {}
       mediaStreamRef.current = null;
     }
-    // Belt-and-suspenders: kill any lingering tracks via navigator
     try {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
         s.getTracks().forEach(t => t.stop());
@@ -886,7 +870,6 @@ function ChatInterface({
     } catch {}
   };
 
-  // ── Micro Chime — the LYLO "I heard you" signal ──────────────────────────
   const playPresenceChime = () => {
     try {
       const ctx = new AudioContext();
@@ -894,19 +877,18 @@ function ChatInterface({
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.frequency.setValueAtTime(528, ctx.currentTime);       // warm tone
+      osc.frequency.setValueAtTime(528, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.08, ctx.currentTime);          // very soft
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
       osc.onended = () => ctx.close();
-    } catch { /* audio not available */ }
+    } catch {}
   };
 
   const handleWalkieTalkieMic = () => {
     if (isRecording) {
-      // User manually stopping
       autoReopenRef.current = false;
       silenceFiringRef.current = false;
       isRecordingRef.current = false;
@@ -966,7 +948,6 @@ function ChatInterface({
     if (!text && !selectedImage) return;
     if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; setStreamingMsgId(null); }
     setLoading(true); setInput(''); inputTextRef.current = ''; accumulatedRef.current = ''; setShowPersonaGrid(false);
-    // [FIX] Safety net: if loading never resolves, auto-reset after 20s so user isn't frozen
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = setTimeout(() => {
       setLoading(false);
@@ -996,9 +977,9 @@ function ChatInterface({
       fd.append('use_long_term_memory', 'true'); fd.append('device_id', deviceId);
       fd.append('email_consent', emailConsent ? 'true' : 'false'); fd.append('voice', voiceToUse);
       fd.append('lang', lang);
-      fd.append('input_mode', lastInputModeRef.current); // Phase 1 — captured before mic stops
-      fd.append('vocal_energy', vocalEnergyRef.current);     // edge-extracted, zero latency
-      fd.append('speech_rate', speechRateRef.current);       // edge-extracted, zero latency
+      fd.append('input_mode', lastInputModeRef.current);
+      fd.append('vocal_energy', vocalEnergyRef.current);
+      fd.append('speech_rate', speechRateRef.current);
       if (selectedImage) fd.append('file', selectedImage);
       const apiRes = await fetch(`${API_URL}/chat`, { method: 'POST', body: fd });
       if (!apiRes.ok) throw new Error('API error');
@@ -1006,7 +987,6 @@ function ChatInterface({
       if (readingMode === 'sync') setStreamingMsgId(botMsgId);
       setStreamingText(''); setLoading(false);
       aqm.stop();
-      // ── Phase 1: clear any previous silence timers when new response starts ──
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
       if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
       setShowSilenceCheck(false); setEmergencyShieldAuto(false);
@@ -1025,7 +1005,6 @@ function ChatInterface({
             if (readingMode === 'sync') setStreamingText(fullAnswer);
             setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: fullAnswer } : m));
             if (isVoiceEnabled) {
-              // Kill mic BEFORE first audio chunk plays — closes echo gap on Android
               if (!isSpeakingRef.current) {
                 isSpeakingRef.current = true;
                 try { recognitionRef.current?.abort(); } catch {}
@@ -1041,10 +1020,20 @@ function ChatInterface({
       }
       const finalText = fullAnswer.trim();
       appendSessionContent(finalText, 'bot');
-      // ── Silence Detection — fires in ALL voice mode conversations ─────────────
-      // Silence timer starts after TTS finishes — handled in handleSpeakingChange
       const isLockout = metaData?.threat_level === 'high' && finalText.includes('DEVICE LIMIT EXCEEDED');
-      setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, content: finalText, confidenceScore: metaData?.confidence_score ?? 0, scamDetected: metaData?.scam_detected ?? false, actionTrigger: metaData?.action_trigger ?? null } : m));
+
+      // ── [V31.8.5-1] VERACORE GATE ─────────────────────────────────────────
+      // Only set veracoreValidated=true when backend confirms Veracore actually ran.
+      // Use veracore_confidence (real verified score) NOT confidence_score (model fallback).
+      // This prevents the badge from showing on every response at a hardcoded 85%.
+      setMessages(prev => prev.map(m => m.id === botMsgId ? {
+        ...m,
+        content: finalText,
+        confidenceScore:    metaData?.veracore_confidence ?? 0,
+        veracoreValidated:  metaData?.show_veracore_badge ?? false,
+        scamDetected:       metaData?.scam_detected ?? false,
+        actionTrigger:      metaData?.action_trigger ?? null,
+      } : m));
 
       if (metaData?.emergency && metaData?.persona_switched && metaData?.switched_persona) {
         const emergencyPersona = PERSONAS.find(p => p.id === metaData.switched_persona);
@@ -1064,10 +1053,9 @@ function ChatInterface({
     } catch (e) {
       console.error('[SEND] Error:', e); setStreamingMsgId(null); setLoading(false);
       if (loadingTimeoutRef.current) { clearTimeout(loadingTimeoutRef.current); loadingTimeoutRef.current = null; }
-      lastInputModeRef.current = 'text'; // reset after send
-      lastActivityRef.current = Date.now(); // reset silence clock on send
+      lastInputModeRef.current = 'text';
+      lastActivityRef.current = Date.now();
       if (speechPauseTimeoutRef.current) { clearTimeout(speechPauseTimeoutRef.current); speechPauseTimeoutRef.current = null; }
-      // [FIX] Show visible error to user instead of silent freeze
       const errText = lang === 'es'
         ? '⚠️ Algo salió mal. Por favor intenta de nuevo.'
         : '⚠️ Something went wrong. Please try again — tap the mic or type your question.';
@@ -1126,36 +1114,21 @@ function ChatInterface({
   const cycleFontSize = () => { const next = fontLevel >= 4 ? 1 : fontLevel + 1; setFontLevel(next); localStorage.setItem('lylo_font_level', String(next)); };
   const bailoutTypewriter = () => { if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null; } setStreamingMsgId(null); setStreamingText(''); };
 
-  // [V31.2-2] Bell toast helper
   const showBellToastMsg = (msg: string) => {
     setBellToast(msg);
     setTimeout(() => setBellToast(''), 3000);
   };
 
   const requestMobileAlerts = async () => {
-    if (!('Notification' in window)) {
-      showBellToastMsg('Notifications not supported on this browser');
-      return;
-    }
-    if (Notification.permission === 'granted') {
-      setNotificationsEnabled(true);
-      showBellToastMsg('🛡️ Alerts already active!');
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      showBellToastMsg('⚠️ Blocked — enable in browser settings');
-      return;
-    }
+    if (!('Notification' in window)) { showBellToastMsg('Notifications not supported on this browser'); return; }
+    if (Notification.permission === 'granted') { setNotificationsEnabled(true); showBellToastMsg('🛡️ Alerts already active!'); return; }
+    if (Notification.permission === 'denied') { showBellToastMsg('⚠️ Blocked — enable in browser settings'); return; }
     const p = await Notification.requestPermission();
     if (p === 'granted') {
-      setNotificationsEnabled(true);
-      showBellToastMsg('🔔 Alerts activated!');
+      setNotificationsEnabled(true); showBellToastMsg('🔔 Alerts activated!');
       new Notification('LYLO Alerts Active 🛡️', { body: 'Mission reminders enabled.', icon: '/logo.png' });
       sentinel.onPermissionGranted();
-    } else {
-      setNotificationsEnabled(false);
-      showBellToastMsg('Alerts turned off');
-    }
+    } else { setNotificationsEnabled(false); showBellToastMsg('Alerts turned off'); }
   };
 
   const scheduleMobileReminder = (msg: string, minutes = 30) => {
@@ -1234,7 +1207,6 @@ function ChatInterface({
         <button onClick={toggleLang} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl text-gray-400 text-xs font-bold hover:bg-white/10 transition-all">
           <Globe className="w-3.5 h-3.5" /> {t('lang_toggle')}
         </button>
-
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full bg-blue-600/5 blur-[120px]" />
         </div>
@@ -1242,7 +1214,6 @@ function ChatInterface({
           <div className="w-full h-[2px] bg-white/5 rounded-full mb-7 overflow-hidden">
             <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${progress}%` }} />
           </div>
-
           {onboardingStep === 0 && (
             <div className="animate-in fade-in zoom-in-95 duration-300">
               <div className="text-center mb-8">
@@ -1267,7 +1238,6 @@ function ChatInterface({
               <p className="text-center text-gray-600 text-xs mt-4 uppercase tracking-widest font-bold">5 questions · 30 seconds</p>
             </div>
           )}
-
           {isQ && currentQ && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
               <span className={`text-xs font-black uppercase tracking-[0.2em] ${qScheme.text}`}>{roundLabel} {onboardingStep} of {TOTAL}</span>
@@ -1277,74 +1247,22 @@ function ChatInterface({
                 {currentQ.options.map(opt => {
                   const isSelected = qCurrent === opt.value;
                   return (
-                    <button
-                      key={opt.value}
-                      onClick={async () => {
-                        await saveIntakeAnswer(currentQ.id, opt.value);
-                        setCustomAnswer('');
-                        setTimeout(() => {
-                          if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
-                          else if (onboardingRound === 1) completeRound1();
-                          else completeRound2();
-                        }, 180);
-                      }}
-                      className={`p-4 rounded-2xl border text-left transition-all duration-100 active:scale-[0.96] ${isSelected ? qScheme.selected : `bg-white/[0.03] border-white/[0.08] ${qScheme.ring}`}`}
-                    >
+                    <button key={opt.value} onClick={async () => { await saveIntakeAnswer(currentQ.id, opt.value); setCustomAnswer(''); setTimeout(() => { if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else if (onboardingRound === 1) completeRound1(); else completeRound2(); }, 180); }} className={`p-4 rounded-2xl border text-left transition-all duration-100 active:scale-[0.96] ${isSelected ? qScheme.selected : `bg-white/[0.03] border-white/[0.08] ${qScheme.ring}`}`}>
                       <div className="text-xl mb-2 leading-none">{opt.emoji}</div>
                       <div className="text-white font-bold text-xs leading-snug">{opt.label}</div>
                     </button>
                   );
                 })}
               </div>
-
               {'allowCustom' in currentQ && currentQ.allowCustom && (
                 <div className="flex gap-2 mb-4">
-                  <input
-                    value={customAnswer}
-                    onChange={e => setCustomAnswer(e.target.value)}
-                    onKeyDown={async e => {
-                      if (e.key === 'Enter' && customAnswer.trim()) {
-                        await saveIntakeAnswer(currentQ.id, customAnswer.trim());
-                        setCustomAnswer('');
-                        if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
-                        else if (onboardingRound === 1) completeRound1();
-                        else completeRound2();
-                      }
-                    }}
-                    placeholder={'customPlaceholder' in currentQ ? currentQ.customPlaceholder : t('custom_answer')}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none placeholder-gray-600"
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!customAnswer.trim()) return;
-                      await saveIntakeAnswer(currentQ.id, customAnswer.trim());
-                      setCustomAnswer('');
-                      if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
-                      else if (onboardingRound === 1) completeRound1();
-                      else completeRound2();
-                    }}
-                    className="px-4 py-3 bg-blue-600 rounded-xl text-white font-bold text-sm hover:bg-blue-500 transition-all"
-                  >
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  <input value={customAnswer} onChange={e => setCustomAnswer(e.target.value)} onKeyDown={async e => { if (e.key === 'Enter' && customAnswer.trim()) { await saveIntakeAnswer(currentQ.id, customAnswer.trim()); setCustomAnswer(''); if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else if (onboardingRound === 1) completeRound1(); else completeRound2(); } }} placeholder={'customPlaceholder' in currentQ ? currentQ.customPlaceholder : t('custom_answer')} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm outline-none placeholder-gray-600" />
+                  <button onClick={async () => { if (!customAnswer.trim()) return; await saveIntakeAnswer(currentQ.id, customAnswer.trim()); setCustomAnswer(''); if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else if (onboardingRound === 1) completeRound1(); else completeRound2(); }} className="px-4 py-3 bg-blue-600 rounded-xl text-white font-bold text-sm hover:bg-blue-500 transition-all"><ArrowRight className="w-4 h-4" /></button>
                 </div>
               )}
-
               <div className="flex gap-3">
-                {onboardingStep > 1 && (
-                  <button onClick={() => { setOnboardingStep(s => s - 1); setCustomAnswer(''); }} className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all"><ChevronLeft className="w-4 h-4" /> {t('back')}</button>
-                )}
-                <button
-                  onClick={() => {
-                    setCustomAnswer('');
-                    if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1);
-                    else if (onboardingRound === 1) completeRound1();
-                    else completeRound2();
-                  }}
-                  className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
-                >
-                  {t('skip')} <ChevronRight className="w-4 h-4" />
-                </button>
+                {onboardingStep > 1 && (<button onClick={() => { setOnboardingStep(s => s - 1); setCustomAnswer(''); }} className="px-5 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center gap-2 hover:bg-white/10 transition-all"><ChevronLeft className="w-4 h-4" /> {t('back')}</button>)}
+                <button onClick={() => { setCustomAnswer(''); if (onboardingStep < TOTAL) setOnboardingStep(s => s + 1); else if (onboardingRound === 1) completeRound1(); else completeRound2(); }} className="flex-1 py-4 bg-white/5 border border-white/10 rounded-xl text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all">{t('skip')} <ChevronRight className="w-4 h-4" /></button>
               </div>
             </div>
           )}
@@ -1380,81 +1298,42 @@ function ChatInterface({
     <div className="fixed inset-0 bg-black flex flex-col h-screen w-screen overflow-hidden font-sans z-[99999]">
       {showInstallModal && <InstallModal />}
 
-      {/* SILENCE CHECK — Phase 1 "I'm still here" soft prompt */}
       {showSilenceCheck && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200001] flex items-center justify-center p-6 animate-in fade-in duration-500">
           <div className="bg-[#111] border border-yellow-500/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(234,179,8,0.2)]">
             <div className="text-5xl mb-4">🛡️</div>
-            <h2 className="text-white font-black text-xl mb-3 leading-tight">
-              {lang === 'es' ? 'Oye, ¿sigues ahí?' : "Hey, still there?"}
-            </h2>
-            <p className="text-yellow-400 font-bold text-sm mb-6">
-              {lang === 'es' ? 'Dime algo cuando estés listo.' : "I'll wait — just say something when you're ready."}
-            </p>
-            <button
-              onClick={() => {
-                setShowSilenceCheck(false);
-                if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; }
-                // User confirmed they're here — restart silence timer fresh
-                silenceTimerRef.current = setTimeout(() => {
-                  if (isRecordingRef.current || autoReopenRef.current) {
-                    setShowSilenceCheck(true);
-                  }
-                }, 15000);
-              }}
-              className="w-full py-4 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest text-sm hover:bg-yellow-400 transition-all active:scale-95"
-            >
-              {lang === 'es' ? 'Estoy Bien' : "I'm Okay"}
-            </button>
+            <h2 className="text-white font-black text-xl mb-3 leading-tight">{lang === 'es' ? 'Oye, ¿sigues ahí?' : "Hey, still there?"}</h2>
+            <p className="text-yellow-400 font-bold text-sm mb-6">{lang === 'es' ? 'Dime algo cuando estés listo.' : "I'll wait — just say something when you're ready."}</p>
+            <button onClick={() => { setShowSilenceCheck(false); if (silenceWarningRef.current) { clearTimeout(silenceWarningRef.current); silenceWarningRef.current = null; } silenceTimerRef.current = setTimeout(() => { if (isRecordingRef.current || autoReopenRef.current) setShowSilenceCheck(true); }, 15000); }} className="w-full py-4 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest text-sm hover:bg-yellow-400 transition-all active:scale-95">{lang === 'es' ? 'Estoy Bien' : "I'm Okay"}</button>
           </div>
         </div>
       )}
 
-      {/* [V31.2-2] BELL TOAST */}
       {bellToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200000] animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-none">
-          <div className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-black text-sm shadow-[0_0_30px_rgba(99,102,241,0.4)] flex items-center gap-2 whitespace-nowrap">
-            <Bell className="w-4 h-4" /> {bellToast}
-          </div>
+          <div className="bg-indigo-600 text-white px-5 py-3 rounded-2xl font-black text-sm shadow-[0_0_30px_rgba(99,102,241,0.4)] flex items-center gap-2 whitespace-nowrap"><Bell className="w-4 h-4" /> {bellToast}</div>
         </div>
       )}
 
-      {/* EMERGENCY STEP-BY-STEP OVERLAY */}
       {showEmergency && emergencySteps.length > 0 && (
         <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[100010] p-4">
           <div className="bg-[#0a0a0a] border border-red-500 rounded-2xl max-w-md w-full p-6 shadow-[0_0_60px_rgba(239,68,68,0.2)]">
             <div className="text-red-400 font-bold text-[10px] tracking-widest uppercase mb-1">🚨 Emergency Protocol</div>
             <h2 className="text-white font-black text-xl mb-4 leading-tight">{emergencyTitle}</h2>
-            <div className="flex items-center gap-2 text-[11px] text-gray-500 font-bold uppercase tracking-widest mb-2">
-              <span className="text-[#39FF14]">Step {emergencyStep + 1}</span>
-              <span>{t('step_of')} {emergencySteps.length}</span>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-1.5 mb-5 overflow-hidden">
-              <div className="bg-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${((emergencyStep + 1) / emergencySteps.length) * 100}%` }} />
-            </div>
+            <div className="flex items-center gap-2 text-[11px] text-gray-500 font-bold uppercase tracking-widest mb-2"><span className="text-[#39FF14]">Step {emergencyStep + 1}</span><span>{t('step_of')} {emergencySteps.length}</span></div>
+            <div className="w-full bg-gray-800 rounded-full h-1.5 mb-5 overflow-hidden"><div className="bg-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${((emergencyStep + 1) / emergencySteps.length) * 100}%` }} /></div>
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 mb-5">
               <div className="text-red-400 font-black text-xs uppercase tracking-widest mb-2">STEP {emergencyStep + 1}</div>
               <p className="text-white text-base leading-relaxed font-semibold">{emergencySteps[emergencyStep]}</p>
             </div>
-            {emergencyStep === emergencySteps.length - 1 && emergencyWarning && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-5">
-                <p className="text-yellow-400 text-sm font-semibold">⚠️ {emergencyWarning}</p>
-              </div>
-            )}
-            {emergencyStep < emergencySteps.length - 1 ? (
-              <button onClick={() => setEmergencyStep(s => s + 1)} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-base transition-all active:scale-95">
-                ✅ {t('emerg_next')}
-              </button>
-            ) : (
-              <button onClick={() => setShowEmergency(false)} className="w-full py-4 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black font-black rounded-xl text-base transition-all active:scale-95">
-                {t('emerg_done')}
-              </button>
-            )}
+            {emergencyStep === emergencySteps.length - 1 && emergencyWarning && (<div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-5"><p className="text-yellow-400 text-sm font-semibold">⚠️ {emergencyWarning}</p></div>)}
+            {emergencyStep < emergencySteps.length - 1
+              ? <button onClick={() => setEmergencyStep(s => s + 1)} className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-base transition-all active:scale-95">✅ {t('emerg_next')}</button>
+              : <button onClick={() => setShowEmergency(false)} className="w-full py-4 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black font-black rounded-xl text-base transition-all active:scale-95">{t('emerg_done')}</button>}
           </div>
         </div>
       )}
 
-      {/* END SESSION PDF MODAL */}
       {showEndSessionModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100009] p-4">
           <div className="bg-[#0a0a0a] border border-[#39FF14]/30 rounded-2xl max-w-sm w-full p-6 shadow-[0_0_40px_rgba(57,255,20,0.1)]">
@@ -1473,44 +1352,23 @@ function ChatInterface({
         <div className="flex items-center justify-between">
           <div className="relative flex items-center gap-2 z-10">
             {!showPersonaGrid && (<button onClick={handleInternalBack} className="p-3 bg-white/5 rounded-xl text-white hover:bg-white/10 transition-colors"><ChevronLeft className="w-5 h-5" /></button>)}
-            {showPersonaGrid && (
-              <div className="flex flex-col justify-center ml-1">
-                <p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p>
-                <p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p>
-              </div>
-            )}
+            {showPersonaGrid && (<div className="flex flex-col justify-center ml-1"><p className="text-white font-black text-[11px] uppercase leading-none truncate max-w-[90px]">{userName}</p><p className="text-[8px] text-green-500 font-black mt-[3px] uppercase tracking-widest">{userTier}</p></div>)}
           </div>
-
           <div className="text-center absolute left-1/2 -translate-x-1/2 w-1/3">
             <h1 className="text-white font-black text-2xl tracking-[0.2em] leading-none">L<span className={getColor(activePersona.color, 'text')}>Y</span>LO</h1>
             <p className="text-[9px] text-gray-500 uppercase font-black tracking-[0.3em] mt-1 truncate">{activePersona.serviceLabel}</p>
           </div>
-
           <div className="flex items-center gap-2 z-10">
-            {/* [V31.2-3] Spanish toggle — gold highlight when ES active */}
-            <button
-              onClick={toggleLang}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
-                lang === 'es'
-                  ? 'bg-yellow-500 border-yellow-400 text-black shadow-[0_0_12px_rgba(234,179,8,0.4)]'
-                  : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              {lang === 'en' ? '🇲🇽 ES' : '🇺🇸 EN'}
-            </button>
+            <button onClick={toggleLang} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${lang === 'es' ? 'bg-yellow-500 border-yellow-400 text-black shadow-[0_0_12px_rgba(234,179,8,0.4)]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10'}`}>{lang === 'en' ? '🇲🇽 ES' : '🇺🇸 EN'}</button>
             <button onClick={requestMobileAlerts} title={notificationsEnabled ? 'Alerts Active' : 'Enable Alerts'} className={`p-3 rounded-xl transition-all ${notificationsEnabled ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500 hover:text-white' : 'bg-white/5 border border-white/10 text-gray-500 hover:bg-white/10 hover:text-white'}`}><Bell className="w-5 h-5" /></button>
             <button onClick={() => setShowCrisisShield(true)} className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse hover:bg-red-500 hover:text-white transition-all"><Shield className="w-5 h-5 fill-current" /></button>
           </div>
         </div>
       </div>
 
-      {/* Round 2 gentle reminder banner */}
       {showRound2Prompt && !showPersonaGrid && (
         <div className="mx-3 mt-2 p-3 bg-[#39FF14]/5 border border-[#39FF14]/20 rounded-xl flex items-center justify-between flex-shrink-0">
-          <div>
-            <p className="text-[#39FF14] text-xs font-black">{t('complete_profile')}</p>
-            <p className="text-gray-500 text-[10px] mt-0.5">{t('profile_prompt')}</p>
-          </div>
+          <div><p className="text-[#39FF14] text-xs font-black">{t('complete_profile')}</p><p className="text-gray-500 text-[10px] mt-0.5">{t('profile_prompt')}</p></div>
           <div className="flex gap-2 ml-3">
             <button onClick={() => { setOnboardingRound(2); setOnboardingStep(1); setShowRound2Prompt(false); setShowOnboarding(true); }} className="px-3 py-1.5 bg-[#39FF14] text-black text-[10px] font-black rounded-lg whitespace-nowrap">{t('profile_cta')}</button>
             <button onClick={() => setShowRound2Prompt(false)} className="px-3 py-1.5 bg-gray-800 text-gray-400 text-[10px] font-bold rounded-lg">{t('profile_skip')}</button>
@@ -1518,7 +1376,6 @@ function ChatInterface({
         </div>
       )}
 
-      {/* CRISIS SHIELD */}
       {showCrisisShield && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100002] flex items-center justify-center p-4">
           <div className="bg-[#111] border border-red-500/50 rounded-3xl w-full max-w-md p-6 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
@@ -1539,7 +1396,6 @@ function ChatInterface({
         </div>
       )}
 
-      {/* BESTIE SETUP */}
       {showBestieSetup && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[100005] flex items-center justify-center p-4">
           <div className="bg-pink-900/20 border border-pink-500/30 rounded-3xl w-full max-w-sm p-6 shadow-[0_0_50px_rgba(236,72,153,0.15)] text-center">
@@ -1555,11 +1411,7 @@ function ChatInterface({
       )}
 
       {/* CHAT AREA */}
-      <div
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto relative p-4 space-y-6"
-        style={{ paddingBottom: previewUrl ? '420px' : '320px', overflowAnchor: 'auto' }}
-      >
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px', overflowAnchor: 'auto' }}>
         {showPersonaGrid && (
           <div className="grid grid-cols-2 gap-3">
             {PERSONAS.map(p => (
@@ -1583,7 +1435,8 @@ function ChatInterface({
                 ? <span>{streamingText}<span className="inline-block w-[2px] h-[1em] bg-current ml-[1px] align-middle animate-pulse opacity-70" /></span>
                 : msg.content
               }
-              {msg.sender === 'bot' && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (() => {
+              {/* ── [V31.8.5-1] VERACORE BADGE — only renders when Veracore actually ran ── */}
+              {msg.sender === 'bot' && (msg as any).veracoreValidated && (msg.confidenceScore ?? 0) > 0 && msg.id !== streamingMsgId && (() => {
                 const score = msg.confidenceScore ?? 0;
                 const tier = score >= 80 ? 'high' : score >= 60 ? 'moderate' : 'low';
                 const tierLabel = tier === 'high' ? (lang === 'es' ? 'Alta Confianza' : 'High Confidence') : tier === 'moderate' ? (lang === 'es' ? 'Confianza Moderada' : 'Moderate Confidence') : (lang === 'es' ? 'Baja Confianza' : 'Low Confidence');
@@ -1605,12 +1458,8 @@ function ChatInterface({
             </div>
             {msg.sender === 'bot' && (msg as any).actionTrigger && (
               <div className="mt-3 mb-3 w-full max-w-[85%] space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {(msg as any).actionTrigger === 'email_dispatch' && (
-                  <button onClick={() => handleEmailDispatch(msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]"><Shield className="w-4 h-4 fill-current flex-shrink-0" /> Dispatch Tactical Report to Email</button>
-                )}
-                {(msg as any).actionTrigger === 'set_reminder' && (
-                  <button onClick={() => scheduleMobileReminder(msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]"><Bell className="w-4 h-4 flex-shrink-0" /> Set Mobile Reminder — 30 Min</button>
-                )}
+                {(msg as any).actionTrigger === 'email_dispatch' && (<button onClick={() => handleEmailDispatch(msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-indigo-700 to-indigo-600 border border-indigo-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(99,102,241,0.35)] hover:from-indigo-600 hover:to-indigo-500 transition-all active:scale-[0.98]"><Shield className="w-4 h-4 fill-current flex-shrink-0" /> Dispatch Tactical Report to Email</button>)}
+                {(msg as any).actionTrigger === 'set_reminder' && (<button onClick={() => scheduleMobileReminder(msg.content.length > 120 ? msg.content.slice(0, 120) + '…' : msg.content)} className="w-full py-4 px-6 bg-gradient-to-r from-violet-700 to-violet-600 border border-violet-400/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(139,92,246,0.35)] hover:from-violet-600 hover:to-violet-500 transition-all active:scale-[0.98]"><Bell className="w-4 h-4 flex-shrink-0" /> Set Mobile Reminder — 30 Min</button>)}
               </div>
             )}
           </div>
@@ -1651,39 +1500,16 @@ function ChatInterface({
 
         <div className="max-w-md mx-auto space-y-3">
           <div className="flex gap-2">
-            <button
-              onClick={handleWalkieTalkieMic}
-              onTouchStart={(e) => { e.preventDefault(); if (!loading) handleWalkieTalkieMic(); }}
-              disabled={loading}
-              className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'} ${loading ? 'opacity-40 cursor-not-allowed' : ''}`}
-              style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}
-            >
-              {isRecording
-                ? <><MicOff className="w-5 h-5" /> {lang === 'es' ? 'Toca para Enviar' : 'Tap to Send'}</>
-                : <><Mic className="w-5 h-5" /> {lang === 'es' ? 'Toca para Hablar' : 'Tap to Speak'}</>}
+            <button onClick={handleWalkieTalkieMic} onTouchStart={(e) => { e.preventDefault(); if (!loading) handleWalkieTalkieMic(); }} disabled={loading} className={`flex-1 py-5 rounded-[28px] font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl transition-all active:scale-[0.97] ${isRecording ? 'bg-red-500 text-white animate-pulse shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'bg-white text-black hover:bg-gray-100'} ${loading ? 'opacity-40 cursor-not-allowed' : ''}`} style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'manipulation' }}>
+              {isRecording ? <><MicOff className="w-5 h-5" /> {lang === 'es' ? 'Toca para Enviar' : 'Tap to Send'}</> : <><Mic className="w-5 h-5" /> {lang === 'es' ? 'Toca para Hablar' : 'Tap to Speak'}</>}
             </button>
-            <button
-              onClick={async () => {
-                if (streamingMsgId) { bailoutTypewriter(); if (pendingAudioRef.current && isVoiceEnabled) { const audio = await pendingAudioRef.current; pendingAudioRef.current = null; if (audio) playAudioSafely(audio); } }
-                const next = readingMode === 'sync' ? 'fast' : 'sync'; setReadingMode(next); localStorage.setItem('lylo_reading_mode', next);
-              }}
-              className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]"
-            >
+            <button onClick={async () => { if (streamingMsgId) { bailoutTypewriter(); if (pendingAudioRef.current && isVoiceEnabled) { const audio = await pendingAudioRef.current; pendingAudioRef.current = null; if (audio) playAudioSafely(audio); } } const next = readingMode === 'sync' ? 'fast' : 'sync'; setReadingMode(next); localStorage.setItem('lylo_reading_mode', next); }} className="px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] bg-white/10 border border-white/10 hover:bg-white/15 min-w-[56px]">
               {readingMode === 'sync' ? <><Type className="w-4 h-4 text-indigo-400" /><span className="text-indigo-400">Sync</span></> : <><Zap className="w-4 h-4 text-yellow-400" /><span className="text-yellow-400">Fast</span></>}
             </button>
             <button onClick={() => { if (streamingMsgId) bailoutTypewriter(); toggleVoice(); }} className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] ${isVoiceEnabled ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-white/10 text-gray-400 border border-white/10'}`}>
               {isVoiceEnabled ? <><Volume2 className="w-4 h-4" /><span>On</span></> : <><VolumeX className="w-4 h-4" /><span>Off</span></>}
             </button>
-            {/* [V31.2-1] FONT SIZE BUTTON */}
-            <button
-              onClick={cycleFontSize}
-              className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border ${
-                fontLevel === 1 ? 'bg-white/10 border-white/10 text-gray-400'
-                : fontLevel === 2 ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
-                : fontLevel === 3 ? 'bg-purple-500/20 border-purple-500/40 text-purple-400'
-                : 'bg-orange-500/20 border-orange-500/40 text-orange-400'
-              }`}
-            >
+            <button onClick={cycleFontSize} className={`px-4 py-5 rounded-[28px] flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border ${fontLevel === 1 ? 'bg-white/10 border-white/10 text-gray-400' : fontLevel === 2 ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : fontLevel === 3 ? 'bg-purple-500/20 border-purple-500/40 text-purple-400' : 'bg-orange-500/20 border-orange-500/40 text-orange-400'}`}>
               <span className={`leading-none font-black ${fontLevel === 1 ? 'text-sm' : fontLevel === 2 ? 'text-base' : fontLevel === 3 ? 'text-lg' : 'text-xl'}`}>Aa</span>
               <span>{fontLevel === 1 ? 'Sm' : fontLevel === 2 ? 'Md' : fontLevel === 3 ? 'Lg' : 'XL'}</span>
             </button>
@@ -1702,18 +1528,13 @@ function ChatInterface({
             </div>
             <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
-            <input
-              value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }}
-              disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={lang === 'es' ? `Escríbele a ${PERSONA_NAMES_ES[activePersona.id] ?? activePersona.name}…` : `Type to ${activePersona.name}…`}
-              className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`}
-            />
+            <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }} disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }} placeholder={lang === 'es' ? `Escríbele a ${PERSONA_NAMES_ES[activePersona.id] ?? activePersona.name}…` : `Type to ${activePersona.name}…`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`} />
             <button onClick={handleSend} disabled={loading} className="bg-indigo-600 text-white p-4 rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center disabled:opacity-50"><ArrowRight className="w-6 h-6" /></button>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.2</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.8.5</p>
           </div>
         </div>
       </div>
