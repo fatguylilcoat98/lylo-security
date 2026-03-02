@@ -140,7 +140,13 @@ _LEAKAGE_PATTERN = re.compile(
     r"SECURE\s+THE\s+PERIMETER\s*:?\s*|DIGITAL\s+PERIMETER\s*:?\s*|"
     r"THREAT\s+DETECTED\s*:?\s*|GUARDIAN\s+ALERT\s*:?\s*|"
     r"CLINICAL\s+NOTE\s*:?\s*|LEGAL\s+NOTE\s*:?\s*|"
-    r"FINANCIAL\s+NOTE\s*:?\s*|SAFETY\s+NOTE\s*:?\s*)",
+    r"FINANCIAL\s+NOTE\s*:?\s*|SAFETY\s+NOTE\s*:?\s*|"
+    # ── Veracore badge bleed — strip any badge text that leaks into response ──
+    r"_?Veracore[™TM]*\s*[:\-]?\s*|"
+    r"_?✅\s+(?:Cross-verified|Verified\s+\(Exact)|"
+    r"_?⚠️\s+Partially\s+verified|"
+    r"_?🔴\s+Low\s+confidence\s*\(\d+%\)|"
+    r"_?(?:High|Low|Medium)\s+Confidence\s*[\n\r]\s*\d+%_?)",
     re.IGNORECASE
 )
 def _strip_leakage(text: str) -> str:
