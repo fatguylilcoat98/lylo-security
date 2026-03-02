@@ -49,6 +49,7 @@ from services.prompt_builder import (
 )
 from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
 from services.response_composer import compose_response_shape
+from services.log_helper import safe_msg, safe_email, slog
 
 # ── Robust sentence splitter — respects abbreviations (Dr. Mr. St. etc.) ──────
 import re as _re
@@ -417,7 +418,7 @@ async def _get_tavily_context(persona: str, message: str, location: str) -> str:
             for k in stale:
                 del _TAVILY_EVIDENCE_CACHE[k]
 
-    logger.info(f"🌐 Tavily FRESH [{persona}] — {len(block)} chars, query='{query[:60]}'")
+    logger.info(f"🌐 Tavily FRESH [{persona}] — {len(block)} chars, query={safe_msg(query)}")
     return block
 
 
@@ -1089,7 +1090,7 @@ async def chat(
             f"terminated the request. Your session is secure. If you didn't send this, "
             f"someone may have access to your device."
         )
-        logger.warning(f"\U0001f6a8 PROMPT INJECTION detected from {email_lower[:6]}***: {msg[:120]}")
+        logger.warning(f"🚨 PROMPT INJECTION detected from {safe_email(email_lower)} — {safe_msg(msg)}")
 
         async def _stream_injection_alert():
             payload = json.dumps({"type": "text", "content": threat_msg})
@@ -1308,7 +1309,7 @@ async def chat(
 
     injection_block = detect_prompt_injection(msg)
     if injection_block:
-        logger.warning(f"🚨 INJECTION BLOCKED for {user_data['name']}: {msg[:80]}")
+        logger.warning(f"🚨 INJECTION BLOCKED for {safe_email(email_lower)} — {safe_msg(msg)}")
         async def _injection():
             yield f"data: {json.dumps({'type': 'text', 'content': injection_block})}\n\n"
             meta = {
@@ -1341,7 +1342,7 @@ async def chat(
     if _CRISIS_PATTERN.search(msg):
         _crisis_name = user_data.get("name", "")
         _is_es_crisis = (lang == "es")
-        logger.warning(f"🚨 CRISIS GATE FIRED for {email_lower} — message: '{msg[:80]}'")
+        logger.warning(f"🚨 CRISIS GATE FIRED for {safe_email(email_lower)} — {safe_msg(msg)}")
         _crisis_intro_en = (
             f"Hey{' ' + _crisis_name if _crisis_name else ''} — I'm right here with you. "
             "What you just shared matters, and I'm not going anywhere."
@@ -2506,7 +2507,7 @@ MEMORY INTEGRITY RULE:
                         f"I'm {_name}. That question falls outside my domain — "
                         f"switch to the right specialist and they'll have you covered."
                     )
-                logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
+                logger.warning(f"⚠️ Empty answer from [{persona}] — {safe_msg(msg)}")
 
             # ── Therapist Runtime Gates ────────────────────────────────────────
             therapy_state = None
