@@ -243,30 +243,39 @@ _MONEY_ES = (
 )
 
 # --- Remote access (RAT/TeamViewer/AnyDesk) ---
+# Canonical v2 — safety invariants enforced:
+#   ✅ Exactly 5 steps
+#   ✅ Zero URLs (no malwarebytes.com or any link)
+#   ✅ Offline-first scan instruction (USB transfer)
+#   ✅ Exactly one single-choice question, no "or" forks
 _REMOTE_EN = (
     "Someone had access to your screen — treat this device as compromised. Act in this order:\n"
     "1. Disconnect from the internet RIGHT NOW — unplug the ethernet or turn off Wi-Fi. "
     "This cuts off any active connection.\n"
-    "2. Do NOT change any passwords on this device yet. If there's a keylogger installed, "
-    "your new passwords will be stolen as you type them.\n"
-    "3. On a DIFFERENT device (your phone on cell data, or someone else's computer): "
-    "change passwords for email, bank, and any accounts you were logged into on this machine.\n"
-    "4. On the same safe device: enable two-factor authentication (2FA) for email and banking.\n"
-    "5. Return to the compromised computer and run a full scan with Malwarebytes (free at malwarebytes.com).\n"
-    "6. Check your bank and credit card statements for any charges you don't recognize.\n"
-    "Did they install any software or were you just on a call with them while they watched your screen?"
+    "2. Keep the device offline. Force quit any remote access software if you can, "
+    "but do not reconnect to the internet.\n"
+    "3. Do NOT change any passwords on this device. Keyloggers may capture them.\n"
+    "4. On a DIFFERENT, safe device (like your phone on cellular data): change passwords "
+    "for your email and bank, and enable two-factor authentication.\n"
+    "5. Do not trust the compromised computer until it has had an offline scan or a full "
+    "OS reinstall. If you need a scanner, download the installer from your safe device "
+    "and transfer it via USB.\n"
+    "What remote-access app (AnyDesk, TeamViewer, Quick Assist, etc.) was used, if any?"
 )
 _REMOTE_ES = (
-    "Alguien tuvo acceso a tu pantalla — trata este dispositivo como comprometido. Actúa en este orden:\n"
-    "1. Desconéctate de internet AHORA MISMO — desenchufa el cable o apaga el Wi-Fi.\n"
-    "2. NO cambies contraseñas en este dispositivo todavía. Si hay un keylogger instalado, "
-    "robarán tus nuevas contraseñas mientras las escribes.\n"
-    "3. Desde un dispositivo DIFERENTE (tu celular en datos móviles, o la computadora de alguien más): "
-    "cambia las contraseñas de correo, banco y cualquier cuenta a la que hayas accedido en esta máquina.\n"
-    "4. En ese mismo dispositivo seguro: activa la verificación en dos pasos (2FA) para correo y banco.\n"
-    "5. Vuelve a la computadora comprometida y ejecuta un escaneo completo con Malwarebytes (gratis).\n"
-    "6. Revisa tus estados de cuenta bancarios por cargos que no reconozcas.\n"
-    "¿Instalaron algún software o solo te observaron mientras hablabas con ellos?"
+    "Alguien tuvo acceso a tu pantalla — trata este dispositivo como comprometido. "
+    "Actúa en este orden:\n"
+    "1. Desconéctate de internet AHORA MISMO — desenchufa el cable ethernet o apaga el Wi-Fi. "
+    "Esto corta cualquier conexión activa.\n"
+    "2. Mantén el dispositivo sin conexión. Cierra a la fuerza cualquier software de acceso "
+    "remoto si puedes, pero no vuelvas a conectarte a internet.\n"
+    "3. NO cambies ninguna contraseña en este dispositivo. Los keyloggers pueden capturarlas.\n"
+    "4. En un dispositivo DIFERENTE y seguro (como tu teléfono con datos móviles): cambia "
+    "las contraseñas de tu correo electrónico y banco, y activa la verificación en dos pasos.\n"
+    "5. No confíes en la computadora comprometida hasta que haya tenido un escaneo sin conexión "
+    "o una reinstalación completa del sistema operativo. Si necesitas un escáner, descarga el "
+    "instalador desde tu dispositivo seguro y transfiérelo mediante USB.\n"
+    "¿Qué aplicación de acceso remoto (AnyDesk, TeamViewer, Quick Assist, etc.) se utilizó, si alguna?"
 )
 
 # --- OTP / verification code given out ---
