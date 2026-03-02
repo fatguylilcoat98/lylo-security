@@ -33,6 +33,32 @@ import logging
 
 logger = logging.getLogger("LYLO.DirectiveDetector")
 
+# ── Tag pattern — strip before detectors see the message ──────────────────────
+_PERSONA_TAG_RE = re.compile(
+    r'\[/?(?:GUARDIAN_DIRECTIVE|PERSONA_DIRECTIVE|DIRECTIVE_MODE)'
+    r'(?:[^\]]+)?\]',
+    re.IGNORECASE,
+)
+
+
+def normalize_input(msg: str) -> tuple[str, bool]:
+    """
+    Strip persona control tags from user input before running any detectors.
+
+    Returns:
+        (clean_msg, had_tag)
+        clean_msg — tag-free text for detectors; raw msg is preserved separately
+        had_tag   — True if a [GUARDIAN_DIRECTIVE] / [PERSONA_DIRECTIVE] tag was found
+
+    Usage in chat_router:
+        msg_for_detectors, _has_directive_tag = normalize_input(msg)
+        # pass msg_for_detectors to ALL detectors
+        # pass raw msg to the LLM
+    """
+    had_tag   = bool(_PERSONA_TAG_RE.search(msg))
+    clean_msg = _PERSONA_TAG_RE.sub("", msg).strip() or msg
+    return clean_msg, had_tag
+
 # ── Thresholds ─────────────────────────────────────────────────────────────────
 SCORE_THRESHOLD   = 60   # Directive fires at or above
 BORDERLINE_LOW    = 35   # Run semantic in this range
@@ -283,3 +309,45 @@ def has_incident_context(msg: str, recent_turns: list) -> bool:
     for turn in (recent_turns or [])[-6:]:
         all_text += " " + turn.get("msg", "").lower()
     return any(sig in all_text for sig in _SIGNALS)
+
+
+# ── Tag-aware resolver — used by chat_router pipeline ─────────────────────────
+
+def detect_directive_with_tag(msg: str, persona: str) -> dict:
+    """
+    Combined resolver for the chat_router pipeline (Step 3).
+
+    Runs normalize_input, then detect_directive_sync on clean text.
+    Also locks persona to GUARDIAN when a [GUARDIAN_DIRECTIVE] tag is present.
+
+    Returns:
+        {
+            "directive":          bool,
+            "directive_override": bool,   # True = suppress impatience/scam short-circuit
+            "locked_persona":     str,    # original persona unless tag forced GUARDIAN
+            "score":              int,
+            "reason":             str,
+            "had_tag":            bool,
+        }
+    """
+    _DIRECTIVE_PROTECTED = {"guardian", "doctor", "lawyer", "mechanic", "therapist", "wealth"}
+
+    clean_msg, had_tag = normalize_input(msg)
+    sync_result        = detect_directive_sync(clean_msg)
+
+    directive = sync_result["directive"] or had_tag
+
+    # Tag hard-locks persona to guardian regardless of which was selected
+    locked_persona = "guardian" if had_tag else persona
+
+    # directive_override suppresses ALL soft gates for protected personas
+    directive_override = directive and (locked_persona in _DIRECTIVE_PROTECTED)
+
+    return {
+        "directive":          directive,
+        "directive_override": directive_override,
+        "locked_persona":     locked_persona,
+        "score":              sync_result["score"],
+        "reason":             "tag_hard_lock" if had_tag else sync_result["reason"],
+        "had_tag":            had_tag,
+    }
