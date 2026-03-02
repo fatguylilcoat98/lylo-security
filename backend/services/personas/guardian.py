@@ -19,6 +19,7 @@ import logging
 from services.directive_detector import detect_directive_sync, has_incident_context
 
 logger = logging.getLogger("LYLO.Chat")
+logger.warning("🛡️ GUARDIAN v2.1 LOADED — directive_detector wired, Gemini audit applied")
 
 # ── Relational Voice ───────────────────────────────────────────────────────────
 PERSONA_STRING = (
@@ -345,7 +346,7 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
         if not context_present:
             # Fail-safe: one step + one question, no hallucination
             overrides["failsafe"] = {"en": _FAILSAFE_EN, "es": _FAILSAFE_ES}
-            logger.info("🛡️ Guardian DIRECTIVE fail-safe fired — no incident context")
+            logger.warning("🎯 GUARDIAN DIRECTIVE FIRED — no incident context → FAILSAFE bank set")
         else:
             # Context known — pick specific bank
             if incident == "remote_access":
@@ -361,9 +362,13 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
                 overrides["directive"] = {"en": _PHISHING_EN, "es": _PHISHING_ES}
             else:
                 overrides["failsafe"] = {"en": _FAILSAFE_EN, "es": _FAILSAFE_ES}
+                logger.warning(f"🎯 GUARDIAN DIRECTIVE FIRED — incident={incident} unresolved → FAILSAFE bank set")
 
-        logger.info(f"🛡️ Guardian DIRECTIVE fired: incident={incident}, "
-                    f"score={dir_result['score']}, reason={dir_result['reason']}")
+        logger.warning(
+            f"🎯 GUARDIAN DIRECTIVE FIRED — incident={incident} context={context_present} "
+            f"score={dir_result['score']} layer={dir_result['reason']} "
+            f"override_key={'directive' if overrides.get('directive') else 'failsafe'}"
+        )
 
     # ── Ambiguous reference inject ─────────────────────────────────────────────
     if sig_amb and recent_turns:
@@ -413,12 +418,12 @@ def apply_gates(answer: str, overrides: dict, lang: str) -> str:
 
     # Gate 2: Directive with known incident
     if overrides.get("directive"):
-        logger.info("🛡️ Guardian directive override applied")
+        logger.warning(f"🎯 GUARDIAN DIRECTIVE GATE APPLIED — returning incident bank")
         return overrides["directive"]["es" if is_es else "en"]
 
     # Gate 3: Directive fail-safe (no context)
     if overrides.get("failsafe"):
-        logger.info("🛡️ Guardian directive fail-safe applied")
+        logger.warning(f"🎯 GUARDIAN FAILSAFE GATE APPLIED — returning failsafe bank")
         return overrides["failsafe"]["es" if is_es else "en"]
 
     # Gate 4: Strip medical disclaimer bleed
