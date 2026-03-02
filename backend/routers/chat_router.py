@@ -50,6 +50,7 @@ from services.prompt_builder import (
 from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
 from services.response_composer import compose_response_shape
 from services.log_helper import safe_msg, safe_email, slog
+from services.directive_detector import detect_directive_sync
 
 # ── Robust sentence splitter — respects abbreviations (Dr. Mr. St. etc.) ──────
 import re as _re
@@ -1307,7 +1308,25 @@ async def chat(
 
     msg_lower = msg.lower()
 
-    injection_block = detect_prompt_injection(msg)
+    # ── Directive-mode pre-check ──────────────────────────────────────────────
+    # Run directive detection BEFORE injection check so panic phrases like
+    # "just tell me what to do / no questions" are never misclassified as
+    # prompt injection. For high-stakes personas (guardian, doctor, lawyer,
+    # mechanic), a directive signal means: skip injection redirect, let the
+    # persona fortress handle it.
+    # Personas where impatience redirect IS appropriate: bestie, hype, tutor, career, vitality, pastor
+    _DIRECTIVE_PROTECTED_PERSONAS = {"guardian", "doctor", "lawyer", "mechanic", "therapist", "wealth"}
+    _pre_directive = (
+        persona in _DIRECTIVE_PROTECTED_PERSONAS
+        and detect_directive_sync(msg)["directive"]
+    )
+    if _pre_directive:
+        logger.warning(
+            f"🎯 PRE-DIRECTIVE SHORT-CIRCUIT [{persona}] — "
+            f"skipping injection check, passing to persona fortress"
+        )
+
+    injection_block = None if _pre_directive else detect_prompt_injection(msg)
     if injection_block:
         logger.warning(f"🚨 INJECTION BLOCKED for {safe_email(email_lower)} — {safe_msg(msg)}")
         async def _injection():
