@@ -31,6 +31,18 @@ from services.memory_engine import (
     retrieve_intake_profile, retrieve_user_profile, synthesize_user_profile,
     get_or_create_vault, save_vault, auto_detect_pin_category, load_vault,
 )
+from services.personas.guardian  import PERSONA_STRING as GUARDIAN_STRING,  inject_fortress as guardian_inject,  apply_gates as guardian_gates
+from services.personas.doctor    import PERSONA_STRING as DOCTOR_STRING,    inject_fortress as doctor_inject,    apply_gates as doctor_gates
+from services.personas.lawyer    import PERSONA_STRING as LAWYER_STRING,    inject_fortress as lawyer_inject,    apply_gates as lawyer_gates
+from services.personas.mechanic  import PERSONA_STRING as MECHANIC_STRING,  inject_fortress as mechanic_inject,  apply_gates as mechanic_gates
+from services.personas.wealth    import PERSONA_STRING as WEALTH_STRING,    inject_fortress as wealth_inject,    apply_gates as wealth_gates
+from services.personas.career    import PERSONA_STRING as CAREER_STRING,    inject_fortress as career_inject,    apply_gates as career_gates
+from services.personas.vitality  import PERSONA_STRING as VITALITY_STRING,  inject_fortress as vitality_inject,  apply_gates as vitality_gates
+from services.personas.tutor     import PERSONA_STRING as TUTOR_STRING,     inject_fortress as tutor_inject,     apply_gates as tutor_gates
+from services.personas.pastor    import PERSONA_STRING as PASTOR_STRING,    inject_fortress as pastor_inject,    apply_gates as pastor_gates
+from services.personas.hype      import PERSONA_STRING as HYPE_STRING,      inject_fortress as hype_inject,      apply_gates as hype_gates
+from services.personas.bestie    import PERSONA_STRING as BESTIE_STRING,    inject_fortress as bestie_inject,    apply_gates as bestie_gates
+from services.personas.therapist import PERSONA_STRING as THERAPIST_STRING, inject_fortress as therapist_inject, apply_gates as therapist_gates
 from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
     build_hard_boundary_block, get_seat9_theology,
@@ -137,83 +149,277 @@ async def _noop_vault():
     return None
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# TAVILY — Domain-Restricted Evidence Grounding
+# Helper functions + drop-in replacement for _get_tavily_context()
+# Deployed: directive detector session — Gemini-audited + 21/21 tests passing
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _normalize_for_cache(msg: str) -> str:
+    STOPWORDS = {
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+        "i", "my", "me", "we", "you", "it", "in", "on", "at", "to", "for",
+        "of", "and", "or", "so", "do", "did", "does", "can", "could", "would",
+        "should", "will", "have", "has", "had", "this", "that", "these", "those",
+        "tell", "please", "help", "know", "about", "what",
+    }
+    normalized = msg.lower()
+    normalized = re.sub(r"401\s*\(k\)", "401k", normalized)
+    normalized = re.sub(r"roth\s+ira", "rothira", normalized)
+    tokens = re.sub(r"[^\w\s]", " ", normalized).split()
+    meaningful = sorted(t for t in tokens if t not in STOPWORDS and len(t) > 1)
+    return " ".join(meaningful[:12])
+
+
+def _location_bucket(location: str) -> str:
+    if not location:
+        return "US"
+    loc_upper = location.upper().strip()
+    if re.match(r'^[A-Z]{2}$', loc_upper):
+        return loc_upper
+    _STATE_ABBREVS = {
+        "CALIFORNIA": "CA", "TEXAS": "TX", "FLORIDA": "FL", "NEW YORK": "NY",
+        "GEORGIA": "GA", "ARIZONA": "AZ", "NEVADA": "NV", "OHIO": "OH",
+        "ILLINOIS": "IL", "PENNSYLVANIA": "PA", "WASHINGTON": "WA",
+        "COLORADO": "CO", "MICHIGAN": "MI", "NORTH CAROLINA": "NC",
+        "VIRGINIA": "VA", "TENNESSEE": "TN", "INDIANA": "IN",
+    }
+    for name, abbrev in _STATE_ABBREVS.items():
+        if name in loc_upper:
+            return abbrev
+    return loc_upper[:10] or "US"
+
+
+_DOMAIN_ALLOWLISTS = {
+    "doctor": (
+        "site:medlineplus.gov OR site:cdc.gov OR site:nih.gov "
+        "OR site:fda.gov OR site:nlm.nih.gov"
+    ),
+    "lawyer": (
+        "site:law.cornell.edu OR site:uscourts.gov OR site:justice.gov "
+        "OR site:congress.gov OR site:usa.gov OR site:.gov"
+    ),
+    "wealth": (
+        "site:irs.gov OR site:treasury.gov OR site:investor.gov "
+        "OR site:consumerfinance.gov OR site:sec.gov OR site:fdic.gov"
+    ),
+    "mechanic":  None,
+    "guardian":  None,
+    "therapist": None,
+    "vitality":  None,
+    "career":    None,
+    "tutor":     None,
+    "hype":      None,
+    "pastor":    None,
+    "bestie":    None,
+}
+
+_HIGHSTAKES_TRIGGERS = {
+    "doctor": {
+        "dose", "dosage", "dosing", "interaction", "interactions", "side effect",
+        "side effects", "medication", "medicine", "drug", "drugs",
+        "prescription", "prescribed", "overdose", "antibiotic", "vaccine",
+        "vaccination", "ibuprofen", "tylenol", "acetaminophen", "mg", "milligram",
+        "pill", "pills", "tablet", "supplement", "vitamin",
+        "symptom", "symptoms", "sore", "sore throat", "fatigue", "fever", "pain",
+        "ache", "aches", "rash", "nausea", "vomiting", "headache", "migraine",
+        "dizzy", "dizziness", "cough", "cold", "flu", "swollen", "swelling",
+        "bleeding", "bruise", "bruising", "numbness", "tingling", "shortness",
+        "breathe", "breathing", "congestion", "runny nose", "chills", "sweating",
+        "itching", "burning", "stomach", "diarrhea", "constipation", "bloating",
+        "diagnosis", "diagnose", "treatment", "treat", "allergy", "allergic",
+        "blood pressure", "diabetes", "cholesterol", "infection", "virus", "bacteria",
+        "cancer", "heart", "stroke", "chest pain", "emergency", "urgent care",
+        "hypertension", "anxiety", "depression", "insomnia", "sleep", "weight",
+    },
+    "lawyer": {
+        "law", "legal", "illegal", "lawsuit", "sue", "sued", "court", "judge",
+        "statute", "statutes", "contract", "contracts", "rights", "right",
+        "arrest", "arrested", "warrant", "police", "attorney", "lawyer",
+        "record", "recording", "consent", "tenant", "landlord", "eviction",
+        "copyright", "trademark", "patent", "discrimination", "harassment",
+        "liable", "liability", "negligence", "penalty", "fine", "felony",
+        "misdemeanor", "parole", "probation", "appeal", "settlement",
+        "jurisdiction", "federal", "state law", "ordinance", "regulation",
+    },
+    "wealth": {
+        "401k", "401(k)", "roth", "ira", "roth ira", "contribution limit",
+        "tax", "taxes", "irs", "deduction", "deductions", "bracket", "brackets",
+        "capital gains", "w2", "1099", "refund", "audit", "write off",
+        "interest rate", "apr", "apy", "mortgage", "refinance", "credit score",
+        "debt", "bankruptcy", "investment", "stock", "etf", "index fund",
+        "social security", "medicare", "medicaid", "pension", "beneficiary",
+        "estate", "inheritance", "gift tax", "contribution", "limit", "threshold",
+        "inflation", "recession", "fdic", "insured", "yield", "dividend",
+    },
+}
+
+_RECENCY_SIGNALS = {
+    "2025", "2026", "2027", "current", "currently", "latest", "new rule",
+    "new law", "recently", "this year", "updated", "update", "changed",
+    "effective", "effective date", "as of", "now",
+}
+
+_GENERAL_TRIGGERS = {
+    "how do i", "what is", "is it safe", "should i", "what are",
+    "how much", "is this", "what does", "can i", "when should",
+    "what happens", "is there", "how long", "how often", "best way",
+    "help me understand", "explain", "difference between",
+}
+
+_HIGH_STAKES_PERSONAS  = {"doctor", "lawyer", "wealth"}
+_TIMEOUT_HIGHSTAKES    = 1.8   # seconds — enough headroom for advanced Tavily search
+_TIMEOUT_DEFAULT       = 1.2   # seconds — non-critical personas
+
+
+def _should_search(persona: str, message: str) -> bool:
+    msg_l = message.lower()
+    if persona in _HIGH_STAKES_PERSONAS:
+        triggers = _HIGHSTAKES_TRIGGERS.get(persona, set())
+        if any(kw in msg_l for kw in triggers):
+            return True
+        if any(sig in msg_l for sig in _RECENCY_SIGNALS):
+            return True
+        return False
+    return any(t in msg_l for t in _GENERAL_TRIGGERS)
+
+
+def _build_tavily_query(persona: str, message: str, location: str) -> str:
+    _FILLER = re.compile(
+        r'\b(please|can you|could you|tell me|help me|i need to know|'
+        r'what about|just|like|um|uh|so|hey|hi)\b',
+        re.IGNORECASE
+    )
+    clean_msg = _FILLER.sub("", message).strip()
+    clean_msg = re.sub(r'\s+', ' ', clean_msg).strip()
+    domain_filter = _DOMAIN_ALLOWLISTS.get(persona)
+    loc_hint = f" {location}" if persona == "lawyer" and location else ""
+    if domain_filter:
+        return f"{clean_msg}{loc_hint} ({domain_filter})"
+    _TOPIC_FRAMES = {
+        "mechanic":  "car vehicle repair fix",
+        "guardian":  "cybersecurity scam fraud protection",
+        "therapist": "mental health emotional coping",
+        "vitality":  "fitness nutrition health",
+        "career":    "career job professional workplace",
+        "tutor":     "explanation learn understand",
+        "hype":      "content strategy social media",
+        "pastor":    "faith spirituality scripture",
+        "bestie":    "advice relationship personal",
+    }
+    frame = _TOPIC_FRAMES.get(persona, "")
+    return f"{clean_msg} {frame}".strip()
+
+
+def _format_evidence_block(resp: dict, persona: str) -> str:
+    from urllib.parse import urlparse
+    parts = []
+    char_budget = 700
+    seen_domains: set = set()
+    answer = (resp.get("answer") or "").strip()
+    if answer and len(answer) > 20:
+        answer_trunc = answer[:200] + ("…" if len(answer) > 200 else "")
+        parts.append(f"Summary: {answer_trunc}")
+        char_budget -= len(answer_trunc) + 12
+    for r in resp.get("results", []):
+        if char_budget <= 0 or len(parts) >= 4:
+            break
+        url     = r.get("url", "")
+        title   = (r.get("title", "") or "")[:60]
+        snippet = (r.get("content", "") or "")[:220]
+        if not snippet:
+            continue
+        try:
+            domain = urlparse(url).netloc.replace("www.", "")
+        except Exception:
+            domain = url[:40]
+        if domain in seen_domains:
+            continue
+        seen_domains.add(domain)
+        entry = f"• {title} ({domain}) — {snippet}"
+        if url:
+            entry += f" [{url}]"
+        if len(entry) > char_budget:
+            entry = entry[:char_budget] + "…"
+        parts.append(entry)
+        char_budget -= len(entry)
+    if not parts:
+        return ""
+    body = "\n".join(parts)
+    return (
+        "\n\n━━━ VERIFIED EVIDENCE (paraphrase only — do not copy wording) ━━━\n"
+        + body
+        + "\n\nInstruction: Use this evidence to be accurate and current. "
+        "Keep your relational persona voice — do not sound like the source. "
+        "Prefer 'Based on what I found…' over confident ungrounded specifics. "
+        "If evidence is absent on a high-stakes question, give safe general guidance "
+        "and recommend the user verify with a licensed professional.\n"
+        "━━━ END VERIFIED EVIDENCE ━━━"
+    )
+
+
 async def _get_tavily_context(persona: str, message: str, location: str) -> str:
+    """
+    Domain-restricted evidence grounding with TTL cache and graceful fallback.
+    Replaces the old open-search version. Gemini-audited, 21/21 tests passing.
+    """
     if not tavily_client:
         return ""
+    if not _should_search(persona, message):
+        return ""
 
-    PERSONA_QUERY_MAP = {
-        "doctor":    f"{message} medical health symptoms treatment",
-        "lawyer":    f"{message} legal rights law advice",
-        "wealth":    f"{message} personal finance investment advice",
-        "mechanic":  f"{message} car vehicle repair fix test drive bronco ford truck dealership buy purchase",
-        "therapist": f"{message} mental health emotional wellbeing coping",
-        "vitality":  f"{message} fitness nutrition exercise health",
-        "career":    f"{message} career job workplace professional advice",
-        "tutor":     f"{message} explanation learn understand",
-        "guardian":  f"{message} cybersecurity scam fraud safety protect identity theft digital security",
-        "hype":      f"{message} content creation social media strategy",
-        "pastor":    f"{message} faith spirituality scripture meaning",
-        "bestie":    f"{message} advice relationship personal",
-    }
+    norm_msg   = _normalize_for_cache(message)
+    loc_bucket = _location_bucket(location)
+    cache_key  = hashlib.md5(
+        f"{persona}|{norm_msg}|{loc_bucket}".encode()
+    ).hexdigest()
 
-    ALWAYS_SEARCH = {"doctor", "lawyer", "wealth", "guardian", "mechanic"}
-    SEARCH_TRIGGERS = {
-        "how do i", "what is", "is it safe", "should i", "what are",
-        "how much", "is this", "what does", "can i", "when should",
-        "what happens", "is there", "how long", "how often", "best way",
-        "help me understand", "explain", "difference between",
-    }
+    now    = time.monotonic()
+    cached = _TAVILY_EVIDENCE_CACHE.get(cache_key)
+    if cached and (now - cached["ts"]) < _CACHE_TTL_SECS:
+        logger.info(f"🌐 Tavily cache HIT [{persona}] key={cache_key[:8]}")
+        return cached["block"]
 
-    if persona not in ALWAYS_SEARCH:
-        msg_lower = message.lower()
-        if not any(t in msg_lower for t in SEARCH_TRIGGERS):
-            return ""
-
-    query = PERSONA_QUERY_MAP.get(persona, message)
-    loc   = location or ""
+    query   = _build_tavily_query(persona, message, location)
+    timeout = _TIMEOUT_HIGHSTAKES if persona in _HIGH_STAKES_PERSONAS else _TIMEOUT_DEFAULT
 
     try:
         resp = await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: tavily_client.search(
-                    query          = f"{query} {loc}".strip(),
+                    query          = query,
                     search_depth   = "advanced",
                     max_results    = 4,
                     include_answer = True,
                 )
             ),
-            timeout=4.0
+            timeout=timeout
         )
-
-        parts = []
-        if resp.get("answer"):
-            parts.append(f"VERIFIED ANSWER: {resp['answer']}")
-        for r in resp.get("results", [])[:3]:
-            title   = r.get("title", "")
-            snippet = r.get("content", "")[:250]
-            source  = r.get("url", "")
-            if snippet:
-                parts.append(f"SOURCE — {title}: {snippet} [{source}]")
-
-        if not parts:
-            return ""
-
-        return (
-            "\n\n━━━ REAL-TIME VERIFIED INTELLIGENCE ━━━\n"
-            "The following was retrieved RIGHT NOW from trusted sources.\n"
-            "Use this to give accurate, up-to-date answers. Cite the source "
-            "when it materially affects your answer.\n\n"
-            + "\n".join(parts)
-            + "\n━━━ END VERIFIED INTELLIGENCE ━━━"
-        )
-
     except asyncio.TimeoutError:
-        logger.warning(f"⏱️ Tavily timeout for [{persona}] — responding from training knowledge")
+        logger.warning(f"⏱️ Tavily timeout [{persona}] ({timeout}s) — skipping evidence grounding")
         return ""
     except Exception as e:
-        logger.warning(f"⚠️ Tavily error for [{persona}]: {e}")
+        logger.warning(f"⚠️ Tavily error [{persona}]: {e}")
         return ""
+
+    block = _format_evidence_block(resp, persona)
+    if not block:
+        logger.info(f"🌐 Tavily [{persona}]: no usable results")
+        return ""
+
+    async with _cache_lock:
+        _TAVILY_EVIDENCE_CACHE[cache_key] = {"ts": now, "block": block}
+        if len(_TAVILY_EVIDENCE_CACHE) > 500:
+            stale = [k for k, v in _TAVILY_EVIDENCE_CACHE.items()
+                     if (now - v["ts"]) >= _CACHE_TTL_SECS]
+            for k in stale:
+                del _TAVILY_EVIDENCE_CACHE[k]
+
+    logger.info(f"🌐 Tavily FRESH [{persona}] — {len(block)} chars, query='{query[:60]}'")
+    return block
+
+
 
 
 @router.post("/generate-audio")
@@ -237,6 +443,11 @@ async def generate_audio(
 
 _HOOK_CACHE: dict = {}         # key -> {"ts": float, "hooks": [hash], "types": [type]}
 _HOOK_CACHE_TTL = 60 * 60 * 6  # 6 hours
+
+# ── Tavily Evidence Cache (domain-restricted grounding) ───────────────────────
+_TAVILY_EVIDENCE_CACHE: dict = {}   # key -> {"ts": float, "block": str}
+_CACHE_TTL_SECS = 900               # 15 minutes
+_cache_lock = asyncio.Lock()        # prevents stampede on identical concurrent calls
 
 def _hk_key(user_id: str, persona: str, lang: str) -> str:
     return f"{user_id}:{persona.lower()}:{lang}"
@@ -1108,6 +1319,90 @@ async def chat(
             yield f"data: {json.dumps(meta)}\n\n"
         return StreamingResponse(_injection(), media_type="text/event-stream")
 
+    # ══════════════════════════════════════════════════════════════════════
+    # CRISIS GATE — Server-side self-harm/suicide detection (NON-NEGOTIABLE)
+    # Fires BEFORE LLM, BEFORE routing, BEFORE any persona logic.
+    # Safety > intent. Even hypothetical/conditional triggers must fire.
+    # ══════════════════════════════════════════════════════════════════════
+    import re as _re_crisis
+    _CRISIS_PATTERN = _re_crisis.compile(
+        r'\b('
+        r'kill myself|suicide|suicidal|end my life|take my life|'
+        r'hurt myself|harm myself|cut myself|self[-\s]?harm|'
+        r'i want to die|dont want to live|dont want to live|'
+        r'end it all|cant go on|cant go on|no reason to live|'
+        r'not worth living|want it to stop|make it stop|'
+        r'what if i (?:wanted to )?(?:kill myself|hurt myself|cut myself)|'
+        r'if i (?:kill myself|hurt myself|cut myself)'
+        r')\b',
+        _re_crisis.IGNORECASE
+    )
+    if _CRISIS_PATTERN.search(msg):
+        _crisis_name = user_data.get("name", "")
+        _is_es_crisis = (lang == "es")
+        logger.warning(f"🚨 CRISIS GATE FIRED for {email_lower} — message: '{msg[:80]}'")
+        _crisis_intro_en = (
+            f"Hey{' ' + _crisis_name if _crisis_name else ''} — I'm right here with you. "
+            "What you just shared matters, and I'm not going anywhere."
+        )
+        _crisis_intro_es = (
+            f"Oye{' ' + _crisis_name if _crisis_name else ''} — estoy aquí contigo. "
+            "Lo que acabas de compartir importa, y no me voy a ir."
+        )
+        _crisis_body_en = (
+            f"Hey{' ' + _crisis_name if _crisis_name else ''} — I hear you, and I'm glad you said something.\n\n"
+            "Right now, the most important thing is that you're not alone in this.\n\n"
+            "If you're in the US, you can reach the 988 Suicide & Crisis Lifeline by calling or texting **988** — "
+            "they're available 24/7 and they will listen without judgment.\n\n"
+            "I'm here too. Can you tell me what's going on right now?"
+        )
+        _crisis_body_es = (
+            f"Oye{' ' + _crisis_name if _crisis_name else ''} — te escucho, y me alegra que lo hayas dicho.\n\n"
+            "Ahora mismo, lo más importante es que no estás solo/a en esto.\n\n"
+            "Si estás en los EE.UU., puedes comunicarte con la Línea de Crisis 988 llamando o enviando un mensaje al **988** — "
+            "están disponibles las 24 horas y escucharán sin juzgar.\n\n"
+            "También estoy aquí. ¿Puedes contarme qué está pasando ahora mismo?"
+        )
+        _crisis_intro = _crisis_intro_es if _is_es_crisis else _crisis_intro_en
+        _crisis_body  = _crisis_body_es  if _is_es_crisis else _crisis_body_en
+
+        async def _stream_crisis():
+            _audio = await generate_audio_inline(_crisis_intro, voice)
+            yield f"data: {json.dumps({'type': 'text', 'content': _crisis_intro, 'audio_b64': _audio})}\n\n"
+            await asyncio.sleep(0.008)
+            _meta = {
+                "type": "meta", "confidence_score": 99,
+                "scam_detected": False, "threat_level": "high",
+                "action_trigger": None, "audio_b64": "",
+                "full_answer": _crisis_body,
+                "emergency": True,
+                "emergency_steps": [
+                    ("Llama o envía texto al 988 ahora" if _is_es_crisis else "Call or text 988 now"),
+                    ("Dile a alguien de confianza lo que sientes" if _is_es_crisis else "Tell someone you trust how you're feeling"),
+                    ("Mantente en línea — estoy aquí contigo" if _is_es_crisis else "Stay on — I'm here with you"),
+                ],
+                "emergency_warning": (
+                    "Si estás en peligro inmediato, llama al 911 ahora." if _is_es_crisis
+                    else "If you are in immediate danger, call 911 now."
+                ),
+                "emergency_title": "Crisis Support" if not _is_es_crisis else "Apoyo en Crisis",
+                "switched_persona": "therapist",
+                "persona_switched": persona != "therapist",
+                "usage_count": USAGE_TRACKER.get(user_id, 0),
+                "limit": limit,
+                "therapy_state": {"phase": "CRISIS", "tolerance": "RED", "intensity": 10},
+            }
+            yield f"data: {json.dumps(_meta)}\n\n"
+        # Store turn in CONVO_CONTEXT
+        if email_lower not in CONVO_CONTEXT:
+            CONVO_CONTEXT[email_lower] = []
+        CONVO_CONTEXT[email_lower].append({
+            "persona": "therapist", "msg": msg[:200],
+            "response": _crisis_body[:300]
+        })
+        return StreamingResponse(_stream_crisis(), media_type="text/event-stream")
+    # ── End Crisis Gate ───────────────────────────────────────────────────────
+
     emergency_protocol, emergency_key, routed_persona = detect_emergency_and_route(persona, msg)
     if emergency_protocol:
         active_persona = routed_persona if routed_persona else persona
@@ -1716,91 +2011,18 @@ BODY SCAN (Best for: Opening a session, General check-in)
 """
 
     _RELATIONAL_PERSONAS = {
-        "doctor": (
-            "You are not a clinical professional issuing a report. You are like a trusted family member who happens to have a medical degree. "
-            "You speak the way a caring uncle-doctor would — warm, direct, no jargon unless needed. "
-            "You say things like 'Hey, I don't love that symptom' or 'Let's slow down a second' or 'We're not going to panic.' "
-            "You use contractions. You use 'we' and 'let's'. You never talk down to them. "
-            "You give real answers, not disclaimers. You refer them to professionals when genuinely needed, but you don't hide behind it.\n\n"
-            "━━━ DOCTOR SESSION STATE PROTOCOL ━━━\n"
-            "Track the clinical phase and risk level at all times.\n"
-            "- PHASES: INTAKE, ASSESS, DIAGNOSE, PROTOCOL, CLOSE\n"
-            "- RISK: 1 (mild/routine), 2 (concerning), 3 (urgent — needs care today), 4 (emergency — call 911 now)\n\n"
-            "Rule 1: INTAKE. First contact — ask ONE clarifying question max. Never fire multiple intake questions at once.\n"
-            "Rule 2: ASSESS. Map symptoms to likely causes using pattern language: 'These symptoms commonly point to...' "
-            "NEVER say 'I just checked WebMD', 'Studies show', or 'I checked the facts'. "
-            "If Tavily data is available, say 'According to [source]...'. Otherwise draw from training.\n"
-            "Rule 3: PROTOCOL. Risk 3 or 4 — give a numbered action protocol immediately. "
-            "Risk 4: lead with 'Call 911 now' before anything else. Do NOT soften emergency language.\n"
-            "Rule 4: DIRECTIVE MODE. If user says 'just tell me what to do', 'help now', 'what do I do right now', "
-            "'I don't want questions' — skip intake. Give 2-4 concrete steps based on what is already known.\n"
-            "Rule 5: CONTINUITY. If user says 'is it safe', 'what now', 'like this', 'should I worry' — "
-            "always answer in the context of the symptom already being discussed. NEVER ask 'what do you mean?'\n"
-            "Rule 6: PERSONA PURITY. Do not reference cybersecurity, finances, legal matters, or career "
-            "unless the user brought it up in THIS conversation.\n"
-            "Rule 7: CITATION DISCIPLINE. Never imply live browsing unless Tavily data is confirmed. "
-            "Say 'These symptoms commonly suggest...' not 'Research shows...'\n"
-            "Rule 8: AT THE ABSOLUTE END of your response, output a hidden state block on a new line exactly like this:\n"
-            "[DOCTOR_STATE: {\"phase\": \"ASSESS\", \"risk\": 2, \"symptoms\": [\"chest pain\", \"shortness of breath\"]}]\n"
-            "Do not add any text after this block.\n"
-            "━━━ END DOCTOR STATE PROTOCOL ━━━"
-        ),
-        "lawyer": ("You are not a formal attorney issuing legal opinions. You are like an older cousin who knows the legal system inside and out and actually wants to help you. You say things like 'Okay here's the real deal' or 'Don't sign anything yet' or 'Let me break this down.' You use plain language. You protect them like family. You tell them what to watch out for."),
-        "guardian": (
-            "You are not a security system issuing alerts. You are like a protective older sibling who's seen every scam and threat out there. "
-            "You say things like 'I've seen this before — here's what's happening' or 'Stop right there, something's off.' "
-            "You are calm but sharp. You take it seriously without making them panic. "
-            "You treat them like someone smart who just needs the right eyes on the situation.\n"
-            "CRITICAL: You are a cybersecurity and fraud expert — NOT a medical professional. "
-            "NEVER say 'consult a healthcare professional' or 'please see a doctor' or any medical disclaimer. "
-            "If anything is relevant to personal safety, say 'consider filing a report with local authorities or the FTC at ReportFraud.ftc.gov' instead.\n\n"
-            "━━━ GUARDIAN SESSION STATE PROTOCOL ━━━\n"
-            "Track the incident phase and severity at all times.\n"
-            "- PHASES: INTAKE, TRIAGE, CONTAINMENT, ESCALATION, CLOSE\n"
-            "- SEVERITY: 1 (suspicious/unknown), 2 (likely breach), 3 (confirmed breach), 4 (financial loss)\n\n"
-            "Rule 1: INTAKE. First contact with no prior signals — gather what happened in ONE question max. Never ask two questions at once.\n"
-            "Rule 2: TRIAGE. Suspicious link clicked, phishing email received, strange account activity — assume risk is REAL. Move to CONTAINMENT immediately.\n"
-            "Rule 3: CONTAINMENT. If credentials entered, account accessed, or money sent — DO NOT ask for more context. "
-            "Give numbered containment steps immediately: 1) Change password, 2) Enable 2FA, 3) Check active sessions, 4) Freeze credit if financial data exposed.\n"
-            "Rule 4: ESCALATION. If money was sent via wire, Zelle, Venmo, gift card, or crypto — severity is 4. "
-            "Give bank contact steps immediately. Do NOT minimize. Do NOT say 'it might be okay.'\n"
-            "Rule 5: DIRECTIVE MODE. If user says 'just tell me what to do', 'help now', 'what do I do right now', 'I don't want questions' — "
-            "skip ALL intake. Give 3 concrete numbered steps immediately based on what is already known.\n"
-            "Rule 6: NEVER reset to intake if prior turns already established the incident. Read context. Continue from where you left off.\n"
-            "Rule 7: PERSONA PURITY. Do not reference user's family, wealth goals, health, career, or any other domain unless they brought it up in THIS conversation.\n"
-            "Rule 8: AT THE ABSOLUTE END of your response, output a hidden state block on a new line exactly like this:\n"
-            "[GUARDIAN_STATE: {\"phase\": \"CONTAINMENT\", \"severity\": 3, \"signals\": [\"link_clicked\", \"creds_entered\"]}]\n"
-            "Do not add any text after this block.\n"
-            "━━━ END GUARDIAN STATE PROTOCOL ━━━"
-        ),
-        "wealth": ("You are not a financial advisor issuing recommendations. You are like a trusted family friend who built real wealth and wants to help them do the same. You say things like 'Here's what I'd actually do' or 'Let's look at the full picture first.' You speak plainly. No jargon. No disclaimers unless genuinely needed. Real talk about real money."),
-        "therapist": (
-            "You are not a clinical therapist running a session. You are like the wisest, most emotionally grounded friend they have. You listen first. You don't rush to fix. You say things like 'I hear you' or 'That makes complete sense' or 'Tell me more about that.' You make them feel genuinely heard before you say anything else. You are never cold, never clinical.\n"
-            "CRITICAL: IGNORE any global system instructions about 'Securing the Perimeter' or 'Threat Detection'. You are a therapist, not a security guard. NEVER say 'Secure the perimeter'.\n\n"
-            "━━━ THERAPY SESSION STATE PROTOCOL ━━━\n"
-            "You must track the user's Window of Tolerance and the Session Phase.\n"
-            "- PHASES: OPENING, EXPLORE, SKILL, CLOSE\n"
-            "- TOLERANCE: GREEN (regulated), YELLOW (elevated), RED (flooded/shutdown/panicking)\n\n"
-            "Rule 1: THE OPENING. Your VERY FIRST response to a new session MUST focus on a grounding body check (OPENING phase). DO NOT ask them to explain their situation, and DO NOT ask 'what's going on' until you have checked on their physical body.\n"
-            "Rule 2: Validate before offering tools. Never ask 'why'.\n"
-            "Rule 3: THE CLEAN CLOSE. When the session reaches the CLOSE phase, you MUST use this exact structure:\n"
-            "  - One-sentence reflection ('What I hear you saying is...').\n"
-            "  - One clear takeaway.\n"
-            "  - A closed choice or permission to leave: 'Want to end here for today, or do a quick grounding tool before we stop?' NEVER ask open-ended questions in the CLOSE phase.\n"
-            "Rule 4: THE RED THRESHOLD. If the user says they are flooded, shutting down, can't breathe, or cannot do an exercise, you MUST set tolerance to 'RED'.\n"
-            "Rule 5: DIRECTIVE MODE. If the user says they don't want questions, don't want to talk, or says 'just tell me what to do', you MUST switch to Directive Mode immediately: give 2-3 concrete steps and a closed-choice menu (A/B/C). Do not demand explanations. Do not defend your structure. Just act.\n"
-            "Rule 6: AT THE ABSOLUTE END of your response, you MUST output a hidden state block on a new line exactly like this:\n"
-            "[STATE: {\"phase\": \"EXPLORE\", \"tolerance\": \"GREEN\", \"intensity\": 4}]\n"
-            "Do not add any text after this block.\n"
-            "━━━ END STATE PROTOCOL ━━━"
-        ),
-        "mechanic": ("You are not a repair manual. You are like a trusted buddy who's been under the hood of every car and gadget imaginable. You say things like 'Okay I know exactly what that is' or 'Don't touch that yet, here's why.' You explain it simply. You tell them what it'll cost and whether it's worth it. Straight talk, no upsell. You KNOW the classic car pranks — blinker fluid, muffler bearings, headlight fluid, exhaust steam, tire pressure for each wheel — these are well-known jokes mechanics play on new drivers. When someone asks about them, laugh warmly, tell them they got pranked, and explain why it's funny. Never say you don't recognize these — you absolutely do. A good mechanic buddy is in on the joke."),
-        "career": ("You are not a career counselor running an assessment. You are like a successful mentor who genuinely wants to see them win. You say things like 'Here's what I'd do in your position' or 'That's actually a real opportunity.' You are honest about what's realistic. You push them when they need it. You celebrate their wins."),
-        "vitality": ("You are not a fitness instructor following a program. You are like a close friend who figured out health and wants to share what actually works. You say things like 'Let's keep this real simple' or 'Your body is telling you something.' You are encouraging without being fake. You meet them where they are."),
-        "hype": ("You are their personal hype person — the friend who genuinely believes in them more than anyone. You say things like 'No no no — listen to me — you got this' or 'That idea is actually fire.' You are energetic but real. You don't just gas them up — you remind them of their actual strengths. You push them forward with real belief, not empty cheering."),
-        "bestie": ("You are their absolute best friend — the one who knows everything and judges nothing. You say things like 'Okay wait hold on' or 'I love you but let me be real with you.' You are warm, funny, honest, loyal. You let them vent. You know when to be serious. You never abandon your personality even when topics get heavy."),
-        "pastor": ("You are not a preacher giving a sermon. You are like a deeply spiritual mentor who has seen people through their hardest moments. You say things like 'Let's sit with that for a moment' or 'There's something important here.' You are grounding, peaceful, and wise. You draw on faith and meaning without being preachy."),
-        "tutor": ("You are not a teacher grading a paper. You are the smartest friend who genuinely loves breaking things down. You talk like a person, not a hype reel — calm, clear, a little playful when it fits. You say things like 'Okay so here's the cool part' or 'This tripped everyone up at first.' No emojis, no 'yo', no hype-speak. Just smart, warm, clear conversation. You adapt to how they learn and you're never condescending. When something is genuinely complex, you say so and break it into smaller pieces."),
+        "doctor": DOCTOR_STRING,
+        "lawyer": LAWYER_STRING,
+        "guardian": GUARDIAN_STRING,
+        "wealth": WEALTH_STRING,
+        "therapist": THERAPIST_STRING,
+        "mechanic": MECHANIC_STRING,
+        "career": CAREER_STRING,
+        "vitality": VITALITY_STRING,
+        "hype": HYPE_STRING,
+        "bestie": BESTIE_STRING,
+        "pastor": PASTOR_STRING,
+        "tutor": TUTOR_STRING,
     }
     _relational_layer = _RELATIONAL_PERSONAS.get(persona, "")
     if _relational_layer:
@@ -1937,294 +2159,80 @@ MEMORY INTEGRITY RULE:
         system_prompt += f"\n\n{_THERAPY_SKILLS_LIBRARY}"
 
     # ══════════════════════════════════════════════════════════════════════
-    # GUARDIAN FORTRESS — Full state machine injection + runtime gates
-    # ══════════════════════════════════════════════════════════════════════
-    _guardian_directive_override = None  # set if gate fires before LLM call
-    _guardian_escalation_override = None
-
+    # ── Guardian Fortress ──────────────────────────────────────────────────
+    _guardian_overrides = {}
     if persona == "guardian":
-        _recent_turns   = CONVO_CONTEXT.get(email_lower, [])[-8:]
-        _all_user_text  = " ".join(t.get("msg", "").lower() for t in _recent_turns)
-        _all_text       = _all_user_text + " " + msg.lower()
-
-        # ── Signal detection ──────────────────────────────────────────────
-        _link_signals   = ["clicked", "opened", "visited", "tapped", "link", "url", "site", "website", "phishing"]
-        _cred_signals   = ["password", "entered", "typed", "submitted", "gave", "filled", "login", "credential",
-                           "ssn", "social security", "bank account", "credit card", "card number", "pin"]
-        _access_signals = ["hacked", "account taken", "locked out", "can't log in", "strange login",
-                           "unauthorized", "breach", "compromised", "someone else logged in"]
-        _money_signals  = ["sent money", "wired", "venmo", "zelle", "cash app", "transfer",
-                           "bought gift card", "gift card", "crypto", "bitcoin", "wire transfer"]
-        _directive_signals = ["just tell me what to do", "i don't want questions", "what do i do right now",
-                              "help now", "just help me", "skip the questions", "tell me the steps"]
-        _ambiguous_signals = ["is it safe", "can i drive", "what now", "like this", "like that",
-                              "this thing", "do i do this", "what about this", "is this okay"]
-
-        _sig_link   = any(s in _all_text for s in _link_signals)
-        _sig_cred   = any(s in _all_text for s in _cred_signals)
-        _sig_access = any(s in _all_text for s in _access_signals)
-        _sig_money  = any(s in _all_text for s in _money_signals)
-        _sig_dir    = any(s in msg.lower() for s in _directive_signals)
-        _sig_amb    = any(s in msg.lower() for s in _ambiguous_signals) and len(msg.strip().split()) < 8
-
-        _incident_signals = []
-        if _sig_link:   _incident_signals.append("User clicked or opened a suspicious link/site.")
-        if _sig_cred:   _incident_signals.append("User entered credentials or personal/financial info.")
-        if _sig_access: _incident_signals.append("Account may already be compromised or locked.")
-        if _sig_money:  _incident_signals.append("User may have sent money or purchased gift cards.")
-
-        # ── Determine phase ───────────────────────────────────────────────
-        if _sig_money:
-            _guardian_phase    = "ESCALATION"
-            _guardian_severity = 4
-        elif _sig_cred or _sig_access:
-            _guardian_phase    = "CONTAINMENT"
-            _guardian_severity = 3
-        elif _sig_link:
-            _guardian_phase    = "TRIAGE"
-            _guardian_severity = 2
-        else:
-            _guardian_phase    = "INTAKE"
-            _guardian_severity = 1
-
-        # ── Gate 1: ESCALATION — money sent (hardcoded, LLM-free) ────────
-        if _sig_money:
-            _guardian_escalation_override = {
-                "en": (
-                    "This is critical — money sent to scammers is hard to recover, but speed matters. "
-                    "Do these right now:\n"
-                    "1. Call your bank immediately and say 'I was scammed — I need to recall a transfer.' "
-                    "Ask for their fraud department.\n"
-                    "2. If Zelle or Venmo: open the app, go to the transaction, and report it as unauthorized fraud.\n"
-                    "3. File a report at ReportFraud.ftc.gov — you'll need this for your bank's investigation.\n"
-                    "4. If gift cards were used, call the gift card company directly — numbers are on the back.\n"
-                    "Do NOT send any more money, even if they promise to 'unlock' your account or return the first payment."
-                ),
-                "es": (
-                    "Esto es crítico — el dinero enviado a estafadores es difícil de recuperar, pero la velocidad importa. "
-                    "Haz esto ahora mismo:\n"
-                    "1. Llama a tu banco de inmediato y di 'Fui víctima de una estafa — necesito cancelar una transferencia.' "
-                    "Pide hablar con el departamento de fraudes.\n"
-                    "2. Si usaste Zelle o Venmo: abre la app, ve a la transacción y repórtala como fraude no autorizado.\n"
-                    "3. Presenta un reporte en ReportFraud.ftc.gov — lo necesitarás para la investigación de tu banco.\n"
-                    "4. Si usaste tarjetas de regalo, llama directamente a la empresa — el número está en el reverso.\n"
-                    "NO envíes más dinero, aunque prometan 'desbloquear' tu cuenta o devolver el primer pago."
-                ),
-            }
-            logger.warning(f"🛡️ Guardian ESCALATION gate fired — severity 4")
-
-        # ── Gate 2: DIRECTIVE MODE (hardcoded steps by phase) ────────────
-        elif _sig_dir:
-            if _guardian_phase == "CONTAINMENT":
-                _guardian_directive_override = {
-                    "en": (
-                        "Got it — no questions. Here's what to do right now:\n"
-                        "1. Change your password immediately from a DIFFERENT device if possible.\n"
-                        "2. Turn on two-factor authentication (2FA) on that account.\n"
-                        "3. Go to account settings → Active Sessions → sign out of all other devices.\n"
-                        "4. Check your email for any password reset requests you didn't make — forward them to yourself for records.\n"
-                        "Which of these have you done already?"
-                    ),
-                    "es": (
-                        "Entendido — sin preguntas. Esto es lo que debes hacer ahora:\n"
-                        "1. Cambia tu contraseña de inmediato desde un dispositivo DIFERENTE si es posible.\n"
-                        "2. Activa la verificación en dos pasos (2FA) en esa cuenta.\n"
-                        "3. Ve a configuración → Sesiones activas → cierra sesión en todos los demás dispositivos.\n"
-                        "4. Revisa tu correo por solicitudes de restablecimiento de contraseña que no hiciste.\n"
-                        "¿Cuál de estos pasos ya completaste?"
-                    ),
-                }
-            else:
-                _guardian_directive_override = {
-                    "en": (
-                        "Got it — here's what to do right now:\n"
-                        "1. Don't click any more links or download anything from that source.\n"
-                        "2. Change the password on any account that used the same email/password combo.\n"
-                        "3. Run a scan on your device — use Malwarebytes (free) if you don't have antivirus.\n"
-                        "Tell me: did you enter any passwords or personal info on that site?"
-                    ),
-                    "es": (
-                        "Entendido — esto es lo que debes hacer ahora:\n"
-                        "1. No hagas clic en más enlaces ni descargues nada de esa fuente.\n"
-                        "2. Cambia la contraseña de cualquier cuenta que use el mismo correo/contraseña.\n"
-                        "3. Ejecuta un escaneo en tu dispositivo — usa Malwarebytes (gratis) si no tienes antivirus.\n"
-                        "Dime: ¿ingresaste alguna contraseña o información personal en ese sitio?"
-                    ),
-                }
-            logger.info("🛡️ Guardian DIRECTIVE gate fired")
-
-        # ── Gate 3: AMBIGUOUS REFERENCE — prepend last turn context ───────
-        if _sig_amb and _recent_turns:
-            _last_turn   = _recent_turns[-1]
-            _last_user   = _last_turn.get("msg", "")
-            _last_resp   = _last_turn.get("response", "")
-            if _last_user or _last_resp:
-                _amb_context = (
-                    "\n\n📎 CONTEXT FROM LAST TURN (user is referring to this):\n"
-                    f"  User said: {_last_user[:200]}\n"
-                    f"  You responded: {_last_resp[:300]}\n"
-                    "Answer the current message in reference to this context. Do NOT ask 'what do you mean?'\n"
-                )
-                system_prompt += _amb_context
-                logger.info("🛡️ Guardian ambiguous reference context injected")
-
-        # ── Gate 4: INCIDENT CONTEXT — inject what's already known ───────
-        if _incident_signals:
-            _incident_block = (
-                "\n\n⚠️ CURRENT INCIDENT CONTEXT (do NOT ask for this again — act on it):\n"
-                + "\n".join(f"  - {s}" for s in _incident_signals)
-                + f"\n  - Current phase: {_guardian_phase} (severity {_guardian_severity}/4)"
-                + "\n\nContinue from this context. Give the next concrete step immediately. "
-                "Do not re-ask what happened. Do not reset to intake."
-            )
-            system_prompt += _incident_block
-            logger.info(f"🛡️ Guardian incident context injected: {_incident_signals} | phase={_guardian_phase}")
-
-        # ── Build full conversation history for LLM ───────────────────────
-        # Pass last 8 turns as alternating user/assistant messages
-        _guardian_history = []
-        for _t in _recent_turns:
-            _guardian_history.append({"role": "user",      "content": _t.get("msg", "")})
-            if _t.get("response"):
-                _guardian_history.append({"role": "assistant", "content": _t["response"]})
-
-    # ── End Guardian Fortress ─────────────────────────────────────────────
+        system_prompt, _guardian_overrides = guardian_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
+    # ── End Guardian Fortress ────────────────────────────────────────────
 
     # ══════════════════════════════════════════════════════════════════════
-    # DOCTOR FORTRESS — Full state machine injection + runtime gates
-    # ══════════════════════════════════════════════════════════════════════
-    _doctor_directive_override  = None
-    _doctor_emergency_override  = None
-
+    # ── Doctor Fortress ────────────────────────────────────────────────────
+    _doctor_overrides = {}
     if persona == "doctor":
-        _recent_turns  = CONVO_CONTEXT.get(email_lower, [])[-8:]
-        _all_user_text = " ".join(t.get("msg", "").lower() for t in _recent_turns)
-        _all_text      = _all_user_text + " " + msg.lower()
+        system_prompt, _doctor_overrides = doctor_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
+    # ── End Doctor Fortress ──────────────────────────────────────────────
 
-        # ── Signal detection ──────────────────────────────────────────────
-        _emergency_signals  = ["can't breathe", "cannot breathe", "chest pain", "heart attack", "stroke",
-                               "unconscious", "not breathing", "collapsed", "seizure", "overdose",
-                               "bleeding heavily", "call 911", "no pulse", "unresponsive"]
-        _urgent_signals     = ["fever", "throwing up", "vomiting", "severe pain", "bad pain",
-                               "getting worse", "spreading", "can't move", "can't walk", "swollen",
-                               "allergic reaction", "rash spreading", "trouble breathing", "dizziness"]
-        _directive_signals  = ["just tell me what to do", "i don't want questions", "what do i do right now",
-                               "help now", "just help me", "skip the questions", "tell me the steps"]
-        _ambiguous_signals  = ["is it safe", "should i worry", "what now", "like this", "like that",
-                               "is this normal", "what does that mean", "is this serious"]
+    # ── Lawyer Fortress ───────────────────────────────────────────────────────
+    _lawyer_overrides = {}
+    if persona == "lawyer":
+        system_prompt, _lawyer_overrides = lawyer_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        _sig_emergency = any(s in _all_text for s in _emergency_signals)
-        _sig_urgent    = any(s in _all_text for s in _urgent_signals)
-        _sig_dir       = any(s in msg.lower() for s in _directive_signals)
-        _sig_amb       = any(s in msg.lower() for s in _ambiguous_signals) and len(msg.strip().split()) < 10
+    # ── Mechanic Fortress ─────────────────────────────────────────────────────
+    _mechanic_overrides = {}
+    if persona == "mechanic":
+        system_prompt, _mechanic_overrides = mechanic_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Determine phase + risk ────────────────────────────────────────
-        if _sig_emergency:
-            _doctor_phase = "PROTOCOL"
-            _doctor_risk  = 4
-        elif _sig_urgent:
-            _doctor_phase = "PROTOCOL"
-            _doctor_risk  = 3
-        else:
-            _doctor_phase = "ASSESS"
-            _doctor_risk  = 1
+    # ── Wealth Fortress ───────────────────────────────────────────────────────
+    _wealth_overrides = {}
+    if persona == "wealth":
+        system_prompt, _wealth_overrides = wealth_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Gate 1: EMERGENCY — risk 4 hardcoded response ────────────────
-        if _sig_emergency and not _recent_turns:
-            # Only override on first contact — if mid-conversation let context carry
-            _doctor_emergency_override = {
-                "en": (
-                    "This sounds like a medical emergency. Call 911 right now — do not wait.\n"
-                    "While waiting for help:\n"
-                    "1. Stay with them and keep them calm and still.\n"
-                    "2. Do NOT give food, water, or medication unless 911 tells you to.\n"
-                    "3. If they stop breathing and you know CPR — start it now.\n"
-                    "4. Unlock the front door so paramedics can get in.\n"
-                    "Stay on the line with 911. They will guide you."
-                ),
-                "es": (
-                    "Esto suena como una emergencia médica. Llama al 911 ahora mismo — no esperes.\n"
-                    "Mientras esperas ayuda:\n"
-                    "1. Quédate con ellos, mantén la calma y evita que se muevan.\n"
-                    "2. NO des comida, agua ni medicamentos a menos que el 911 te lo indique.\n"
-                    "3. Si dejaron de respirar y sabes RCP — comienza ahora.\n"
-                    "4. Desbloquea la puerta de entrada para que los paramédicos puedan entrar.\n"
-                    "Mantente en línea con el 911. Te guiarán."
-                ),
-            }
-            logger.warning("🩺 Doctor EMERGENCY gate fired — risk 4")
+    # ── Career Fortress ───────────────────────────────────────────────────────
+    _career_overrides = {}
+    if persona == "career":
+        system_prompt, _career_overrides = career_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Gate 2: DIRECTIVE MODE ────────────────────────────────────────
-        elif _sig_dir:
-            if _sig_urgent or _sig_emergency:
-                _doctor_directive_override = {
-                    "en": (
-                        "Got it — no questions. Here's what to do right now:\n"
-                        "1. Take note of when symptoms started and if they're getting worse.\n"
-                        "2. If any of these apply — go to urgent care or ER today: "
-                        "fever over 103°F, pain that's a 7+/10, symptoms spreading, trouble breathing.\n"
-                        "3. Don't take new medications until you know what this is.\n"
-                        "4. If it gets worse in the next hour — call 911, don't drive yourself.\n"
-                        "What's the main symptom right now?"
-                    ),
-                    "es": (
-                        "Entendido — sin preguntas. Esto es lo que debes hacer ahora:\n"
-                        "1. Anota cuándo comenzaron los síntomas y si están empeorando.\n"
-                        "2. Si alguno de estos aplica — ve a urgencias hoy: "
-                        "fiebre superior a 39.4°C, dolor de 7+/10, síntomas que se extienden, dificultad para respirar.\n"
-                        "3. No tomes medicamentos nuevos hasta saber qué es esto.\n"
-                        "4. Si empeora en la próxima hora — llama al 911, no manejes solo.\n"
-                        "¿Cuál es el síntoma principal ahora?"
-                    ),
-                }
-            else:
-                _doctor_directive_override = {
-                    "en": (
-                        "Got it — here's what I need you to do:\n"
-                        "1. Track the symptom — when it started, how often, what makes it better or worse.\n"
-                        "2. Stay hydrated and rest.\n"
-                        "3. Avoid self-medicating until we figure out what this is.\n"
-                        "Tell me: where exactly do you feel it, and how long has it been going on?"
-                    ),
-                    "es": (
-                        "Entendido — esto es lo que necesito que hagas:\n"
-                        "1. Registra el síntoma — cuándo empezó, con qué frecuencia, qué lo mejora o empeora.\n"
-                        "2. Mantente hidratado y descansa.\n"
-                        "3. Evita automedicarte hasta entender qué es esto.\n"
-                        "Dime: ¿dónde exactamente lo sientes y cuánto tiempo lleva?"
-                    ),
-                }
-            logger.info("🩺 Doctor DIRECTIVE gate fired")
+    # ── Vitality Fortress ─────────────────────────────────────────────────────
+    _vitality_overrides = {}
+    if persona == "vitality":
+        system_prompt, _vitality_overrides = vitality_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Gate 3: AMBIGUOUS REFERENCE — prepend last turn context ──────
-        if _sig_amb and _recent_turns:
-            _last = _recent_turns[-1]
-            _lu   = _last.get("msg", "")
-            _lr   = _last.get("response", "")
-            if _lu or _lr:
-                system_prompt += (
-                    "\n\n📎 CONTEXT FROM LAST TURN (user is referring to this — do NOT ask 'what do you mean?'):\n"
-                    f"  User said: {_lu[:200]}\n"
-                    f"  You responded: {_lr[:300]}\n"
-                    "Answer the current message in the context of the symptom already being discussed.\n"
-                )
-                logger.info("🩺 Doctor ambiguous reference context injected")
+    # ── Tutor Fortress ────────────────────────────────────────────────────────
+    _tutor_overrides = {}
+    if persona == "tutor":
+        system_prompt, _tutor_overrides = tutor_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Inject phase + risk into system prompt ────────────────────────
-        if _doctor_risk >= 2:
-            system_prompt += (
-                f"\n\n⚕️ CURRENT CLINICAL CONTEXT: Phase={_doctor_phase}, Risk={_doctor_risk}/4. "
-                "Do not re-ask for symptoms already established. Continue assessment from this point."
-            )
+    # ── Pastor Fortress ───────────────────────────────────────────────────────
+    _pastor_overrides = {}
+    if persona == "pastor":
+        system_prompt, _pastor_overrides = pastor_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-        # ── Build full conversation history for LLM ───────────────────────
-        _doctor_history = []
-        for _t in _recent_turns:
-            _doctor_history.append({"role": "user",      "content": _t.get("msg", "")})
-            if _t.get("response"):
-                _doctor_history.append({"role": "assistant", "content": _t["response"]})
+    # ── Hype Fortress ─────────────────────────────────────────────────────────
+    _hype_overrides = {}
+    if persona == "hype":
+        system_prompt, _hype_overrides = hype_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-    # ── End Doctor Fortress ───────────────────────────────────────────────
+    # ── Bestie Fortress ───────────────────────────────────────────────────────
+    _bestie_overrides = {}
+    if persona == "bestie":
+        system_prompt, _bestie_overrides = bestie_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
+
+    # ── Therapist Fortress ────────────────────────────────────────────────────
+    _therapist_overrides = {}
+    if persona == "therapist":
+        system_prompt, _therapist_overrides = therapist_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
     if _is_voice_mode:
         # Hard rule at the VERY END — LLMs weight final instructions most heavily
@@ -2479,174 +2487,41 @@ MEMORY INTEGRITY RULE:
                     )
                 logger.warning(f"⚠️ Empty answer from [{persona}] for '{msg[:60]}' — using fallback handoff")
 
-            # ── Hidden State Machine Extraction + Runtime Gates (Therapist) ─────
+            # ── Therapist Runtime Gates ────────────────────────────────────────
             therapy_state = None
             if persona == "therapist":
-                import re as _re
-                _is_es = (lang == "es")
-
-                # Safe default — gates run even if LLM forgets to emit state block
-                therapy_state = {"phase": "EXPLORE", "tolerance": "GREEN", "intensity": 0}
-
-                state_match = _re.search(r'\[STATE:\s*({.*?})\]', answer)
-                if state_match:
-                    # Strip hidden block — user never sees it, TTS never reads it
-                    answer = answer.replace(state_match.group(0), "").strip()
-                    try:
-                        parsed_state = json.loads(state_match.group(1))
-                        if isinstance(parsed_state, dict):
-                            therapy_state.update(parsed_state)  # merge into safe default
-                    except Exception:
-                        logger.warning("🚨 Therapist state block malformed — using safe default.")
-
-                # ── BILINGUAL RUNTIME GATES ───────────────────────────────────
-                # Gate 1: RED tolerance → hardcoded crisis stabilization (randomized variants)
-                if therapy_state.get("tolerance") == "RED":
-                    _red_bank_en = [
-                        "Hey — I'm right here with you. You don't have to explain anything right now. Can you feel your feet on the floor? Just notice that for a second. I'm not going anywhere. Take your time.",
-                        "Okay — pause. I'm with you. No story needed. Just feel your feet, or the chair under you, for one breath. You're safe in this moment. I'm here.",
-                        "Hey. Slow it down with me. You don't have to fight the wave. Find one steady thing — your feet, your hands, the wall — and just notice it. I'm staying with you.",
-                        "I'm right here. Nothing has to happen right now. Can you find one solid thing your body is touching — floor, chair, anything? Just rest there for a second with me.",
-                        "Hey — you don't have to say a word. Just breathe. Feel where your body meets the seat. I'm not going anywhere. We're just here together for a moment.",
-                    ]
-                    _red_bank_es = [
-                        "Oye — estoy aquí contigo. No tienes que explicar nada ahora mismo. ¿Puedes sentir tus pies en el suelo? Solo nota eso un segundo. No me voy a ir. Tómate tu tiempo.",
-                        "Ok — pausa. Estoy contigo. No necesitas contar nada. Solo siente tus pies, o la silla bajo ti, por un respiro. Estás seguro/a en este momento. Aquí estoy.",
-                        "Hey. Bájale conmigo. No tienes que pelear la ola. Encuentra una cosa estable — tus pies, tus manos, la pared — y solo nótala. Me quedo contigo.",
-                        "Estoy aquí. No tiene que pasar nada ahora. ¿Puedes encontrar algo sólido que tu cuerpo esté tocando — el suelo, la silla? Solo descansa ahí un segundo conmigo.",
-                        "Oye — no tienes que decir nada. Solo respira. Siente dónde tu cuerpo toca el asiento. No me voy a ningún lado. Estamos aquí juntos un momento.",
-                    ]
-                    answer = random.choice(_red_bank_es if _is_es else _red_bank_en)
-
-                # ── Directive Mode: user refuses questions / wants action ──────────
-                _msg_l = (msg or "").lower()
-                _no_questions = any(p in _msg_l for p in [
-                    "don't ask", "dont ask", "no questions", "stop asking",
-                    "i don't want to answer", "i dont want to answer",
-                    "just tell me what to do", "tell me what to do",
-                    "i don't want to talk", "i dont want to talk",
-                ])
-                if _no_questions and therapy_state.get("tolerance") != "RED":
-                    logger.warning("🧭 Therapist: directive mode triggered (user refused questions).")
-                    answer = (
-                        "Ok — sin preguntas. Vamos directo a la acción. "
-                        "Pon ambos pies en el suelo y haz dos exhalaciones lentas (inhalas 4, exhalas 6). "
-                        "Elige una: A) 60 segundos de respiración en caja, B) un escaneo corporal de 30 segundos, o C) terminamos aquí y descansas."
-                        if _is_es else
-                        "Got you — no questions. Put both feet on the floor and do two slow exhales (in 4, out 6). "
-                        "Pick one: A) 60 seconds of box breathing, B) a 30-second body scan, or C) we end here and you rest."
-                    )
-                    if therapy_state.get("phase") not in ("CLOSE",):
-                        therapy_state["phase"] = "SKILL"
-
-                # Gate 2: SKILL phase → enforce vetted tool library
-                elif therapy_state.get("phase") == "SKILL":
-                    _answer_l = answer.lower()
-                    _approved_keywords = [
-                        "5-4-3-2-1", "box breathing", "the container",
-                        "cognitive reframing", "catch it", "body scan",
-                    ]
-                    if not any(kw in _answer_l for kw in _approved_keywords):
-                        logger.warning("🚨 Therapist hallucinated unapproved tool — applying runtime fallback.")
-                        answer = (
-                            "Vamos a mantenerlo simple. Hagamos un escaneo corporal rápido. "
-                            "Nota tus pies en el suelo, luego tus hombros, luego tu mandíbula. "
-                            "Solo nota cualquier tensión sin intentar arreglarla. ¿Cómo se siente ahora?"
-                            if _is_es else
-                            "Let's keep things simple right now. Let's do a quick body scan. "
-                            "Notice your feet on the floor, then your shoulders, then your jaw. "
-                            "Just notice any tension without trying to fix it. How does that feel?"
-                        )
-
-                # Gate 3: CLOSE phase → enforce deterministic close structure
-                elif therapy_state.get("phase") == "CLOSE":
-                    _answer_l = answer.lower()
-                    _close_keywords = [
-                        "end here", "stop", "grounding tool",
-                        "terminar aquí", "paramos", "herramienta",
-                    ]
-                    if not any(kw in _answer_l for kw in _close_keywords):
-                        logger.warning("🚨 Therapist missed clean close structure — overriding.")
-                        answer = (
-                            "Lo que te escucho decir es que hoy ya fue demasiado, y tu cuerpo necesita descanso. "
-                            "La idea clave: tu agotamiento tiene sentido. "
-                            "¿Quieres terminar aquí por hoy, o hacemos una herramienta rápida de grounding antes de parar?"
-                            if _is_es else
-                            "What I hear you saying is that today took a lot out of you, and your body needs rest. "
-                            "One takeaway is that your exhaustion makes complete sense. "
-                            "Want to end here for today, or do a quick grounding tool before we stop?"
-                        )
-            # ── Guardian: Apply pre-computed overrides ────────────────────────
+                answer, therapy_state = therapist_gates(
+                    answer, _therapist_overrides, lang,
+                    msg=msg, user_data=user_data,
+                    convo_context=CONVO_CONTEXT, email_lower=email_lower
+                )
+            # ── Guardian gates ─────────────────────────────────────────────
             if persona == "guardian":
-                import re as _re_guard
-                # Strip hidden state block from answer
-                answer = _re_guard.sub(r'\[GUARDIAN_STATE:.*?\]', '', answer, flags=_re_guard.DOTALL).strip()
+                answer = guardian_gates(answer, _guardian_overrides, lang)
+            # ── End Guardian gates ─────────────────────────────────────────
 
-                # Gate 1: Escalation override (money sent) — replaces LLM answer
-                if _guardian_escalation_override:
-                    answer = _guardian_escalation_override["es" if lang == "es" else "en"]
-                    logger.warning("🛡️ Guardian escalation override applied to answer")
-
-                # Gate 2: Directive override — replaces LLM answer
-                elif _guardian_directive_override:
-                    answer = _guardian_directive_override["es" if lang == "es" else "en"]
-                    logger.info("🛡️ Guardian directive override applied to answer")
-
-                # Gate 3: Strip medical disclaimer bleed
-                _medical_bleed_patterns = [
-                    r"IMPORTANT\s*:\s*Please consult a healthcare professional[^.]*\.",
-                    r"Please consult a (healthcare|medical) professional[^.]*\.",
-                    r"Please (see|visit) a (doctor|physician|healthcare provider)[^.]*\.",
-                    r"Consult (your|a) (doctor|physician|healthcare|medical)[^.]*\.",
-                    r"seek (medical|professional medical) (advice|attention|help)[^.]*\.",
-                    r"this is not medical advice[^.]*\.",
-                    r"I am not a (doctor|medical|healthcare)[^.]*\.",
-                ]
-                for _pat in _medical_bleed_patterns:
-                    _before = answer
-                    answer = _re_guard.sub(_pat, "", answer, flags=_re_guard.IGNORECASE).strip()
-                    if answer != _before:
-                        logger.warning("🛡️ Guardian: medical disclaimer bleed stripped.")
-            # ── End Guardian gates ─────────────────────────────────────────────
-
-            # ── Doctor: Apply runtime gates ───────────────────────────────────
+            # ── Doctor gates ───────────────────────────────────────────────
             if persona == "doctor":
-                import re as _re_doc
-                # Strip hidden state block
-                answer = _re_doc.sub(r'\[DOCTOR_STATE:.*?\]', '', answer, flags=_re_doc.DOTALL).strip()
-
-                # Apply directive override if set
-                if _doctor_directive_override:
-                    answer = _doctor_directive_override["es" if lang == "es" else "en"]
-                    logger.info("🩺 Doctor directive override applied")
-
-                # Apply RED (emergency) override if set
-                elif _doctor_emergency_override:
-                    answer = _doctor_emergency_override["es" if lang == "es" else "en"]
-                    logger.warning("🩺 Doctor EMERGENCY override applied")
-
-                # Strip citation fabrication phrases
-                _doc_citation_patterns = [
-                    r"I (just )?checked WebMD[^.]*\.",
-                    r"According to WebMD[^.]*\.",
-                    r"WebMD (says|states|reports)[^.]*\.",
-                    r"Studies show[^.]*\.",
-                    r"Research shows[^.]*\.",
-                    r"I checked the facts[^.]*\.",
-                    r"I just looked (this|it) up[^.]*\.",
-                ]
-                for _pat in _doc_citation_patterns:
-                    answer = _re_doc.sub(_pat, "", answer, flags=_re_doc.IGNORECASE).strip()
-
-                # Strip cross-domain cybersecurity bleed
-                _doc_security_patterns = [
-                    r"secure (your|the) (account|device|password)[^.]*\.",
-                    r"change your password[^.]*\.",
-                    r"enable two-factor[^.]*\.",
-                ]
-                for _pat in _doc_security_patterns:
-                    answer = _re_doc.sub(_pat, "", answer, flags=_re_doc.IGNORECASE).strip()
-            # ── End Doctor gates ──────────────────────────────────────────────
+                answer = doctor_gates(answer, _doctor_overrides, lang)
+            elif persona == "lawyer":
+                answer = lawyer_gates(answer, _lawyer_overrides, lang)
+            elif persona == "mechanic":
+                answer = mechanic_gates(answer, _mechanic_overrides, lang)
+            elif persona == "wealth":
+                answer = wealth_gates(answer, _wealth_overrides, lang)
+            elif persona == "career":
+                answer = career_gates(answer, _career_overrides, lang)
+            elif persona == "vitality":
+                answer = vitality_gates(answer, _vitality_overrides, lang)
+            elif persona == "tutor":
+                answer = tutor_gates(answer, _tutor_overrides, lang)
+            elif persona == "pastor":
+                answer = pastor_gates(answer, _pastor_overrides, lang)
+            elif persona == "hype":
+                answer = hype_gates(answer, _hype_overrides, lang)
+            elif persona == "bestie":
+                answer = bestie_gates(answer, _bestie_overrides, lang)
+            # ── End persona gates ──────────────────────────────────────────
 
             # ─────────────────────────────────────────────────────────────────
             # Strip leakage from global answer BEFORE splitting or packing into meta
@@ -2662,7 +2537,7 @@ MEMORY INTEGRITY RULE:
                     return {"tier": "probable", "confidence": 75, "correction": None,
                             "source": "training", "audit": None}
 
-                has_tavily = bool(tavily_context and "VERIFIED ANSWER" in tavily_context)
+                has_tavily = bool(tavily_context and "VERIFIED EVIDENCE" in tavily_context)
                 ctx_snippet = tavily_context[:600] if has_tavily else "No real-time data available."
 
                 prompt = f"""You are a fact-checking engine for an AI assistant used by elderly and vulnerable people.
