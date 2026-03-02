@@ -7,6 +7,7 @@ import re
 import json
 import random
 import logging
+from services.directive_detector import detect_directive_sync
 
 logger = logging.getLogger("LYLO.Chat")
 
@@ -92,12 +93,7 @@ _CLOSE_KEYWORDS = [
 ]
 
 # ── Directive signals ─────────────────────────────────────────────────────────
-_NO_QUESTIONS_SIGNALS = [
-    "don't ask", "dont ask", "no questions", "stop asking",
-    "i don't want to answer", "i dont want to answer",
-    "just tell me what to do", "tell me what to do",
-    "i don't want to talk", "i dont want to talk",
-]
+# _NO_QUESTIONS_SIGNALS replaced by shared directive_detector (4-layer)
 
 # ── Mishearing signals ────────────────────────────────────────────────────────
 _MISHEAR_SIGNALS = [
@@ -207,7 +203,7 @@ def apply_gates(answer: str, overrides: dict, lang: str,
 
     # ── Gate 2: Directive mode ────────────────────────────────────────────────
     msg_l = (msg or "").lower()
-    no_questions = any(p in msg_l for p in _NO_QUESTIONS_SIGNALS)
+    no_questions = detect_directive_sync(msg or "")["directive"]
     if no_questions:
         logger.warning("🧭 Therapist: directive mode triggered")
         intensity = therapy_state.get("intensity", 3)
