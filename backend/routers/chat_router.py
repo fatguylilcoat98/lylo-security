@@ -2845,13 +2845,18 @@ RULES:
                 "claude_validated": validated.get("claude_validated", False),
                 "usage_count":      current_count,
                 "limit":            tier_limit,
-                # ── HK fields ─────────────────────────────────────────────────
+                # ── Veracore™ fields ──────────────────────────────────────────
+                # show_veracore_badge is the ONLY flag the frontend should check.
+                # True ONLY when Veracore actually ran and returned a real score.
+                # NEVER render the badge from confidence_score alone — that number
+                # is model confidence, not Veracore. If False → render nothing.
+                "show_veracore_badge":    _veracore_used,
                 "veracore_validated":     _veracore_used,
-                "veracore_confidence":    _veracore_result.get("confidence_score") if _veracore_result else None,
-                "veracore_color":         _veracore_result.get("confidence_color") if _veracore_result else None,
-                "veracore_badge":         _veracore_badge,
-                "veracore_sources":       _veracore_result.get("sources", []) if _veracore_result else [],
-                "veracore_concerns":      _veracore_result.get("concerns", []) if _veracore_result else [],
+                "veracore_confidence":    _veracore_result.get("confidence_score") if _veracore_used and _veracore_result else None,
+                "veracore_color":         _veracore_result.get("confidence_color") if _veracore_used and _veracore_result else None,
+                "veracore_badge":         _veracore_badge if _veracore_used else None,
+                "veracore_sources":       _veracore_result.get("sources", []) if _veracore_used and _veracore_result else [],
+                "veracore_concerns":      _veracore_result.get("concerns", []) if _veracore_used and _veracore_result else [],
                 # ── #7 Confidence tier label ──────────────────────────────────
                 "input_mode":        input_mode,
                 "vocal_energy":      vocal_energy,
