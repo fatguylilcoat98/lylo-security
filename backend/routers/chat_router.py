@@ -50,7 +50,7 @@ from services.prompt_builder import (
 from services.llm_clients import call_gemini_vision, call_openai_bodyguard, validate_with_claude, split_into_sentences, _is_high_stakes
 from services.response_composer import compose_response_shape
 from services.log_helper import safe_msg, safe_email, slog
-from services.directive_detector import detect_directive_sync
+from services.directive_detector import detect_directive_sync, normalize_input, detect_directive_with_tag
 
 # ── Robust sentence splitter — respects abbreviations (Dr. Mr. St. etc.) ──────
 import re as _re
@@ -1306,45 +1306,75 @@ async def chat(
             logger.warning(f"⚠️ Image read failed: {e}")
             image_b64 = None
 
-    msg_lower = msg.lower()
+    # ══════════════════════════════════════════════════════════════════════
+    # INPUT PIPELINE — fixed order per patch spec:
+    #   1. normalize_input     — strip persona tags; raw msg preserved for LLM
+    #   2. emergency_engine    — imminent physical harm (911-level), always fires
+    #   3. directive_detector  — panic/directive signal; sets directive_override
+    #   4. crisis gate         — self-harm/988, always fires (even w/ directive)
+    #   5. inject/scam check   — hard-block still fires; soft gates suppressed
+    #                            when directive_override is True on protected persona
+    # Rule: only emergency_engine, crisis gate, and HARD_BLOCK injection may
+    #       short-circuit the router when directive_override is True.
+    # ══════════════════════════════════════════════════════════════════════
 
-    # ── Directive-mode pre-check ──────────────────────────────────────────────
-    # Run directive detection BEFORE injection check so panic phrases like
-    # "just tell me what to do / no questions" are never misclassified as
-    # prompt injection. For high-stakes personas (guardian, doctor, lawyer,
-    # mechanic), a directive signal means: skip injection redirect, let the
-    # persona fortress handle it.
-    # Personas where impatience redirect IS appropriate: bestie, hype, tutor, career, vitality, pastor
-    _DIRECTIVE_PROTECTED_PERSONAS = {"guardian", "doctor", "lawyer", "mechanic", "therapist", "wealth"}
-    _pre_directive = (
-        persona in _DIRECTIVE_PROTECTED_PERSONAS
-        and detect_directive_sync(msg)["directive"]
-    )
-    if _pre_directive:
+    # ── Step 1 + 3 combined: normalize and resolve directive ──────────────
+    _dir_ctx            = detect_directive_with_tag(msg, persona)
+    msg_for_detectors   = normalize_input(msg)[0]   # clean text for all detectors
+    directive_override  = _dir_ctx["directive_override"]
+    persona             = _dir_ctx["locked_persona"]  # tag may lock to guardian
+
+    msg_lower = msg.lower()   # keep derived from raw msg (used downstream)
+
+    if directive_override:
         logger.warning(
-            f"🎯 PRE-DIRECTIVE SHORT-CIRCUIT [{persona}] — "
-            f"skipping injection check, passing to persona fortress"
+            f"🎯 DIRECTIVE OVERRIDE ACTIVE [{persona}] — "
+            f"tag={_dir_ctx['had_tag']} score={_dir_ctx['score']} "
+            f"layer={_dir_ctx['reason']} — soft gates suppressed"
         )
 
-    injection_block = None if _pre_directive else detect_prompt_injection(msg)
-    if injection_block:
-        logger.warning(f"🚨 INJECTION BLOCKED for {safe_email(email_lower)} — {safe_msg(msg)}")
-        async def _injection():
-            yield f"data: {json.dumps({'type': 'text', 'content': injection_block})}\n\n"
-            meta = {
-                "type": "meta", "confidence_score": 100, "scam_detected": True,
-                "threat_level": "high", "action_trigger": None, "audio_b64": "",
-                "full_answer": injection_block, "model": "LYLO-IDS",
-                "usage_count": USAGE_TRACKER[user_id], "limit": limit,
+    # ── Step 2: Emergency engine (imminent physical harm) ─────────────────
+    # Runs after normalize but BEFORE directive can suppress anything.
+    # Nothing — not even directive_override — stops a 911-level response.
+    emergency_protocol, emergency_key, routed_persona = detect_emergency_and_route(persona, msg_for_detectors)
+    if emergency_protocol:
+        active_persona     = routed_persona if routed_persona else persona
+        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], active_persona)
+        switched = routed_persona and routed_persona != persona
+        if switched:
+            logger.info(f"🚨 EMERGENCY AUTO-SWITCH [{persona}→{active_persona}] → {emergency_key} for {user_data['name']}")
+        else:
+            logger.info(f"🚨 EMERGENCY DETECTED [{active_persona}] → {emergency_key} for {user_data['name']}")
+        asyncio.create_task(send_mission_report_email(
+            user_email, emergency_response["answer"], active_persona, user_name=user_data["name"]
+        ))
+        async def _stream_emergency():
+            intro_audio = await generate_audio_inline(emergency_response["emergency_intro"], voice)
+            yield f"data: {json.dumps({'type':'text','content':emergency_response['emergency_intro'],'audio_b64':intro_audio})}\n\n"
+            await asyncio.sleep(0.008)
+            _emeta = {
+                "type":             "meta",
+                "confidence_score": 99,
+                "scam_detected":    False,
+                "threat_level":     "high",
+                "action_trigger":   None,
+                "audio_b64":        "",
+                "full_answer":      emergency_response["answer"],
+                "emergency":        True,
+                "emergency_steps":  emergency_response.get("emergency_steps", []),
+                "emergency_warning": emergency_response.get("emergency_warning", ""),
+                "emergency_title":  emergency_response.get("protocol_title", ""),
+                "switched_persona": active_persona,
+                "persona_switched": switched,
+                "usage_count":      USAGE_TRACKER.get(user_id, 0),
+                "limit":            limit,
             }
-            yield f"data: {json.dumps(meta)}\n\n"
-        return StreamingResponse(_injection(), media_type="text/event-stream")
+            yield f"data: {json.dumps(_emeta)}\n\n"
+        return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # ══════════════════════════════════════════════════════════════════════
-    # CRISIS GATE — Server-side self-harm/suicide detection (NON-NEGOTIABLE)
-    # Fires BEFORE LLM, BEFORE routing, BEFORE any persona logic.
-    # Safety > intent. Even hypothetical/conditional triggers must fire.
-    # ══════════════════════════════════════════════════════════════════════
+    # ── Step 4: Crisis gate — self-harm / suicide (NON-NEGOTIABLE) ────────
+    # Fires even when directive_override is True. Safety > persona.
     import re as _re_crisis
     _CRISIS_PATTERN = _re_crisis.compile(
         r'\b('
@@ -1386,7 +1416,6 @@ async def chat(
         )
         _crisis_intro = _crisis_intro_es if _is_es_crisis else _crisis_intro_en
         _crisis_body  = _crisis_body_es  if _is_es_crisis else _crisis_body_en
-
         async def _stream_crisis():
             _audio = await generate_audio_inline(_crisis_intro, voice)
             yield f"data: {json.dumps({'type': 'text', 'content': _crisis_intro, 'audio_b64': _audio})}\n\n"
@@ -1414,7 +1443,6 @@ async def chat(
                 "therapy_state": {"phase": "CRISIS", "tolerance": "RED", "intensity": 10},
             }
             yield f"data: {json.dumps(_meta)}\n\n"
-        # Store turn in CONVO_CONTEXT
         if email_lower not in CONVO_CONTEXT:
             CONVO_CONTEXT[email_lower] = []
         CONVO_CONTEXT[email_lower].append({
@@ -1422,42 +1450,54 @@ async def chat(
             "response": _crisis_body[:300]
         })
         return StreamingResponse(_stream_crisis(), media_type="text/event-stream")
-    # ── End Crisis Gate ───────────────────────────────────────────────────────
+    # ── End Crisis Gate ───────────────────────────────────────────────────
 
-    emergency_protocol, emergency_key, routed_persona = detect_emergency_and_route(persona, msg)
-    if emergency_protocol:
-        active_persona = routed_persona if routed_persona else persona
-        emergency_response = build_emergency_response(emergency_protocol, user_data["name"], active_persona)
-        switched = routed_persona and routed_persona != persona
-        if switched:
-            logger.info(f"🚨 EMERGENCY AUTO-SWITCH [{persona}→{active_persona}] → {emergency_key} for {user_data['name']}")
+    # ── Step 5: Injection / impatience check ──────────────────────────────
+    # When directive_override is True for a protected persona:
+    #   - HARD_BLOCK injection (actual jailbreak attempts) → still short-circuits
+    #   - Impatience redirect / soft injection → converted to risk-signal context
+    #     appended to memory_context so the LLM generates the directive response
+    # When directive_override is False → original behavior unchanged
+    injection_block = detect_prompt_injection(msg_for_detectors)
+
+    if injection_block and directive_override:
+        # Distinguish hard blocks from soft impatience redirects.
+        # Hard block signals: "HARD_BLOCK", "prompt injection", "jailbreak", "system prompt"
+        _HARD_BLOCK_SIGNALS = {
+            "hard_block", "prompt injection", "jailbreak",
+            "system prompt", "ignore previous", "ignore all",
+            "reveal your instructions", "bypass",
+        }
+        _ib_lower    = injection_block.lower()
+        _is_hard     = any(s in _ib_lower for s in _HARD_BLOCK_SIGNALS)
+        if _is_hard:
+            # True injection attack — let it through even with directive active
+            logger.warning(
+                f"🚨 HARD INJECTION BLOCK [{persona}] — "
+                f"directive active but true attack detected: {safe_msg(msg)}"
+            )
+            # Fall through to hard block below
         else:
-            logger.info(f"🚨 EMERGENCY DETECTED [{active_persona}] → {emergency_key} for {user_data['name']}")
-        asyncio.create_task(send_mission_report_email(
-            user_email, emergency_response["answer"], active_persona, user_name=user_data["name"]
-        ))
-        async def _stream_emergency():
-            intro_audio = await generate_audio_inline(emergency_response["emergency_intro"], voice)
-            yield f"data: {json.dumps({'type':'text','content':emergency_response['emergency_intro'],'audio_b64':intro_audio})}\n\n"
-            await asyncio.sleep(0.008)
-            meta_payload = {
-                'type':             'meta',
-                'confidence_score': 99,
-                'scam_detected':    False,
-                'threat_level':     'high',
-                'action_trigger':   None,
-                'audio_b64':        '',
-                'full_answer':      emergency_response['answer'],
-                'emergency':        True,
-                'emergency_steps':  emergency_response.get('emergency_steps', []),
-                'emergency_warning': emergency_response.get('emergency_warning', ''),
-                'emergency_title':  emergency_response.get('protocol_title', ''),
-                'switched_persona': active_persona,
-                'persona_switched': switched,
+            # Soft gate (impatience/redirect) — convert to risk-signal context
+            # instead of short-circuiting; Guardian LLM generates the directive response.
+            logger.warning(
+                f"🎯 SOFT GATE CONVERTED TO SIGNAL [{persona}] — "
+                f"directive_override suppressed impatience redirect"
+            )
+            injection_block = None   # cleared — do NOT short-circuit
+
+    if injection_block:
+        logger.warning(f"🚨 INJECTION BLOCKED for {safe_email(email_lower)} — {safe_msg(msg)}")
+        async def _injection():
+            yield f"data: {json.dumps({'type': 'text', 'content': injection_block})}\n\n"
+            meta = {
+                "type": "meta", "confidence_score": 100, "scam_detected": True,
+                "threat_level": "high", "action_trigger": None, "audio_b64": "",
+                "full_answer": injection_block, "model": "LYLO-IDS",
+                "usage_count": USAGE_TRACKER[user_id], "limit": limit,
             }
-            yield f"data: {json.dumps(meta_payload)}\n\n"
-        return StreamingResponse(_stream_emergency(), media_type="text/event-stream",
-                                  headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+            yield f"data: {json.dumps(meta)}\n\n"
+        return StreamingResponse(_injection(), media_type="text/event-stream")
 
     async def intelligent_semantic_router(persona: str, message: str) -> dict | None:
         _client = claude_client or anthropic_client
