@@ -4,6 +4,7 @@ Owns: relational voice, inject_fortress(), apply_gates()
 """
 import re
 import logging
+from services.directive_detector import detect_directive_sync, has_incident_context
 
 logger = logging.getLogger("LYLO.Chat")
 
@@ -69,11 +70,6 @@ _BUYING_SIGNALS = [
     "buying a car", "used car", "test drive", "dealership", "private seller",
     "carfax", "vin check", "pre-purchase", "inspection before buying",
     "is this a good deal", "how much should i pay",
-]
-_DIRECTIVE_SIGNALS = [
-    "just tell me what to do", "i dont want questions", "i don't want questions",
-    "what do i do right now", "help now", "just help me",
-    "skip the questions", "tell me the steps",
 ]
 _AMBIGUOUS_SIGNALS = [
     "is it safe", "can i drive", "should i drive", "is this serious",
@@ -162,7 +158,8 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
     sig_safety3  = any(s in all_text for s in _SAFETY3_SIGNALS)
     sig_routine  = any(s in all_text for s in _ROUTINE_SIGNALS)
     sig_buying   = any(s in all_text for s in _BUYING_SIGNALS)
-    sig_dir      = any(s in msg.lower() for s in _DIRECTIVE_SIGNALS)
+    _dir_result  = detect_directive_sync(msg)
+    sig_dir      = _dir_result["directive"]
     sig_amb      = (any(s in msg.lower() for s in _AMBIGUOUS_SIGNALS)
                     and len(msg.strip().split()) < 10)
 
