@@ -1,6 +1,6 @@
 // ============================================================================
 // LYLO OS — ChatInterface.tsx
-// Version: 31.8.5 — Veracore™ badge gated to real verification only
+// Version: 32.0 — 5-Persona Council + OBD Scanner — Veracore™ badge gated to real verification only
 // ─────────────────────────────────────────────────────────────────────────────
 // V31.2 Changes:
 //  [V31.2-1] FONT SIZE BUTTON — Aa button in bottom bar cycles 4 sizes
@@ -16,29 +16,23 @@ import { sendChatMessage, getUserStats, Message, UserStats } from '../lib/api';
 import { useSentinel } from '../lib/useSentinel';
 import { PERSONAS as IMPORTED_PERSONAS } from '../data/personas';
 import {
-  Shield, Wrench, Gavel, Activity, BookOpen, Laugh,
-  Mic, MicOff, Volume2, VolumeX, AlertTriangle, CreditCard,
-  Zap, Brain, LogOut, X, ArrowRight, Briefcase, Bell, Info,
-  ExternalLink, Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock,
-  Compass, Star, Users, Target, Flame, Heart, Sliders, ChevronLeft, ChevronRight,
-  CheckCircle, Globe,
+  Shield, Wrench, BookOpen, Heart, Hammer,
+  Mic, MicOff, Volume2, VolumeX, AlertTriangle,
+  Zap, Brain, X, ArrowRight, Bell,
+  Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock,
+  Compass, Star, Users, Target, Flame, Sliders, ChevronLeft, ChevronRight,
+  CheckCircle, Globe, Scan,
 } from 'lucide-react';
+import OBDScanner from './chat/OBDScanner';
 
 const API_URL = 'https://lylo-backend.onrender.com';
 
 const CRISIS_LINKS: { [key: string]: { label: string; url: string; description: string }[] } = {
   guardian:  [{ label: 'FBI IC3 Fraud Reporting', url: 'https://www.ic3.gov/', description: 'Report stolen funds or digital extortion immediately.' }, { label: 'IdentityTheft.gov', url: 'https://www.identitytheft.gov/', description: 'Federal hub to lock down compromised SSNs.' }],
-  lawyer:    [{ label: 'Legal Services Corporation', url: 'https://www.lsc.gov/', description: 'Find immediate, free legal aid in your area.' }, { label: 'CFPB Complaint', url: 'https://www.consumerfinance.gov/complaint/', description: 'File against a predatory lender or bank.' }],
-  doctor:    [{ label: 'Call 911', url: 'tel:911', description: 'For immediate, life-threatening emergencies.' }, { label: 'WebMD Symptom Checker', url: 'https://symptoms.webmd.com/', description: 'Verify non-emergency symptoms.' }],
-  therapist: [{ label: '988 Crisis Lifeline', url: 'tel:988', description: 'Call or text 988 for mental health support.' }, { label: 'Crisis Text Line', url: 'sms:741741', description: 'Text HOME to 741741.' }],
-  wealth:    [{ label: 'AnnualCreditReport.com', url: 'https://www.annualcreditreport.com/', description: 'The only federally authorized free credit report.' }, { label: 'NFCC Counseling', url: 'https://www.nfcc.org/', description: 'Non-profit debt relief.' }],
-  career:    [{ label: 'Department of Labor', url: 'https://www.dol.gov/agencies/whd', description: 'Report wage theft or unsafe working conditions.' }, { label: 'Glassdoor Salaries', url: 'https://www.glassdoor.com/Salaries/index.htm', description: 'Benchmark salary before negotiations.' }],
-  mechanic:  [{ label: 'RepairPal Estimates', url: 'https://repairpal.com/', description: 'Verified fair-price estimates before the shop.' }, { label: 'NHTSA Recalls', url: 'https://www.nhtsa.gov/recalls', description: 'Check active safety recalls.' }],
-  tutor:     [{ label: 'Khan Academy', url: 'https://www.khanacademy.org/', description: 'Free, world-class education for anyone.' }, { label: 'Coursera', url: 'https://www.coursera.org/', description: 'Professional certificates and degrees.' }],
-  pastor:    [{ label: 'Bible Gateway', url: 'https://www.biblegateway.com/', description: 'Searchable Bible in 200+ versions.' }, { label: 'Focus on the Family', url: 'https://www.focusonthefamily.com/get-help/', description: 'Christian counseling consultations.' }],
-  vitality:  [{ label: 'Examine.com', url: 'https://examine.com/', description: 'Independent research on supplements and nutrition.' }, { label: 'CDC Activity Guidelines', url: 'https://www.cdc.gov/physicalactivity/basics/index.htm', description: 'Federal health guidelines.' }],
-  hype:      [{ label: 'Google Trends', url: 'https://trends.google.com/trends/', description: 'What the world is searching for right now.' }, { label: 'Answer The Public', url: 'https://answerthepublic.com/', description: 'Questions people are asking.' }],
-  bestie:    [{ label: 'Meetup.com', url: 'https://www.meetup.com/', description: 'Find local groups and communities.' }],
+  bestie:    [{ label: '988 Crisis Lifeline', url: 'tel:988', description: 'Call or text 988 for mental health support.' }, { label: 'Crisis Text Line', url: 'sms:741741', description: 'Text HOME to 741741.' }],
+  mechanic:  [{ label: 'RepairPal Estimates', url: 'https://repairpal.com/', description: 'Verified fair-price estimates before the shop.' }, { label: 'NHTSA Recalls', url: 'https://www.nhtsa.gov/recalls', description: 'Check active safety recalls on your vehicle.' }],
+  guide:     [{ label: 'Khan Academy', url: 'https://www.khanacademy.org/', description: 'Free, world-class education for anyone.' }, { label: 'Coursera', url: 'https://www.coursera.org/', description: 'Professional certificates and degrees.' }],
+  builder:   [{ label: 'Department of Labor', url: 'https://www.dol.gov/agencies/whd', description: 'Report wage theft or unsafe working conditions.' }, { label: 'Glassdoor Salaries', url: 'https://www.glassdoor.com/Salaries/index.htm', description: 'Benchmark your salary before any negotiation.' }],
 };
 
 export interface PersonaConfig {
@@ -302,18 +296,11 @@ const UI_STRINGS: Record<string, Record<string, string>> = {
 };
 
 const PERSONA_NAMES_ES: Record<string, string> = {
-  mechanic:  'Mecánico',
-  doctor:    'Doctor',
-  lawyer:    'Abogado',
-  wealth:    'Asesor Financiero',
-  therapist: 'Terapeuta',
-  career:    'Coach de Carrera',
-  tutor:     'Tutor',
-  vitality:  'Vitalidad',
-  hype:      'Motivador',
-  bestie:    'Mejor Amigo/a',
-  pastor:    'Pastor',
   guardian:  'Guardián',
+  bestie:    'Mejor Amigo/a',
+  mechanic:  'Mecánico',
+  guide:     'El Guía',
+  builder:   'El Constructor',
 };
 
 const detectBrowserLang = (): 'en' | 'es' => {
@@ -498,6 +485,7 @@ function ChatInterface({
   const isSpeakingRef = useRef(false);
   const [showDropdown, setShowDropdown]                 = useState(false);
   const [showCameraMenu, setShowCameraMenu]             = useState(false);
+  const [showOBDScanner, setShowOBDScanner]             = useState(false);
   const [userTier, setUserTier]                         = useState<'free' | 'pro' | 'elite' | 'max'>((userTierProp as any) ?? 'max');
   const [communicationStyle, setCommunicationStyle]     = useState('standard');
   const [fontLevel, setFontLevel]                       = useState(1);
@@ -1226,7 +1214,7 @@ function ChatInterface({
                   { icon: Brain, color: 'text-purple-400', label: 'Triple Engine AI', desc: 'OpenAI + Gemini + Claude race simultaneously. Fastest, most accurate answer wins.' },
                   { icon: CheckCircle, color: 'text-green-400', label: 'Truth Protocol', desc: 'LYLO will not fabricate. Tactical truth or we ask for more intel.' },
                   { icon: Lock, color: 'text-blue-400', label: 'Ironclad Privacy', desc: 'Cryptographically hashed. Never sold. Never used to train public AI.' },
-                  { icon: Users, color: 'text-orange-400', label: '12-Seat Council', desc: 'Legal. Medical. Financial. Spiritual. One OS. Auto-switches in emergencies.' },
+                  { icon: Users, color: 'text-orange-400', label: '5-Specialist Council', desc: 'Guardian. Bestie. Mechanic. Guide. Builder. One OS. Auto-switches when it matters.' },
                 ].map(({ icon: Icon, color, label, desc }) => (
                   <div key={label} className="flex items-start gap-4 p-4 bg-white/[0.03] border border-white/[0.06] rounded-2xl">
                     <Icon className={`w-5 h-5 ${color} mt-0.5 flex-shrink-0`} />
@@ -1413,13 +1401,55 @@ function ChatInterface({
       {/* CHAT AREA */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto relative p-4 space-y-6" style={{ paddingBottom: previewUrl ? '420px' : '320px', overflowAnchor: 'auto' }}>
         {showPersonaGrid && (
-          <div className="grid grid-cols-2 gap-3">
-            {PERSONAS.map(p => (
-              <button key={p.id} onClick={() => handlePersonaChange(p)} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent` : 'bg-white/5 border-white/10 hover:bg-white/8'}`}>
-                <p.icon className={`w-8 h-8 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
-                <span className="text-[10px] text-white font-black uppercase tracking-widest block leading-tight text-center">{lang === 'es' ? (PERSONA_NAMES_ES[p.id] ?? p.name) : p.name}</span>
-              </button>
-            ))}
+          <div className="flex flex-col gap-4">
+            {/* GNG Brand Header */}
+            <div className="text-center pt-2 pb-1">
+              <p className="text-[9px] text-gray-600 font-black uppercase tracking-[0.3em]">The Good Neighbor Guard</p>
+              <p className="text-white font-black text-lg uppercase tracking-[0.15em] leading-none">Your Council</p>
+            </div>
+
+            {/* Persona Grid — 2 col, Guardian full width on top */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Guardian — full width, flagship */}
+              {PERSONAS.filter(p => p.id === 'guardian').map(p => (
+                <button key={p.id} onClick={() => handlePersonaChange(p)}
+                  className={`col-span-2 p-5 rounded-3xl border flex items-center gap-4 transition-all active:scale-[0.98] ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent shadow-[0_0_25px_rgba(59,130,246,0.3)]` : `bg-white/5 border-white/10 ${getColor(p.color, 'ring')}`}`}>
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${activePersona.id === p.id ? 'bg-white/20' : getColor(p.color, 'bg') + '/10'}`}>
+                    <p.icon className={`w-6 h-6 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-white font-black text-sm uppercase tracking-widest leading-none">{lang === 'es' ? (PERSONA_NAMES_ES[p.id] ?? p.name) : p.name}</p>
+                    <p className={`text-[10px] font-bold mt-1 uppercase tracking-widest ${activePersona.id === p.id ? 'text-white/70' : getColor(p.color, 'text')}`}>{p.serviceLabel}</p>
+                  </div>
+                  {activePersona.id === p.id && <div className="ml-auto w-2 h-2 rounded-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.6)]" />}
+                </button>
+              ))}
+
+              {/* Remaining 4 personas — 2x2 grid */}
+              {PERSONAS.filter(p => p.id !== 'guardian').map(p => (
+                <button key={p.id} onClick={() => handlePersonaChange(p)}
+                  className={`p-5 rounded-3xl border flex flex-col items-center gap-3 transition-all active:scale-[0.98] ${activePersona.id === p.id ? `${getColor(p.color, 'bg')} border-transparent shadow-[0_0_20px_rgba(99,102,241,0.25)]` : `bg-white/5 border-white/10 ${getColor(p.color, 'ring')}`}`}>
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${activePersona.id === p.id ? 'bg-white/20' : getColor(p.color, 'bg') + '/10'}`}>
+                    <p.icon className={`w-5 h-5 ${activePersona.id === p.id ? 'text-white' : getColor(p.color, 'text')}`} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-white font-black text-[10px] uppercase tracking-widest leading-none">{lang === 'es' ? (PERSONA_NAMES_ES[p.id] ?? p.name) : p.name}</p>
+                    <p className={`text-[8px] font-bold mt-1 uppercase tracking-widest ${activePersona.id === p.id ? 'text-white/60' : 'text-gray-600'}`}>{p.serviceLabel}</p>
+                    {(p as any).hasOBDScanner && (
+                      <span className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 bg-teal-500/10 border border-teal-500/20 rounded-full">
+                        <Scan className="w-2.5 h-2.5 text-teal-400" />
+                        <span className="text-[7px] text-teal-400 font-black uppercase tracking-widest">OBD</span>
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* GNG Footer Tag */}
+            <p className="text-center text-[8px] text-gray-700 font-black uppercase tracking-[0.25em] pb-1">
+              Truth · Safety · We Got Your Back
+            </p>
           </div>
         )}
 
@@ -1481,6 +1511,29 @@ function ChatInterface({
         )}
       </div>
 
+      {/* OBD SCANNER PANEL — Mechanic only */}
+      {showOBDScanner && activePersona.id === 'mechanic' && (
+        <div className="fixed inset-x-0 bottom-0 z-[200] bg-[#0a0f1e]/98 backdrop-blur-xl border-t border-teal-500/20 p-4 pb-8 max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
+          <div className="max-w-md mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Scan className="w-4 h-4 text-teal-400" />
+                <span className="text-teal-400 font-black text-xs uppercase tracking-widest">OBD Vehicle Scanner</span>
+              </div>
+              <button onClick={() => setShowOBDScanner(false)} className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+            <OBDScanner
+              onScanComplete={(results) => {
+                const codes = results.map(r => r.code).join(', ');
+                const summary = results.map(r => `${r.code}: ${r.data?.title ?? 'Unknown'}`).join(' | ');
+                setInput(`My car scan found these codes: ${codes}. Here's what the scanner says: ${summary}. What do I need to know?`);
+                setShowOBDScanner(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* BOTTOM BAR */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-3xl border-t border-white/10 p-4 z-[100] pb-10">
         {previewUrl && (
@@ -1526,6 +1579,16 @@ function ChatInterface({
                 </div>
               )}
             </div>
+            {activePersona.id === 'mechanic' && (
+              <button
+                onClick={() => setShowOBDScanner(!showOBDScanner)}
+                disabled={loading}
+                className={`px-3 py-4 rounded-2xl flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border disabled:opacity-50 ${showOBDScanner ? 'bg-teal-500/20 border-teal-500/40 text-teal-400 shadow-[0_0_15px_rgba(20,184,166,0.2)]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-teal-400 hover:border-teal-500/30'}`}
+              >
+                <Scan className="w-4 h-4" />
+                <span>Scan</span>
+              </button>
+            )}
             <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input value={input} onChange={e => { setInput(e.target.value); inputTextRef.current = e.target.value; lastInputModeRef.current = 'text'; }} disabled={loading} onKeyDown={e => { if (e.key === 'Enter') handleSend(); }} placeholder={lang === 'es' ? `Escríbele a ${PERSONA_NAMES_ES[activePersona.id] ?? activePersona.name}…` : `Type to ${activePersona.name}…`} className={`flex-1 bg-white/10 border border-white/10 rounded-2xl px-5 py-4 ${getInputFontSize()} text-white outline-none font-bold min-w-0 disabled:opacity-50`} />
@@ -1534,7 +1597,7 @@ function ChatInterface({
 
           <div className="flex items-center justify-between pt-2 border-t border-white/10">
             <div className="flex items-center gap-2 text-[8px] text-gray-500 font-black uppercase tracking-widest"><AlertTriangle className="w-2.5 h-2.5" /> AI can make mistakes. Verify critical info.</div>
-            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v31.8.5</p>
+            <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">LYLO OS v32.0</p>
           </div>
         </div>
       </div>
