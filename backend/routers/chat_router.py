@@ -32,17 +32,10 @@ from services.memory_engine import (
     get_or_create_vault, save_vault, auto_detect_pin_category, load_vault,
 )
 from services.personas.guardian  import PERSONA_STRING as GUARDIAN_STRING,  inject_fortress as guardian_inject,  apply_gates as guardian_gates
-from services.personas.doctor    import PERSONA_STRING as DOCTOR_STRING,    inject_fortress as doctor_inject,    apply_gates as doctor_gates
-from services.personas.lawyer    import PERSONA_STRING as LAWYER_STRING,    inject_fortress as lawyer_inject,    apply_gates as lawyer_gates
-from services.personas.mechanic  import PERSONA_STRING as MECHANIC_STRING,  inject_fortress as mechanic_inject,  apply_gates as mechanic_gates
-from services.personas.wealth    import PERSONA_STRING as WEALTH_STRING,    inject_fortress as wealth_inject,    apply_gates as wealth_gates
-from services.personas.career    import PERSONA_STRING as CAREER_STRING,    inject_fortress as career_inject,    apply_gates as career_gates
-from services.personas.vitality  import PERSONA_STRING as VITALITY_STRING,  inject_fortress as vitality_inject,  apply_gates as vitality_gates
-from services.personas.tutor     import PERSONA_STRING as TUTOR_STRING,     inject_fortress as tutor_inject,     apply_gates as tutor_gates
-from services.personas.pastor    import PERSONA_STRING as PASTOR_STRING,    inject_fortress as pastor_inject,    apply_gates as pastor_gates
-from services.personas.hype      import PERSONA_STRING as HYPE_STRING,      inject_fortress as hype_inject,      apply_gates as hype_gates
 from services.personas.bestie    import PERSONA_STRING as BESTIE_STRING,    inject_fortress as bestie_inject,    apply_gates as bestie_gates
-from services.personas.therapist import PERSONA_STRING as THERAPIST_STRING, inject_fortress as therapist_inject, apply_gates as therapist_gates
+from services.personas.mechanic  import PERSONA_STRING as MECHANIC_STRING,  inject_fortress as mechanic_inject,  apply_gates as mechanic_gates
+from services.personas.guide     import PERSONA_STRING as GUIDE_STRING,     inject_fortress as guide_inject,     apply_gates as guide_gates
+from services.personas.builder   import PERSONA_STRING as BUILDER_STRING,   inject_fortress as builder_inject,   apply_gates as builder_gates
 from services.prompt_builder import (
     _build_chat_system_prompt, assemble_prompt,
     build_hard_boundary_block, get_seat9_theology,
@@ -200,27 +193,11 @@ def _location_bucket(location: str) -> str:
 
 
 _DOMAIN_ALLOWLISTS = {
-    "doctor": (
-        "site:medlineplus.gov OR site:cdc.gov OR site:nih.gov "
-        "OR site:fda.gov OR site:nlm.nih.gov"
-    ),
-    "lawyer": (
-        "site:law.cornell.edu OR site:uscourts.gov OR site:justice.gov "
-        "OR site:congress.gov OR site:usa.gov OR site:.gov"
-    ),
-    "wealth": (
-        "site:irs.gov OR site:treasury.gov OR site:investor.gov "
-        "OR site:consumerfinance.gov OR site:sec.gov OR site:fdic.gov"
-    ),
-    "mechanic":  None,
     "guardian":  None,
-    "therapist": None,
-    "vitality":  None,
-    "career":    None,
-    "tutor":     None,
-    "hype":      None,
-    "pastor":    None,
     "bestie":    None,
+    "mechanic":  None,
+    "guide":     None,
+    "builder":   None,
 }
 
 _HIGHSTAKES_TRIGGERS = {
@@ -276,7 +253,7 @@ _GENERAL_TRIGGERS = {
     "help me understand", "explain", "difference between",
 }
 
-_HIGH_STAKES_PERSONAS  = {"doctor", "lawyer", "wealth"}
+_HIGH_STAKES_PERSONAS  = {"guardian"}
 _TIMEOUT_HIGHSTAKES    = 1.8   # seconds — enough headroom for advanced Tavily search
 _TIMEOUT_DEFAULT       = 1.2   # seconds — non-critical personas
 
@@ -308,12 +285,8 @@ def _build_tavily_query(persona: str, message: str, location: str) -> str:
     _TOPIC_FRAMES = {
         "mechanic":  "car vehicle repair fix",
         "guardian":  "cybersecurity scam fraud protection",
-        "therapist": "mental health emotional coping",
-        "vitality":  "fitness nutrition health",
-        "career":    "career job professional workplace",
-        "tutor":     "explanation learn understand",
-        "hype":      "content strategy social media",
-        "pastor":    "faith spirituality scripture",
+        "guide":     "explanation learn understand education",
+        "builder":   "career job goals execution workplace",
         "bestie":    "advice relationship personal",
     }
     frame = _TOPIC_FRAMES.get(persona, "")
@@ -878,7 +851,7 @@ def generate_hook_v2(persona: str, user_name: str, lang: str, user_id: str,
     g = G[P][L]
 
     # Therapist hard rule: always body check, distress softens it
-    if P == "therapist":
+    if P == "bestie":  # emotional support state
         hook_type = "distress_soft" if features["distress"] else "body_check"
     else:
         if features["urgent"] and "urgent" in g.get("types", {}):
@@ -2078,18 +2051,11 @@ BODY SCAN (Best for: Opening a session, General check-in)
 """
 
     _RELATIONAL_PERSONAS = {
-        "doctor": DOCTOR_STRING,
-        "lawyer": LAWYER_STRING,
         "guardian": GUARDIAN_STRING,
-        "wealth": WEALTH_STRING,
-        "therapist": THERAPIST_STRING,
+        "bestie":   BESTIE_STRING,
         "mechanic": MECHANIC_STRING,
-        "career": CAREER_STRING,
-        "vitality": VITALITY_STRING,
-        "hype": HYPE_STRING,
-        "bestie": BESTIE_STRING,
-        "pastor": PASTOR_STRING,
-        "tutor": TUTOR_STRING,
+        "guide":    GUIDE_STRING,
+        "builder":  BUILDER_STRING,
     }
     _relational_layer = _RELATIONAL_PERSONAS.get(persona, "")
     if _relational_layer:
@@ -2233,60 +2199,10 @@ MEMORY INTEGRITY RULE:
             system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
     # ── End Guardian Fortress ────────────────────────────────────────────
 
-    # ══════════════════════════════════════════════════════════════════════
-    # ── Doctor Fortress ────────────────────────────────────────────────────
-    _doctor_overrides = {}
-    if persona == "doctor":
-        system_prompt, _doctor_overrides = doctor_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-    # ── End Doctor Fortress ──────────────────────────────────────────────
-
-    # ── Lawyer Fortress ───────────────────────────────────────────────────────
-    _lawyer_overrides = {}
-    if persona == "lawyer":
-        system_prompt, _lawyer_overrides = lawyer_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
     # ── Mechanic Fortress ─────────────────────────────────────────────────────
     _mechanic_overrides = {}
     if persona == "mechanic":
         system_prompt, _mechanic_overrides = mechanic_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Wealth Fortress ───────────────────────────────────────────────────────
-    _wealth_overrides = {}
-    if persona == "wealth":
-        system_prompt, _wealth_overrides = wealth_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Career Fortress ───────────────────────────────────────────────────────
-    _career_overrides = {}
-    if persona == "career":
-        system_prompt, _career_overrides = career_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Vitality Fortress ─────────────────────────────────────────────────────
-    _vitality_overrides = {}
-    if persona == "vitality":
-        system_prompt, _vitality_overrides = vitality_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Tutor Fortress ────────────────────────────────────────────────────────
-    _tutor_overrides = {}
-    if persona == "tutor":
-        system_prompt, _tutor_overrides = tutor_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Pastor Fortress ───────────────────────────────────────────────────────
-    _pastor_overrides = {}
-    if persona == "pastor":
-        system_prompt, _pastor_overrides = pastor_inject(
-            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
-
-    # ── Hype Fortress ─────────────────────────────────────────────────────────
-    _hype_overrides = {}
-    if persona == "hype":
-        system_prompt, _hype_overrides = hype_inject(
             system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
     # ── Bestie Fortress ───────────────────────────────────────────────────────
@@ -2295,11 +2211,21 @@ MEMORY INTEGRITY RULE:
         system_prompt, _bestie_overrides = bestie_inject(
             system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
 
-    # ── Therapist Fortress ────────────────────────────────────────────────────
-    _therapist_overrides = {}
-    if persona == "therapist":
-        system_prompt, _therapist_overrides = therapist_inject(
+    # ── Guide Fortress ────────────────────────────────────────────────────────
+    _guide_overrides = {}
+    if persona == "guide":
+        system_prompt, _guide_overrides = guide_inject(
             system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
+
+    # ── Builder Fortress ──────────────────────────────────────────────────────
+    _builder_overrides = {}
+    if persona == "builder":
+        system_prompt, _builder_overrides = builder_inject(
+            system_prompt, msg, CONVO_CONTEXT, email_lower, lang)
+
+    # stub overrides for composer compatibility
+    _therapist_overrides = {}
+    _pastor_overrides    = {}
 
     # ══════════════════════════════════════════════════════════════════════
     # ── Response Composer — procedural variation (non-emergency only) ──────
@@ -2316,7 +2242,7 @@ MEMORY INTEGRITY RULE:
         therapist_overrides = _therapist_overrides,
         mechanic_overrides  = _mechanic_overrides,
         pastor_overrides    = _pastor_overrides,
-    )
+    )  # therapist/pastor stubs kept for composer signature compatibility
     if _composer_result["shape_instruction"]:
         system_prompt += f"\n\n{_composer_result['shape_instruction']}"
     # ── End Response Composer ───────────────────────────────────────────────
@@ -2774,7 +2700,7 @@ RULES:
 
                 if MED_VAULT_ENABLED and persona_can_write("doctor", "medical"):
                     _symptoms = detect_symptoms_in_message(msg)
-                    if _symptoms and persona in {"doctor","therapist","vitality","pastor"}:
+                    if _symptoms and persona in {"guardian"}:  # guardian handles health safety escalation
                         try:
                             _vault = await get_or_create_vault(user_id, email_lower)
                             for _sym in _symptoms:
@@ -2790,7 +2716,7 @@ RULES:
                         except Exception as _e:
                             logger.warning(f"Ambient diary error: {_e}")
 
-                if MED_VAULT_ENABLED and persona in {"doctor","therapist","vitality"}:
+                if MED_VAULT_ENABLED and persona in {"guardian"}:
                     try:
                         _vault_check = await load_vault(user_id, email_lower)
                         if _vault_check:
