@@ -21,7 +21,7 @@ import {
   Zap, Brain, X, ArrowRight, Bell,
   Menu, Image as ImageIcon, Camera as CameraIcon, Type, Lock,
   Compass, Star, Users, Target, Flame, Sliders, ChevronLeft, ChevronRight,
-  CheckCircle, Globe, Scan,
+  CheckCircle, Globe, Scan, Briefcase, Activity, ExternalLink,
 } from 'lucide-react';
 import OBDScanner from './chat/OBDScanner';
 
@@ -55,40 +55,23 @@ interface ChatInterfaceProps {
   onUsageUpdate?: () => void;
 }
 
-interface IntakeProfile { faith: string; occupation: string; mission: string; vibe: string; relationship: string; }
+interface IntakeProfile { occupation: string; mission: string; vibe: string; relationship: string; vehicle: string; }
 
 interface AudioQueueEntry { sentence: string; audio: HTMLAudioElement | null; status: 'pending' | 'fetching' | 'ready' | 'played'; pauseBeforeMs?: number; pauseAfterMs?: number; }
 
 const INTAKE_QUESTIONS_R1 = [
   {
-    id: 'faith',
-    question: 'What guides your spirit?',
-    subtitle: 'Helps your Pastor speak your language.',
-    icon: Star,
-    accentColor: 'gold',
-    options: [
-      { label: 'Christian',            emoji: '✝️',  value: 'christian' },
-      { label: 'Muslim',               emoji: '☪️',  value: 'muslim'    },
-      { label: 'Jewish',               emoji: '✡️',  value: 'jewish'    },
-      { label: 'Hindu',                emoji: '🕉️', value: 'hindu'     },
-      { label: 'Buddhist',             emoji: '☸️',  value: 'buddhist'  },
-      { label: 'Spiritual / No label', emoji: '🌿',  value: 'spiritual' },
-    ],
-    allowCustom: true,
-    customPlaceholder: 'My faith is…',
-  },
-  {
     id: 'occupation',
-    question: 'What do you do for work?',
-    subtitle: 'Calibrates your personal AI Task Force.',
-    icon: Briefcase,
+    question: 'What do you do?',
+    subtitle: 'Helps your Builder and Guide give you advice that actually fits your life.',
+    icon: Target,
     accentColor: 'blue',
     options: [
-      { label: 'Professional / Employee',    emoji: '💼', value: 'professional' },
-      { label: 'Entrepreneur / Biz Owner',   emoji: '🚀', value: 'entrepreneur' },
+      { label: 'Working a Job',              emoji: '💼', value: 'professional' },
+      { label: 'Running a Business',         emoji: '🚀', value: 'entrepreneur' },
       { label: 'Student',                    emoji: '🎓', value: 'student'      },
       { label: 'Parent / Caregiver',         emoji: '🏠', value: 'caregiver'    },
-      { label: 'Job Seeker',                 emoji: '🔍', value: 'job_seeker'   },
+      { label: 'Job Hunting',                emoji: '🔍', value: 'job_seeker'   },
       { label: 'Retired',                    emoji: '🌅', value: 'retired'      },
     ],
     allowCustom: true,
@@ -96,17 +79,17 @@ const INTAKE_QUESTIONS_R1 = [
   },
   {
     id: 'mission',
-    question: 'Your #1 mission right now?',
-    subtitle: 'We route your council around this objective.',
-    icon: Target,
+    question: 'What are you trying to accomplish right now?',
+    subtitle: 'Your council rallies around this.',
+    icon: Flame,
     accentColor: 'green',
     options: [
-      { label: 'Build Wealth',           emoji: '💰', value: 'build_wealth'    },
-      { label: 'Protect My Family',      emoji: '🛡️', value: 'protect_family'  },
-      { label: 'Advance My Career',      emoji: '📈', value: 'career_growth'   },
-      { label: 'Health & Wellness',      emoji: '💪', value: 'health_wellness' },
-      { label: 'Legal / Financial Help', emoji: '⚖️', value: 'legal_financial' },
-      { label: 'Personal Growth',        emoji: '🌱', value: 'personal_growth' },
+      { label: 'Stay Safe Online',       emoji: '🛡️', value: 'stay_safe'      },
+      { label: 'Get a Job / Promotion',  emoji: '📈', value: 'career_growth'  },
+      { label: 'Learn Something New',    emoji: '📚', value: 'learn'          },
+      { label: 'Fix Something',          emoji: '🔧', value: 'fix_something'  },
+      { label: 'Process Something Hard', emoji: '💬', value: 'emotional'      },
+      { label: 'Execute a Goal',         emoji: '🎯', value: 'execute_goal'   },
     ],
     allowCustom: true,
     customPlaceholder: 'My mission is…',
@@ -114,16 +97,16 @@ const INTAKE_QUESTIONS_R1 = [
   {
     id: 'vibe',
     question: 'How should your council talk to you?',
-    subtitle: 'Every advisor adapts to your style.',
+    subtitle: 'Every specialist adapts to your style.',
     icon: Sliders,
     accentColor: 'purple',
     options: [
-      { label: 'Direct & No Fluff',   emoji: '⚡', value: 'standard'  },
-      { label: 'Chill & Easy',        emoji: '😎', value: 'chill'     },
-      { label: 'Warm & Supportive',   emoji: '🌸', value: 'nurturing' },
-      { label: 'Zero Filter',         emoji: '🔥', value: 'blunt'     },
-      { label: 'Structured & Cited',  emoji: '📚', value: 'academic'  },
-      { label: 'Maximum Urgency',     emoji: '🎯', value: 'intense'   },
+      { label: 'Direct & No Fluff',  emoji: '⚡', value: 'standard'  },
+      { label: 'Chill & Easy',       emoji: '😎', value: 'chill'     },
+      { label: 'Warm & Supportive',  emoji: '🌸', value: 'nurturing' },
+      { label: 'Zero Filter',        emoji: '🔥', value: 'blunt'     },
+      { label: 'Structured & Cited', emoji: '📚', value: 'academic'  },
+      { label: 'Maximum Urgency',    emoji: '🎯', value: 'intense'   },
     ],
     allowCustom: false,
     customPlaceholder: '',
@@ -131,19 +114,34 @@ const INTAKE_QUESTIONS_R1 = [
   {
     id: 'relationship',
     question: 'Relationship status?',
-    subtitle: 'Advisors calibrate tone to your situation.',
+    subtitle: 'Helps your Bestie give advice that fits your situation.',
     icon: Heart,
     accentColor: 'pink',
     options: [
-      { label: 'Single',              emoji: '🎯', value: 'single'      },
-      { label: 'In a Relationship',   emoji: '💛', value: 'relationship' },
-      { label: 'Married',             emoji: '💍', value: 'married'      },
-      { label: "It's Complicated",    emoji: '🌀', value: 'complicated'  },
-      { label: 'Divorced / Separated',emoji: '🔓', value: 'divorced'     },
-      { label: 'Prefer Not to Say',   emoji: '🔒', value: 'private'      },
+      { label: 'Single',               emoji: '🎯', value: 'single'      },
+      { label: 'In a Relationship',    emoji: '💛', value: 'relationship' },
+      { label: 'Married',              emoji: '💍', value: 'married'      },
+      { label: "It's Complicated",     emoji: '🌀', value: 'complicated'  },
+      { label: 'Divorced / Separated', emoji: '🔓', value: 'divorced'     },
+      { label: 'Prefer Not to Say',    emoji: '🔒', value: 'private'      },
     ],
     allowCustom: false,
     customPlaceholder: '',
+  },
+  {
+    id: 'vehicle',
+    question: 'Do you own a vehicle?',
+    subtitle: 'Unlocks your Mechanic's OBD scanner and repair cost estimates.',
+    icon: Wrench,
+    accentColor: 'gray',
+    options: [
+      { label: 'Yes — Car or Truck',  emoji: '🚗', value: 'car'        },
+      { label: 'Yes — Motorcycle',    emoji: '🏍️', value: 'motorcycle' },
+      { label: 'Multiple Vehicles',   emoji: '🚙', value: 'multiple'   },
+      { label: 'No Vehicle',          emoji: '🚶', value: 'none'       },
+    ],
+    allowCustom: true,
+    customPlaceholder: 'I drive a…',
   },
 ];
 
@@ -151,20 +149,20 @@ const INTAKE_QUESTIONS_R2 = [
   {
     id: 'housing',
     question: 'Do you own or rent?',
-    subtitle: 'Helps your Lawyer and Wealth Architect give specific advice.',
+    subtitle: 'Helps your Builder give you advice that fits your situation.',
     icon: Shield,
     accentColor: 'blue',
     options: [
-      { label: 'I Own My Home',           emoji: '🏠', value: 'own'    },
-      { label: 'I Rent',                  emoji: '🔑', value: 'rent'   },
-      { label: 'Live With Family / Other',emoji: '👨‍👩‍👧', value: 'other' },
+      { label: 'I Own My Home',            emoji: '🏠', value: 'own'   },
+      { label: 'I Rent',                   emoji: '🔑', value: 'rent'  },
+      { label: 'Live With Family / Other', emoji: '👨‍👩‍👧', value: 'other' },
     ],
     allowCustom: true, customPlaceholder: 'My situation is…',
   },
   {
     id: 'children',
     question: 'Do you have children?',
-    subtitle: '',
+    subtitle: 'Helps your Guardian and Bestie calibrate what matters most.',
     icon: Heart,
     accentColor: 'pink',
     options: [
@@ -177,33 +175,34 @@ const INTAKE_QUESTIONS_R2 = [
   {
     id: 'health_focus',
     question: 'Any ongoing health focus?',
-    subtitle: '',
-    icon: Activity,
+    subtitle: 'Your Guardian escalates health emergencies and knows your context.',
+    icon: Star,
     accentColor: 'green',
     options: [
-      { label: 'Fitness & Weight Loss',   emoji: '💪', value: 'fitness'       },
+      { label: 'Fitness & Energy',        emoji: '💪', value: 'fitness'       },
       { label: 'Managing a Condition',    emoji: '🏥', value: 'condition'     },
       { label: 'Mental Health & Stress',  emoji: '🧠', value: 'mental_health' },
+      { label: 'Nothing specific',        emoji: '✅', value: 'none'          },
     ],
     allowCustom: true, customPlaceholder: 'My health focus is…',
   },
   {
     id: 'finances',
     question: 'Finances right now?',
-    subtitle: 'Your Wealth Architect calibrates to your starting point.',
+    subtitle: 'Helps your Builder give you advice that starts where you actually are.',
     icon: Target,
     accentColor: 'gold',
     options: [
-      { label: 'Stable, looking to grow',  emoji: '📊', value: 'stable'     },
-      { label: 'Getting by, want to improve', emoji: '💡', value: 'improving' },
-      { label: 'Struggling, need a plan', emoji: '🆘', value: 'struggling'  },
+      { label: 'Stable, looking to grow',      emoji: '📊', value: 'stable'     },
+      { label: 'Getting by, want to improve',  emoji: '💡', value: 'improving'  },
+      { label: 'Struggling, need a plan',      emoji: '🆘', value: 'struggling' },
     ],
     allowCustom: true, customPlaceholder: 'My situation is…',
   },
   {
     id: 'location',
     question: 'What state do you live in?',
-    subtitle: 'State-specific legal and financial advice.',
+    subtitle: 'Lets your Guardian and Builder give you state-specific guidance.',
     icon: Compass,
     accentColor: 'indigo',
     options: [
