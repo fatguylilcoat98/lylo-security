@@ -1579,14 +1579,23 @@ function ChatInterface({
               )}
             </div>
             {activePersona.id === 'mechanic' && (
-              <button
-                onClick={() => setShowOBDScanner(!showOBDScanner)}
-                disabled={loading}
-                className={`px-3 py-4 rounded-2xl flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border disabled:opacity-50 ${showOBDScanner ? 'bg-teal-500/20 border-teal-500/40 text-teal-400 shadow-[0_0_15px_rgba(20,184,166,0.2)]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-teal-400 hover:border-teal-500/30'}`}
-              >
-                <Scan className="w-4 h-4" />
-                <span>Scan</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setShowOBDScanner(!showOBDScanner)}
+                  disabled={loading}
+                  className={`px-3 py-4 rounded-2xl flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border disabled:opacity-50 ${showOBDScanner ? 'bg-teal-500/20 border-teal-500/40 text-teal-400 shadow-[0_0_15px_rgba(20,184,166,0.2)]' : 'bg-white/5 border-white/10 text-gray-400 hover:text-teal-400 hover:border-teal-500/30'}`}
+                >
+                  <Scan className="w-4 h-4" />
+                  <span>Scan</span>
+                </button>
+                <button
+                  onClick={() => window.open('/obd-demo', '_blank')}
+                  className="px-3 py-4 rounded-2xl flex flex-col items-center justify-center gap-0.5 font-black text-[9px] uppercase tracking-widest transition-all active:scale-[0.97] min-w-[56px] border bg-white/5 border-white/10 text-gray-400 hover:text-amber-400 hover:border-amber-500/30"
+                >
+                  <span style={{fontSize:'14px'}}>⬡</span>
+                  <span>Demo</span>
+                </button>
+              </>
             )}
             <input ref={fileInputRef}  type="file" className="hidden" accept="image/*"                       onChange={e => handleImageSelect(e.target.files?.[0])} />
             <input ref={photoInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e.target.files?.[0])} />
