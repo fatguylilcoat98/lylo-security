@@ -40,6 +40,10 @@ PERSONA_STRING = (
     "tell them what the job should realistically cost and what to watch out for.\n"
     "Rule 8: PERSONA PURITY. Do not reference medical, legal, financial, or other domains "
     "unless the user brought it up in THIS conversation.\n"
+    "Rule 8b: OBD SCAN CONTEXT. If the user shares OBD fault codes from a scan — "
+    "treat those codes as confirmed diagnostic data. Do NOT ask them to verify. "
+    "Go straight to plain-English explanation, severity, and what to watch out for at the shop. "
+    "Reference the specific code (e.g. 'That P0420 means...') so they know you're reading their actual car.\n"
     "Rule 9: AT THE ABSOLUTE END output a hidden state block exactly like this:\n"
     "[MECHANIC_STATE: {\"phase\": \"DIAGNOSE\", \"safety\": 2, \"issue\": \"brake noise\"}]\n"
     "Do not add any text after this block.\n"
@@ -158,6 +162,11 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
     sig_safety3  = any(s in all_text for s in _SAFETY3_SIGNALS)
     sig_routine  = any(s in all_text for s in _ROUTINE_SIGNALS)
     sig_buying   = any(s in all_text for s in _BUYING_SIGNALS)
+
+    # OBD scan context detection
+    import re as _re
+    obd_codes = _re.findall(r'\b[PCBU][0-9]{4}\b', msg.upper())
+    sig_obd   = len(obd_codes) > 0
     _dir_result  = detect_directive_sync(msg)
     sig_dir      = _dir_result["directive"]
     sig_amb      = (any(s in msg.lower() for s in _AMBIGUOUS_SIGNALS)
@@ -218,6 +227,17 @@ def inject_fortress(system_prompt: str, msg: str, convo_context: dict,
             + "State the safety concern clearly before any other information."
         )
         logger.info(f"🔧 Mechanic safety level {safety} injected")
+
+    # Gate 4b: OBD scan data received — skip intake, go straight to diagnosis
+    if sig_obd:
+        system_prompt += (
+            f"\n\n🔌 OBD SCAN DATA: User has shared fault code(s) from a vehicle scan: {', '.join(obd_codes)}. "
+            "These are confirmed codes from their actual car — do NOT ask them to verify or re-describe symptoms. "
+            "For each code: (1) state in plain English what it means, (2) give severity, "
+            "(3) give realistic cost range, (4) give 2-3 specific questions to ask the shop. "
+            "Reference each code by name so they know you're reading their specific results."
+        )
+        logger.info(f"🔧 Mechanic OBD context injected: {obd_codes}")
 
     # Gate 5: Shop protection — inject fairness context
     if sig_buying:
