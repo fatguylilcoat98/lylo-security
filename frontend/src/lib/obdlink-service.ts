@@ -26,7 +26,7 @@
 export interface OBDDevice {
   id: string;
   name: string;
-  device: BluetoothDevice | null; // null in mock mode
+  device: any | null; // BluetoothDevice — typed when Web Bluetooth API is available
 }
 
 export interface DTCResult {
@@ -55,8 +55,8 @@ export interface OBDScanReport {
 // ─── OBDLink Service ──────────────────────────────────────────────────────────
 
 export class OBDLinkService {
-  private device: BluetoothDevice | null = null;
-  private characteristic: BluetoothRemoteGATTCharacteristic | null = null;
+  private device: any | null = null;          // BluetoothDevice
+  private characteristic: any | null = null;  // BluetoothRemoteGATTCharacteristic
   private mockMode: boolean;
 
   // Known OBDLink BLE service/characteristic UUIDs
