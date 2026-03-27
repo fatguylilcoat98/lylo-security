@@ -1,0 +1,1193 @@
+<!--
+  LYLO™ × OBDLink — Interactive Demo
+  The Good Neighbor Guard / Built by Christopher Hughes · Sacramento, CA
+  Created with the help of AI collaborators (Claude · GPT · Gemini · Groq)
+  Truth · Safety · We Got Your Back
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LYLO™ Mechanic — OBD Scanner Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #020509;
+  --surface: #060d16;
+  --surface2: #0a1520;
+  --border: rgba(0,200,255,0.1);
+  --border-hover: rgba(0,200,255,0.35);
+  --cyan: #00c8ff;
+  --cyan-dim: rgba(0,200,255,0.12);
+  --teal: #14b8a6;
+  --teal-dim: rgba(20,184,166,0.12);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.1);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,0.1);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.1);
+  --white: #e2e8f0;
+  --gray: #475569;
+  --gray2: #334155;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: 'Rajdhani', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid bg */
+body::after {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(0,200,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events:none;
+  z-index:0;
+}
+/* Scanlines */
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,200,255,0.012) 3px, rgba(0,200,255,0.012) 4px);
+  pointer-events:none;
+  z-index:1000;
+}
+
+.wrap {
+  position:relative;
+  z-index:10;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+/* ── HEADER ── */
+.header {
+  text-align:center;
+  margin-bottom: 48px;
+}
+.header-eyebrow {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.5em;
+  color: var(--teal);
+  opacity: 0.7;
+  margin-bottom: 16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 12px;
+}
+.header-eyebrow::before,
+.header-eyebrow::after { content:''; flex:1; max-width:80px; height:1px; background:var(--border); }
+
+.header h1 {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(1.6rem, 5vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--white);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.header h1 .accent { color: var(--teal); }
+.header h1 .x { color: var(--gray); margin: 0 8px; }
+
+.header-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--gray);
+  letter-spacing: 0.3em;
+  margin-bottom: 20px;
+}
+
+.demo-badge {
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 100px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.3);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.demo-badge-dot {
+  width:6px; height:6px;
+  border-radius:50%;
+  background: var(--amber);
+  animation: pulse-amber 2s infinite;
+}
+@keyframes pulse-amber { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(245,158,11,0.4)} 50%{opacity:0.7;box-shadow:0 0 0 6px rgba(245,158,11,0)} }
+
+/* ── MAIN DEMO CARD ── */
+.demo-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.demo-card-header {
+  background: var(--surface2);
+  padding: 16px 24px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom: 1px solid var(--border);
+}
+.demo-card-title {
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+.demo-card-title .icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--teal-dim);
+  border: 1px solid rgba(20,184,166,0.3);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 18px;
+}
+.demo-card-name {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--white);
+}
+.demo-card-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--teal);
+  letter-spacing: 0.15em;
+  margin-top: 2px;
+}
+.bt-status {
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+.bt-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--gray);
+  transition: all 0.3s;
+}
+.bt-dot.connected {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: blink-green 2s infinite;
+}
+@keyframes blink-green { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.bt-label { color: var(--gray); transition: color 0.3s; }
+.bt-label.connected { color: var(--green); }
+
+/* ── DEMO BODY ── */
+.demo-body { padding: 24px; }
+
+/* ADAPTER SELECT */
+.adapter-select-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--gray);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.adapter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 24px;
+}
+@media(max-width:600px){ .adapter-grid { grid-template-columns: repeat(2,1fr); } }
+
+.adapter-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  text-align:center;
+  cursor:pointer;
+  transition: all 0.2s;
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gray);
+  letter-spacing: 0.05em;
+}
+.adapter-btn:hover { border-color: rgba(20,184,166,0.4); color: var(--teal); }
+.adapter-btn.selected {
+  background: var(--teal-dim);
+  border-color: var(--teal);
+  color: var(--teal);
+  box-shadow: 0 0 12px rgba(20,184,166,0.2);
+}
+.adapter-btn .adapter-sub {
+  display:block;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+  color: var(--gray2);
+}
+.adapter-btn.selected .adapter-sub { color: rgba(20,184,166,0.6); }
+
+/* VEHICLE SELECT */
+.vehicle-select-wrap {
+  margin-bottom: 24px;
+}
+.vehicle-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vehicle-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor:pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.05em;
+}
+.vehicle-btn:hover { border-color: rgba(20,184,166,0.3); color: var(--white); }
+.vehicle-btn.selected {
+  background: var(--teal-dim);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+/* SCAN BUTTON */
+.scan-btn-wrap { text-align:center; margin-bottom: 24px; }
+.scan-btn {
+  display:inline-flex;
+  align-items:center;
+  gap: 12px;
+  padding: 16px 48px;
+  background: linear-gradient(135deg, rgba(20,184,166,0.15), rgba(0,200,255,0.1));
+  border: 1px solid rgba(20,184,166,0.5);
+  border-radius: 14px;
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--teal);
+  cursor:pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+}
+.scan-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(20,184,166,0.25), rgba(0,200,255,0.18));
+  border-color: var(--teal);
+  box-shadow: 0 0 30px rgba(20,184,166,0.25);
+  transform: translateY(-2px);
+}
+.scan-btn:disabled { opacity: 0.4; cursor:not-allowed; transform:none; }
+.scan-btn-icon { font-size: 20px; }
+
+/* PROGRESS */
+.progress-wrap {
+  display:none;
+  margin-bottom: 24px;
+}
+.progress-wrap.visible { display:block; }
+.progress-stages {
+  display:flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.progress-stage {
+  flex:1;
+  height: 3px;
+  background: var(--surface2);
+  border-radius: 2px;
+  overflow:hidden;
+}
+.progress-stage-fill {
+  height:100%;
+  background: var(--teal);
+  width:0%;
+  transition: width 0.4s ease;
+  border-radius: 2px;
+}
+.progress-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  color: var(--teal);
+  text-align:center;
+  animation: pulse-text 1s infinite;
+}
+@keyframes pulse-text { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* RESULTS */
+.results-wrap { display:none; }
+.results-wrap.visible { display:block; }
+
+/* Summary bar */
+.summary-bar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid;
+  margin-bottom: 16px;
+  transition: all 0.3s;
+}
+.summary-bar.ok    { background:var(--green-dim);  border-color: var(--green); }
+.summary-bar.warn  { background:var(--amber-dim);  border-color: var(--amber); }
+.summary-bar.crit  { background:var(--red-dim);    border-color: var(--red);   }
+
+.summary-verdict {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.summary-bar.ok   .summary-verdict { color: var(--green); }
+.summary-bar.warn .summary-verdict { color: var(--amber); }
+.summary-bar.crit .summary-verdict { color: var(--red); }
+
+.summary-count {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--gray);
+  letter-spacing: 0.1em;
+  margin-top: 2px;
+}
+
+.rescan-btn {
+  background: transparent;
+  border: 1px solid var(--gray2);
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--gray);
+  cursor:pointer;
+  transition: all 0.2s;
+}
+.rescan-btn:hover { border-color: var(--teal); color: var(--teal); }
+
+/* DTC CARDS */
+.dtc-list { display:flex; flex-direction:column; gap: 10px; margin-bottom: 20px; }
+
+.dtc-card {
+  background: var(--surface2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  overflow:hidden;
+  transition: border-color 0.2s;
+}
+.dtc-card:hover { border-color: rgba(255,255,255,0.12); }
+
+.dtc-card-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 14px 16px;
+  cursor:pointer;
+  gap: 12px;
+}
+.dtc-left { display:flex; align-items:center; gap: 12px; }
+.dtc-pill {
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid;
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space:nowrap;
+}
+.dtc-pill.ok   { background:var(--green-dim);  border-color:var(--green);  color:var(--green); }
+.dtc-pill.warn { background:var(--amber-dim);  border-color:var(--amber);  color:var(--amber); }
+.dtc-pill.crit { background:var(--red-dim);    border-color:var(--red);    color:var(--red);   }
+.dtc-pill.stop { background:rgba(220,38,38,0.2); border-color:#dc2626; color:#dc2626; }
+
+.dtc-info-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 2px;
+}
+.dtc-sev-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.dtc-sev-label.ok   { color:var(--green); }
+.dtc-sev-label.warn { color:var(--amber); }
+.dtc-sev-label.crit { color:var(--red);   }
+.dtc-sev-label.stop { color:#dc2626;      }
+
+.dtc-chevron {
+  color: var(--gray);
+  font-size: 14px;
+  transition: transform 0.2s;
+  flex-shrink:0;
+}
+.dtc-chevron.open { transform: rotate(180deg); }
+
+/* DTC DETAIL */
+.dtc-detail {
+  display:none;
+  padding: 0 16px 16px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.dtc-detail.open { display:block; }
+
+.detail-section { padding-top: 14px; }
+.detail-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  color: var(--gray);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.detail-text {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.7;
+}
+
+.cost-row {
+  display:flex;
+  align-items:center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.cost-box {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 10px 20px;
+  text-align:center;
+}
+.cost-amount {
+  font-family: 'Orbitron', monospace;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--white);
+}
+.cost-meta {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  color: var(--gray);
+  letter-spacing: 0.1em;
+  margin-top: 3px;
+}
+.cost-dash { color: var(--gray2); font-size: 18px; }
+.cost-disclaimer {
+  font-size: 10px;
+  color: var(--gray);
+  font-style: italic;
+}
+
+.question-list { display:flex; flex-direction:column; gap: 8px; }
+.question-row { display:flex; gap: 10px; align-items:flex-start; }
+.question-num {
+  width: 22px; height: 22px; min-width: 22px;
+  border-radius: 50%;
+  background: rgba(20,184,166,0.1);
+  border: 1px solid rgba(20,184,166,0.3);
+  color: var(--teal);
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.question-text {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+/* AI ANALYSIS BLOCK */
+.ai-block {
+  background: rgba(0,200,255,0.04);
+  border: 1px solid rgba(0,200,255,0.15);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.ai-block-header {
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ai-block-label {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+.ai-models {
+  display:flex;
+  gap: 5px;
+  margin-left:auto;
+}
+.ai-model-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--gray2);
+  transition: all 0.3s;
+}
+.ai-model-dot.active { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.ai-text {
+  font-size: 13px;
+  color: var(--white);
+  line-height: 1.7;
+  opacity: 0.9;
+}
+
+/* PDF BUTTON */
+.pdf-btn {
+  width:100%;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(245,158,11,0.08));
+  border: 1px solid rgba(245,158,11,0.4);
+  border-radius: 12px;
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--amber);
+  cursor:pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pdf-btn:hover {
+  background: linear-gradient(135deg, rgba(245,158,11,0.25), rgba(245,158,11,0.15));
+  border-color: var(--amber);
+  box-shadow: 0 0 20px rgba(245,158,11,0.2);
+}
+
+/* NO CODES */
+.no-codes {
+  text-align:center;
+  padding: 32px;
+}
+.no-codes-icon { font-size: 40px; margin-bottom: 12px; }
+.no-codes-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+.no-codes-sub { font-size: 12px; color: var(--gray); }
+
+/* FOOTER NOTE */
+.footer-note {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--gray);
+  text-align:center;
+  letter-spacing: 0.15em;
+  line-height: 1.7;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ARCH DIAGRAM BELOW */
+.arch-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 32px 24px;
+  margin-bottom: 24px;
+}
+.arch-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.4em;
+  color: var(--cyan);
+  opacity: 0.6;
+  margin-bottom: 24px;
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+.arch-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+.flow-row {
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap:wrap;
+}
+.flow-box {
+  background: var(--cyan-dim);
+  border: 1px solid rgba(0,200,255,0.2);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  color: var(--cyan);
+  letter-spacing: 0.08em;
+  white-space:nowrap;
+}
+.flow-box.green { background:var(--green-dim); border-color:rgba(34,197,94,0.2); color:var(--green); }
+.flow-box.amber { background:var(--amber-dim); border-color:rgba(245,158,11,0.2); color:var(--amber); }
+.flow-box.red   { background:var(--red-dim);   border-color:rgba(239,68,68,0.2);  color:var(--red);   }
+.flow-arrow { color: var(--gray); opacity:0.5; font-size:14px; }
+.flow-note  { font-size:10px; color:var(--gray); font-style:italic; margin-left:4px; }
+
+/* PDF TOAST */
+.toast {
+  position:fixed;
+  bottom: 32px;
+  left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background: var(--surface2);
+  border: 1px solid rgba(245,158,11,0.4);
+  border-radius: 12px;
+  padding: 14px 24px;
+  font-family: 'Orbitron', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+  z-index: 9999;
+  transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  white-space:nowrap;
+  display:flex;
+  align-items:center;
+  gap: 8px;
+}
+.toast.show { transform:translateX(-50%) translateY(0); }
+
+/* FOOTER */
+.page-footer {
+  text-align:center;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.page-footer-brand {
+  font-family: 'Orbitron', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+.page-footer-brand span { color: var(--teal); }
+.page-footer-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: var(--gray);
+  letter-spacing: 0.3em;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-eyebrow">INTERACTIVE DEMO</div>
+    <h1>LYLO<span class="accent">™</span><span class="x">×</span>OBDLink</h1>
+    <div class="header-sub">AI-POWERED VEHICLE DIAGNOSTIC SCANNER</div>
+    <div class="demo-badge">
+      <div class="demo-badge-dot"></div>
+      DEMO MODE — Real Bluetooth wires in when OBDLink SDK is live
+    </div>
+  </div>
+
+  <!-- MAIN DEMO CARD -->
+  <div class="demo-card">
+    <div class="demo-card-header">
+      <div class="demo-card-title">
+        <div class="icon">🔧</div>
+        <div>
+          <div class="demo-card-name">The Mechanic</div>
+          <div class="demo-card-sub">LYLO — Fix Things Specialist</div>
+        </div>
+      </div>
+      <div class="bt-status">
+        <div class="bt-dot" id="bt-dot"></div>
+        <span class="bt-label" id="bt-label">DISCONNECTED</span>
+      </div>
+    </div>
+
+    <div class="demo-body">
+
+      <!-- STEP 1: SELECT ADAPTER -->
+      <div class="adapter-select-label">SELECT YOUR OBDLINK ADAPTER</div>
+      <div class="adapter-grid">
+        <div class="adapter-btn selected" onclick="selectAdapter(this,'MX+')" data-adapter="MX+">
+          MX+
+          <span class="adapter-sub">BT + WiFi</span>
+        </div>
+        <div class="adapter-btn" onclick="selectAdapter(this,'EX')" data-adapter="EX">
+          EX
+          <span class="adapter-sub">BLE iOS</span>
+        </div>
+        <div class="adapter-btn" onclick="selectAdapter(this,'CX')" data-adapter="CX">
+          CX
+          <span class="adapter-sub">BLE</span>
+        </div>
+        <div class="adapter-btn" onclick="selectAdapter(this,'LX')" data-adapter="LX">
+          LX
+          <span class="adapter-sub">BT Classic</span>
+        </div>
+      </div>
+
+      <!-- STEP 2: SELECT VEHICLE SCENARIO -->
+      <div class="vehicle-select-wrap">
+        <div class="adapter-select-label">SELECT VEHICLE / SCENARIO</div>
+        <div class="vehicle-options">
+          <div class="vehicle-btn selected" onclick="selectVehicle(this,'check_engine')">🔴 Check Engine Light</div>
+          <div class="vehicle-btn" onclick="selectVehicle(this,'lean_misfire')">⚠️ Rough Idle + Lean</div>
+          <div class="vehicle-btn" onclick="selectVehicle(this,'clean')">✅ No Issues Found</div>
+          <div class="vehicle-btn" onclick="selectVehicle(this,'safety')">🚨 Safety Critical</div>
+        </div>
+      </div>
+
+      <!-- SCAN BUTTON -->
+      <div class="scan-btn-wrap">
+        <button class="scan-btn" id="scan-btn" onclick="startScan()">
+          <span class="scan-btn-icon">⬡</span>
+          Scan My Car
+        </button>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-stages">
+          <div class="progress-stage"><div class="progress-stage-fill" id="p1"></div></div>
+          <div class="progress-stage"><div class="progress-stage-fill" id="p2"></div></div>
+          <div class="progress-stage"><div class="progress-stage-fill" id="p3"></div></div>
+          <div class="progress-stage"><div class="progress-stage-fill" id="p4"></div></div>
+        </div>
+        <div class="progress-label" id="progress-label">Connecting to OBDLink...</div>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="results-wrap" id="results-wrap"></div>
+
+    </div>
+
+    <div class="footer-note">
+      DEMO MODE · Simulates real OBDLink Bluetooth scan · Real BLE integration: obdlink-service.ts<br>
+      Truth · Safety · We Got Your Back — The Good Neighbor Guard · Sacramento, CA
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE SECTION -->
+  <div class="arch-section">
+    <div class="arch-label">System Architecture</div>
+    <div class="flow-row">
+      <div class="flow-box red">Vehicle ECU</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">OBDLink Adapter</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">BT Serial Stream</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">LYLO AT Parser</div>
+      <div class="flow-note">// "41 0C" → RPM</div>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box">DTC Array [ P0420, P0171... ]</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box green">LYLO /obd-scan</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box green">Triple AI Engine Race</div>
+      <div class="flow-note">// Mechanic persona</div>
+    </div>
+    <div class="flow-row">
+      <div class="flow-box green">Structured Diagnosis JSON</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">PDF Generator</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box amber">SMTP Auto-Dispatch</div>
+      <div class="flow-note">// No prompt needed</div>
+    </div>
+  </div>
+
+  <!-- PAGE FOOTER -->
+  <div class="page-footer">
+    <div class="page-footer-brand">LYLO<span>™</span></div>
+    <div class="page-footer-sub">THE GOOD NEIGHBOR GUARD · TRUTH · SAFETY · WE GOT YOUR BACK</div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">📄 Report dispatched to your email!</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const SCENARIOS = {
+  check_engine: {
+    codes: [
+      {
+        code: 'P0420',
+        title: 'Catalyst System Below Threshold',
+        sev: 'warn',
+        sevLabel: '⚠ Fix Soon — This Week',
+        plain: "Your catalytic converter isn't cleaning exhaust gases efficiently. The car will still run but you'll fail emissions and it can damage your O2 sensors if ignored too long. Not an emergency — but don't let it go past 60 days.",
+        costLow: 400, costHigh: 2400,
+        questions: [
+          "Is this definitely the cat, or could it be an O2 sensor first? Can you test the O2 sensors before recommending a cat replacement?",
+          "What brand of catalytic converter are you installing — OEM or aftermarket? OEM lasts longer.",
+          "Will this cause me to fail my next smog test?"
+        ]
+      },
+      {
+        code: 'P0442',
+        title: 'Small Evaporative Emission Leak',
+        sev: 'ok',
+        sevLabel: '✓ Low Urgency — Monitor It',
+        plain: "A small leak in your fuel vapor system. Most common cause is a loose gas cap. Start there before spending a dime — tighten it or replace it ($10-15) and see if the code clears after a few drive cycles.",
+        costLow: 0, costHigh: 150,
+        questions: [
+          "Can I try replacing the gas cap first before any diagnostic work?",
+          "Did you do a smoke test to find the exact leak location?",
+          "Will this cause a smog failure?"
+        ]
+      }
+    ],
+    aiText: "P0420 is your main concern — the catalytic converter is failing. It's not an emergency but don't ignore it past 60 days or it'll take out your O2 sensors too, which doubles the repair bill. Before you go in, ask them to rule out the O2 sensor first — sometimes a bad sensor throws this code. P0442 is almost certainly a loose gas cap. Tighten it, drive a few days, see if it clears. Shop quote for the cat: anything over $800 for a non-luxury car is worth getting a second opinion.",
+    verdict: 'warn',
+    verdictLabel: '⚠ Fix Soon'
+  },
+  lean_misfire: {
+    codes: [
+      {
+        code: 'P0300',
+        title: 'Random / Multiple Cylinder Misfire',
+        sev: 'crit',
+        sevLabel: '! Fix Now — Don\'t Wait',
+        plain: "Your engine is misfiring — one or more cylinders aren't firing right. This means unburned fuel is hitting the catalytic converter and can cause expensive damage fast. You should not be driving this hard or at highway speeds until this is diagnosed.",
+        costLow: 150, costHigh: 600,
+        questions: [
+          "Which specific cylinder is misfiring? Did you do a cylinder contribution test?",
+          "Did you check spark plugs, ignition coils, and injectors before recommending anything else?",
+          "Is this covered under any powertrain warranty?"
+        ]
+      },
+      {
+        code: 'P0171',
+        title: 'System Too Lean — Bank 1',
+        sev: 'warn',
+        sevLabel: '⚠ Fix This Week',
+        plain: "Your engine is getting too much air and not enough fuel. Could be a vacuum leak, a dirty or failing mass airflow sensor, or a weak fuel pump. The vacuum leak check is free — have them do that first before replacing anything.",
+        costLow: 50, costHigh: 800,
+        questions: [
+          "Did you check for vacuum leaks first before recommending any parts?",
+          "What are the fuel trim readings at idle vs. at cruise?",
+          "Did you clean the MAF sensor before recommending a replacement?"
+        ]
+      }
+    ],
+    aiText: "P0300 is serious — a random misfire means the engine isn't running cleanly and unburned fuel is destroying your catalytic converter every mile you drive. Don't take this to highway speeds. The usual suspects: spark plugs, coil packs, or injectors. Plugs are cheap — start there. P0171 lean condition often ties into the misfire. A vacuum leak can cause both codes simultaneously. Ask them to smoke test for vacuum leaks first — that costs less than $100 to check and rules out the cheap fix before they start selling you parts.",
+    verdict: 'crit',
+    verdictLabel: '! Fix Now'
+  },
+  clean: {
+    codes: [],
+    aiText: "Your car's computer isn't reporting any fault codes. Everything the ECU monitors is within spec. That said, a clean scan doesn't mean zero issues — it means nothing has triggered a stored code yet. If you're hearing sounds or feeling something off, describe it to me and I'll diagnose based on symptoms.",
+    verdict: 'ok',
+    verdictLabel: '✓ All Clear'
+  },
+  safety: {
+    codes: [
+      {
+        code: 'C0035',
+        title: 'Left Front Wheel Speed Sensor Circuit',
+        sev: 'stop',
+        sevLabel: '✕ DO NOT DRIVE — Safety Risk',
+        plain: "Your ABS wheel speed sensor on the front left is failing or has failed. This directly affects your anti-lock braking system — in a panic stop, your brakes may not respond correctly. This is a safety issue. Do not drive at highway speeds until this is repaired.",
+        costLow: 150, costHigh: 400,
+        questions: [
+          "Is this the sensor itself or the wiring/connector? The connector fails more often and is much cheaper.",
+          "Did you check for corrosion at the connector before recommending a full sensor replacement?",
+          "Is the ABS completely disabled or is it just the fault light?"
+        ]
+      },
+      {
+        code: 'P0562',
+        title: 'System Voltage Low',
+        sev: 'crit',
+        sevLabel: '! Address This Week',
+        plain: "Your battery or charging system is putting out lower voltage than it should. Could be a dying battery, a failing alternator, or a bad connection. If this gets worse your car could leave you stranded. Get the battery and alternator tested — most auto parts stores do this free.",
+        costLow: 100, costHigh: 600,
+        questions: [
+          "Did you test both the battery AND the alternator? Both need to be checked.",
+          "What's the actual voltage reading at idle vs. under load?",
+          "How old is the current battery?"
+        ]
+      }
+    ],
+    aiText: "C0035 is the one that matters here — a wheel speed sensor failure takes out your ABS in a panic stop. That's not theoretical, that's a real safety issue. I'd avoid highway driving until this is fixed. The good news: it's usually the connector or wiring that fails, not the sensor itself. Ask them to check the connector first — could be a $20 fix instead of a $300 sensor. P0562 low voltage is likely a battery on its way out. AutoZone, O'Reilly, and Advance all test batteries free. Do that first before paying a shop diagnostic fee.",
+    verdict: 'crit',
+    verdictLabel: '! Safety Issue'
+  }
+};
+
+const SEV_CLASSES = { ok: 'ok', warn: 'warn', crit: 'crit', stop: 'stop' };
+const SUMMARY_CLASSES = { ok: 'ok', warn: 'warn', crit: 'crit', stop: 'crit' };
+
+let selectedAdapter = 'MX+';
+let selectedVehicle = 'check_engine';
+let scanning = false;
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────
+function selectAdapter(el, name) {
+  document.querySelectorAll('.adapter-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedAdapter = name;
+}
+function selectVehicle(el, key) {
+  document.querySelectorAll('.vehicle-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedVehicle = key;
+  // reset results
+  document.getElementById('results-wrap').classList.remove('visible');
+  document.getElementById('results-wrap').innerHTML = '';
+}
+
+// ── SCAN ──────────────────────────────────────────────────────────────────────
+async function startScan() {
+  if (scanning) return;
+  scanning = true;
+
+  const btn = document.getElementById('scan-btn');
+  const progress = document.getElementById('progress-wrap');
+  const results = document.getElementById('results-wrap');
+  const btDot = document.getElementById('bt-dot');
+  const btLabel = document.getElementById('bt-label');
+
+  btn.disabled = true;
+  results.classList.remove('visible');
+  results.innerHTML = '';
+  progress.classList.add('visible');
+
+  // Stage 1: Connect
+  setProgress(1, 0);
+  setProgress(2, 0);
+  setProgress(3, 0);
+  setProgress(4, 0);
+  setLabel(`Connecting to OBDLink ${selectedAdapter}...`);
+  await delay(700);
+  setProgress(1, 100);
+  btDot.classList.add('connected');
+  btLabel.classList.add('connected');
+  btLabel.textContent = `${selectedAdapter} CONNECTED`;
+
+  // Stage 2: Init
+  setLabel('Initializing diagnostic session...');
+  await delay(600);
+  setProgress(2, 100);
+
+  // Stage 3: Scan
+  setLabel('Reading fault codes from ECU...');
+  await delay(900);
+  setProgress(3, 100);
+
+  // Stage 4: AI
+  setLabel('Running AI analysis — Triple Engine Race...');
+  await delay(1100);
+  setProgress(4, 100);
+
+  await delay(300);
+  progress.classList.remove('visible');
+
+  // Render results
+  renderResults(SCENARIOS[selectedVehicle]);
+
+  btn.disabled = false;
+  scanning = false;
+}
+
+function setProgress(n, pct) {
+  document.getElementById('p' + n).style.width = pct + '%';
+}
+function setLabel(text) {
+  document.getElementById('progress-label').textContent = text;
+}
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderResults(scenario) {
+  const wrap = document.getElementById('results-wrap');
+  wrap.classList.add('visible');
+
+  const worstSev = scenario.verdict;
+  const summaryClass = SUMMARY_CLASSES[worstSev] || 'ok';
+
+  if (scenario.codes.length === 0) {
+    wrap.innerHTML = `
+      <div class="summary-bar ok">
+        <div>
+          <div class="summary-verdict">✓ ALL CLEAR</div>
+          <div class="summary-count">No fault codes detected</div>
+        </div>
+        <button class="rescan-btn" onclick="resetScan()">Rescan</button>
+      </div>
+      <div class="ai-block">
+        <div class="ai-block-header">
+          <div class="ai-block-label">⚡ Mechanic Analysis</div>
+          <div class="ai-models">
+            <div class="ai-model-dot active"></div>
+            <div class="ai-model-dot active"></div>
+            <div class="ai-model-dot active"></div>
+          </div>
+        </div>
+        <div class="ai-text">${scenario.aiText}</div>
+      </div>
+    `;
+    return;
+  }
+
+  let codesHTML = scenario.codes.map((c, i) => `
+    <div class="dtc-card" id="dtc-${i}">
+      <div class="dtc-card-header" onclick="toggleDTC(${i})">
+        <div class="dtc-left">
+          <div class="dtc-pill ${c.sev}">${c.code}</div>
+          <div>
+            <div class="dtc-info-title">${c.title}</div>
+            <div class="dtc-sev-label ${c.sev}">${c.sevLabel}</div>
+          </div>
+        </div>
+        <div class="dtc-chevron" id="chev-${i}">▾</div>
+      </div>
+      <div class="dtc-detail" id="detail-${i}">
+        <div class="detail-section">
+          <div class="detail-label">What This Means</div>
+          <div class="detail-text">${c.plain}</div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">Typical Repair Cost</div>
+          <div class="cost-row">
+            <div class="cost-box">
+              <div class="cost-amount">$${c.costLow}</div>
+              <div class="cost-meta">Low End</div>
+            </div>
+            <div class="cost-dash">—</div>
+            <div class="cost-box">
+              <div class="cost-amount">$${c.costHigh}</div>
+              <div class="cost-meta">High End</div>
+            </div>
+          </div>
+          <div class="cost-disclaimer">Estimates vary by region and vehicle. Always get 2+ quotes.</div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">Questions to Ask the Shop</div>
+          <div class="question-list">
+            ${c.questions.map((q,qi) => `
+              <div class="question-row">
+                <div class="question-num">${qi+1}</div>
+                <div class="question-text">${q}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  wrap.innerHTML = `
+    <div class="summary-bar ${summaryClass}">
+      <div>
+        <div class="summary-verdict">${scenario.verdictLabel}</div>
+        <div class="summary-count">${scenario.codes.length} fault code${scenario.codes.length > 1 ? 's' : ''} found</div>
+      </div>
+      <button class="rescan-btn" onclick="resetScan()">Rescan</button>
+    </div>
+
+    <div class="ai-block">
+      <div class="ai-block-header">
+        <div class="ai-block-label">⚡ Mechanic Analysis — Triple Engine</div>
+        <div class="ai-models">
+          <div class="ai-model-dot active"></div>
+          <div class="ai-model-dot active"></div>
+          <div class="ai-model-dot active"></div>
+        </div>
+      </div>
+      <div class="ai-text">${scenario.aiText}</div>
+    </div>
+
+    <div class="dtc-list">${codesHTML}</div>
+
+    <button class="pdf-btn" onclick="sendPDF()">📄 Send Full Diagnostic Report to Email</button>
+
+    <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--gray);text-align:center;letter-spacing:0.15em;">
+      💡 Screenshot this report before you go to the shop. You already know more than most customers walking in.
+    </div>
+  `;
+
+  // Auto-expand first card
+  setTimeout(() => toggleDTC(0), 300);
+}
+
+function toggleDTC(i) {
+  const detail = document.getElementById('detail-' + i);
+  const chev = document.getElementById('chev-' + i);
+  if (!detail) return;
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open', !isOpen);
+  chev.classList.toggle('open', !isOpen);
+}
+
+function resetScan() {
+  document.getElementById('results-wrap').classList.remove('visible');
+  document.getElementById('results-wrap').innerHTML = '';
+  document.getElementById('bt-dot').classList.remove('connected');
+  document.getElementById('bt-label').classList.remove('connected');
+  document.getElementById('bt-label').textContent = 'DISCONNECTED';
+}
+
+function sendPDF() {
+  const toast = document.getElementById('toast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
