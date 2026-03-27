@@ -131,7 +131,7 @@ const INTAKE_QUESTIONS_R1 = [
   {
     id: 'vehicle',
     question: 'Do you own a vehicle?',
-    subtitle: 'Unlocks your Mechanic's OBD scanner and repair cost estimates.',
+    subtitle: "Unlocks your Mechanic OBD scanner and repair cost estimates.",
     icon: Wrench,
     accentColor: 'gray',
     options: [
@@ -155,7 +155,7 @@ const INTAKE_QUESTIONS_R2 = [
     options: [
       { label: 'I Own My Home',            emoji: '🏠', value: 'own'   },
       { label: 'I Rent',                   emoji: '🔑', value: 'rent'  },
-      { label: 'Live With Family / Other', emoji: '👨‍👩‍👧', value: 'other' },
+      { label: 'Live With Family / Other', emoji: '👪', value: 'other' },
     ],
     allowCustom: true, customPlaceholder: 'My situation is…',
   },
