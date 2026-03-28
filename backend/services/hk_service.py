@@ -26,7 +26,7 @@ VERACORE_URL = os.getenv("VERACORE_URL", "https://veracore.onrender.com/ask")
 VERACORE_TIMEOUT = 35.0  # seconds — Tier 4 averages ~16s, give headroom
 
 # ── Personas where accuracy is life-critical ──────────────────────────────────
-HK_PERSONAS = {"doctor", "lawyer", "wealth", "guardian"}
+HK_PERSONAS = {"guardian", "bestie", "mechanic", "guide", "builder"}
 
 # ── Simple keyword-based risk tiering (no API calls) ─────────────────────────
 _HIGH_RISK_KW = {
